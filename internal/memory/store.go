@@ -13,14 +13,46 @@ import (
 
 // Store handles memory CRUD operations
 type Store struct {
-	basePath string
+	basePath    string
+	searchIndex *SearchIndex
 }
 
 // NewStore creates a new memory store for the given project
 func NewStore(p *project.Project) *Store {
-	return &Store{
-		basePath: p.GetMemoriesPath(),
+	basePath := p.GetMemoriesPath()
+
+	// Initialize search index
+	searchIndex, err := NewSearchIndex(basePath)
+	if err != nil {
+		// Log error but continue without search index
+		fmt.Fprintf(os.Stderr, "Warning: failed to initialize search index: %v\n", err)
 	}
+
+	store := &Store{
+		basePath:    basePath,
+		searchIndex: searchIndex,
+	}
+
+	// Reindex existing memories if search index was created
+	if searchIndex != nil {
+		go store.reindexAll()
+	}
+
+	return store
+}
+
+// reindexAll rebuilds the search index from all existing memories
+func (s *Store) reindexAll() {
+	if s.searchIndex == nil {
+		return
+	}
+
+	all, err := s.List("")
+	if err != nil {
+		return
+	}
+
+	s.searchIndex.Reindex(all.Memories)
 }
 
 // Create creates a new memory
@@ -43,7 +75,16 @@ func (s *Store) Create(mem *Memory) error {
 	mem.CreatedAt = now
 	mem.UpdatedAt = now
 
-	return s.save(mem)
+	if err := s.save(mem); err != nil {
+		return err
+	}
+
+	// Index the new memory
+	if s.searchIndex != nil {
+		s.searchIndex.Index(mem)
+	}
+
+	return nil
 }
 
 // Read reads a memory by name and type
@@ -87,7 +128,16 @@ func (s *Store) Update(mem *Memory) error {
 	mem.CreatedAt = existing.CreatedAt
 	mem.UpdatedAt = time.Now()
 
-	return s.save(mem)
+	if err := s.save(mem); err != nil {
+		return err
+	}
+
+	// Update the search index
+	if s.searchIndex != nil {
+		s.searchIndex.Index(mem)
+	}
+
+	return nil
 }
 
 // Delete deletes a memory
@@ -99,6 +149,12 @@ func (s *Store) Delete(name string, memType MemoryType) error {
 		}
 		return fmt.Errorf("failed to delete memory: %w", err)
 	}
+
+	// Remove from search index
+	if s.searchIndex != nil {
+		s.searchIndex.Delete(name)
+	}
+
 	return nil
 }
 
@@ -107,7 +163,14 @@ func (s *Store) DeleteByName(name string) error {
 	for _, t := range ValidMemoryTypes {
 		path := s.getPath(name, t)
 		if _, err := os.Stat(path); err == nil {
-			return os.Remove(path)
+			if err := os.Remove(path); err != nil {
+				return err
+			}
+			// Remove from search index
+			if s.searchIndex != nil {
+				s.searchIndex.Delete(name)
+			}
+			return nil
 		}
 	}
 	return fmt.Errorf("memory '%s' not found in any type", name)
@@ -156,8 +219,87 @@ func (s *Store) List(filterType MemoryType) (*MemoryList, error) {
 	}, nil
 }
 
-// Search searches memories by query string
+// Search searches memories using full-text search
 func (s *Store) Search(query string) (*MemoryList, error) {
+	// If search index is available, use bleve for better results
+	if s.searchIndex != nil {
+		return s.searchWithBleve(query)
+	}
+
+	// Fallback to simple string matching
+	return s.searchSimple(query)
+}
+
+// searchWithBleve performs full-text search using bleve
+func (s *Store) searchWithBleve(query string) (*MemoryList, error) {
+	results, err := s.searchIndex.Search(query, 50)
+	if err != nil {
+		// Fallback to simple search on error
+		return s.searchSimple(query)
+	}
+
+	var memories []Memory
+	for _, result := range results {
+		// Load the full memory
+		mem, err := s.ReadByName(result.Name)
+		if err != nil {
+			continue
+		}
+		memories = append(memories, *mem)
+	}
+
+	return &MemoryList{
+		Memories: memories,
+		Total:    len(memories),
+	}, nil
+}
+
+// SearchByType searches memories within a specific type using full-text search
+func (s *Store) SearchByType(query string, memType MemoryType) (*MemoryList, error) {
+	if s.searchIndex != nil {
+		results, err := s.searchIndex.SearchByType(query, memType, 50)
+		if err == nil {
+			var memories []Memory
+			for _, result := range results {
+				mem, err := s.Read(result.Name, memType)
+				if err != nil {
+					continue
+				}
+				memories = append(memories, *mem)
+			}
+			return &MemoryList{
+				Memories: memories,
+				Total:    len(memories),
+				Type:     string(memType),
+			}, nil
+		}
+	}
+
+	// Fallback: list by type and filter
+	all, err := s.List(memType)
+	if err != nil {
+		return nil, err
+	}
+
+	query = strings.ToLower(query)
+	var matches []Memory
+	for _, mem := range all.Memories {
+		if strings.Contains(strings.ToLower(mem.Name), query) ||
+			strings.Contains(strings.ToLower(mem.Content), query) ||
+			strings.Contains(strings.ToLower(mem.Description), query) {
+			matches = append(matches, mem)
+		}
+	}
+
+	return &MemoryList{
+		Memories: matches,
+		Total:    len(matches),
+		Type:     string(memType),
+	}, nil
+}
+
+// searchSimple performs simple string matching search (fallback)
+func (s *Store) searchSimple(query string) (*MemoryList, error) {
 	all, err := s.List("")
 	if err != nil {
 		return nil, err
@@ -188,6 +330,28 @@ func (s *Store) Search(query string) (*MemoryList, error) {
 		Memories: matches,
 		Total:    len(matches),
 	}, nil
+}
+
+// Close closes the store and its resources
+func (s *Store) Close() error {
+	if s.searchIndex != nil {
+		return s.searchIndex.Close()
+	}
+	return nil
+}
+
+// RebuildIndex rebuilds the search index from scratch
+func (s *Store) RebuildIndex() error {
+	if s.searchIndex == nil {
+		return fmt.Errorf("search index not initialized")
+	}
+
+	all, err := s.List("")
+	if err != nil {
+		return err
+	}
+
+	return s.searchIndex.Reindex(all.Memories)
 }
 
 // save writes a memory to disk

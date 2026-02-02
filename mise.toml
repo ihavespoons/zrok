@@ -1,2 +1,4 @@
 [tools]
 go = "1.25.4"
+node = "latest"
+python = "latest"

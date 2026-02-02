@@ -1,0 +1,98 @@
+{{define "reports"}}
+<div class="space-y-6">
+    <!-- Export Options -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Export Findings</h2>
+        <p class="text-gray-600 mb-4">Download your security findings in various formats.</p>
+
+        <div class="grid md:grid-cols-3 gap-4">
+            <div class="border rounded-lg p-4 hover:border-green-500 transition-colors cursor-pointer"
+                 onclick="exportFindings('sarif')">
+                <div class="flex items-center gap-3 mb-2">
+                    <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <div>
+                        <h3 class="font-medium">SARIF</h3>
+                        <p class="text-sm text-gray-500">Static Analysis Results Interchange Format</p>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-400">Compatible with GitHub Code Scanning, Azure DevOps, and other tools</p>
+            </div>
+
+            <div class="border rounded-lg p-4 hover:border-blue-500 transition-colors cursor-pointer"
+                 onclick="exportFindings('json')">
+                <div class="flex items-center gap-3 mb-2">
+                    <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+                    </svg>
+                    <div>
+                        <h3 class="font-medium">JSON</h3>
+                        <p class="text-sm text-gray-500">Machine-readable format</p>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-400">Full finding data for integration with custom tools</p>
+            </div>
+
+            <div class="border rounded-lg p-4 hover:border-purple-500 transition-colors cursor-pointer"
+                 onclick="exportFindings('markdown')">
+                <div class="flex items-center gap-3 mb-2">
+                    <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <div>
+                        <h3 class="font-medium">Markdown</h3>
+                        <p class="text-sm text-gray-500">Human-readable report</p>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-400">Great for sharing in documentation or issues</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Stats -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Analysis Summary</h2>
+
+        <div class="grid md:grid-cols-4 gap-4 mb-6">
+            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                <div class="text-3xl font-bold text-gray-700">{{.Stats.Total}}</div>
+                <div class="text-sm text-gray-500">Total Findings</div>
+            </div>
+            <div class="text-center p-4 bg-red-50 rounded-lg">
+                <div class="text-3xl font-bold text-red-600">
+                    {{with index .Stats.BySeverity "critical"}}{{.}}{{else}}0{{end}}
+                </div>
+                <div class="text-sm text-red-600">Critical</div>
+            </div>
+            <div class="text-center p-4 bg-orange-50 rounded-lg">
+                <div class="text-3xl font-bold text-orange-600">
+                    {{with index .Stats.BySeverity "high"}}{{.}}{{else}}0{{end}}
+                </div>
+                <div class="text-sm text-orange-600">High</div>
+            </div>
+            <div class="text-center p-4 bg-green-50 rounded-lg">
+                <div class="text-3xl font-bold text-green-600">
+                    {{with index .Stats.ByStatus "fixed"}}{{.}}{{else}}0{{end}}
+                </div>
+                <div class="text-sm text-green-600">Fixed</div>
+            </div>
+        </div>
+
+        {{if .Stats.ByCWE}}
+        <h3 class="text-sm font-medium text-gray-500 mb-3">Findings by CWE</h3>
+        <div class="space-y-2">
+            {{range $cwe, $count := .Stats.ByCWE}}
+            <div class="flex items-center">
+                <span class="w-24 text-sm text-gray-600">{{$cwe}}</span>
+                <div class="flex-1 bg-gray-200 rounded-full h-4 mx-2">
+                    <div class="bg-green-500 h-4 rounded-full" style="width: {{percentage $count $.Stats.Total}}%"></div>
+                </div>
+                <span class="text-sm text-gray-600 w-8 text-right">{{$count}}</span>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+    </div>
+</div>
+{{end}}

@@ -1,12 +1,19 @@
 package think
 
 import (
+	"bytes"
+	"embed"
 	"fmt"
 	"strings"
+	"sync"
+	"text/template"
 
 	"github.com/ihavespoons/zrok/internal/finding"
 	"github.com/ihavespoons/zrok/internal/project"
 )
+
+//go:embed configs/prompts/*.tmpl
+var embeddedPrompts embed.FS
 
 // ThinkingVerb represents a type of structured thinking
 type ThinkingVerb string
@@ -27,6 +34,35 @@ type ThinkingResult struct {
 	Context string       `json:"context,omitempty"`
 }
 
+// templateCache holds parsed templates
+var (
+	templates     *template.Template
+	templatesOnce sync.Once
+	templatesErr  error
+)
+
+// loadTemplates loads all templates from embedded files
+func loadTemplates() (*template.Template, error) {
+	templatesOnce.Do(func() {
+		templates, templatesErr = template.ParseFS(embeddedPrompts, "configs/prompts/*.tmpl")
+	})
+	return templates, templatesErr
+}
+
+// executeTemplate executes a named template with the given data
+func executeTemplate(name string, data interface{}) (string, error) {
+	tmpl, err := loadTemplates()
+	if err != nil {
+		return "", fmt.Errorf("failed to load templates: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
+		return "", fmt.Errorf("failed to execute template %s: %w", name, err)
+	}
+	return buf.String(), nil
+}
+
 // Thinker generates structured thinking prompts
 type Thinker struct {
 	project *project.Project
@@ -39,7 +75,25 @@ func NewThinker(p *project.Project) *Thinker {
 
 // Collected generates a prompt to evaluate collected information
 func (t *Thinker) Collected(context string) *ThinkingResult {
-	prompt := `## Evaluate Collected Information
+	data := map[string]string{
+		"Context": context,
+	}
+
+	prompt, err := executeTemplate("thinking-collected.tmpl", data)
+	if err != nil {
+		// Fallback to inline template
+		prompt = t.collectedFallback(context)
+	}
+
+	return &ThinkingResult{
+		Verb:    VerbCollected,
+		Prompt:  prompt,
+		Context: context,
+	}
+}
+
+func (t *Thinker) collectedFallback(context string) string {
+	return `## Evaluate Collected Information
 
 Review the information gathered so far and assess its quality and completeness.
 
@@ -57,17 +111,28 @@ Review the information gathered so far and assess its quality and completeness.
 - **Identified Gaps**: [list any missing information]
 - **Key Insights**: [summarize important findings]
 - **Recommended Actions**: [what to collect next]`
-
-	return &ThinkingResult{
-		Verb:    VerbCollected,
-		Prompt:  prompt,
-		Context: context,
-	}
 }
 
 // Adherence generates a prompt to check task adherence
 func (t *Thinker) Adherence(task, currentState string) *ThinkingResult {
-	prompt := fmt.Sprintf(`## Check Task Adherence
+	data := map[string]string{
+		"Task":         task,
+		"CurrentState": currentState,
+	}
+
+	prompt, err := executeTemplate("thinking-adherence.tmpl", data)
+	if err != nil {
+		prompt = t.adherenceFallback(task, currentState)
+	}
+
+	return &ThinkingResult{
+		Verb:   VerbAdherence,
+		Prompt: prompt,
+	}
+}
+
+func (t *Thinker) adherenceFallback(task, currentState string) string {
+	return fmt.Sprintf(`## Check Task Adherence
 
 Evaluate whether current activities align with the assigned task.
 
@@ -88,16 +153,28 @@ Evaluate whether current activities align with the assigned task.
 - **Deviation Description**: [if any]
 - **Corrective Actions**: [if needed]
 - **Continue/Adjust/Reset**: [recommendation]`, task, currentState)
-
-	return &ThinkingResult{
-		Verb:   VerbAdherence,
-		Prompt: prompt,
-	}
 }
 
 // Done generates a prompt to assess if a task is complete
 func (t *Thinker) Done(task, findings string) *ThinkingResult {
-	prompt := fmt.Sprintf(`## Task Completion Assessment
+	data := map[string]string{
+		"Task":     task,
+		"Findings": findings,
+	}
+
+	prompt, err := executeTemplate("thinking-done.tmpl", data)
+	if err != nil {
+		prompt = t.doneFallback(task, findings)
+	}
+
+	return &ThinkingResult{
+		Verb:   VerbDone,
+		Prompt: prompt,
+	}
+}
+
+func (t *Thinker) doneFallback(task, findings string) string {
+	return fmt.Sprintf(`## Task Completion Assessment
 
 Determine if the security analysis task is complete.
 
@@ -119,11 +196,6 @@ Determine if the security analysis task is complete.
 - **Outstanding Items**: [list any remaining work]
 - **Quality Check**: [findings quality assessment]
 - **Recommendation**: [proceed to report / continue analysis]`, task, findings)
-
-	return &ThinkingResult{
-		Verb:   VerbDone,
-		Prompt: prompt,
-	}
 }
 
 // Next generates a prompt suggesting next steps
@@ -136,11 +208,34 @@ func (t *Thinker) Next(currentState, findingsSummary string) *ThinkingResult {
 			techs = append(techs, lang.Frameworks...)
 		}
 		if len(techs) > 0 {
-			techContext = fmt.Sprintf("\n### Tech Stack:\n%s\n", strings.Join(techs, ", "))
+			techContext = strings.Join(techs, ", ")
 		}
 	}
 
-	prompt := fmt.Sprintf(`## Suggest Next Steps
+	data := map[string]string{
+		"CurrentState": currentState,
+		"TechContext":  techContext,
+		"Findings":     findingsSummary,
+	}
+
+	prompt, err := executeTemplate("thinking-next.tmpl", data)
+	if err != nil {
+		prompt = t.nextFallback(currentState, techContext, findingsSummary)
+	}
+
+	return &ThinkingResult{
+		Verb:   VerbNext,
+		Prompt: prompt,
+	}
+}
+
+func (t *Thinker) nextFallback(currentState, techContext, findingsSummary string) string {
+	techSection := ""
+	if techContext != "" {
+		techSection = fmt.Sprintf("\n### Tech Stack:\n%s\n", techContext)
+	}
+
+	return fmt.Sprintf(`## Suggest Next Steps
 
 Based on current progress, recommend the next actions for security analysis.
 
@@ -162,12 +257,7 @@ Based on current progress, recommend the next actions for security analysis.
 3. [Low Priority Action]
 
 ### Rationale:
-[Explain why these steps are recommended]`, currentState, techContext, findingsSummary)
-
-	return &ThinkingResult{
-		Verb:   VerbNext,
-		Prompt: prompt,
-	}
+[Explain why these steps are recommended]`, currentState, techSection, findingsSummary)
 }
 
 // Hypothesis generates security hypotheses based on context
@@ -176,24 +266,48 @@ func (t *Thinker) Hypothesis(context string) *ThinkingResult {
 	if t.project != nil && t.project.Config != nil {
 		stack := t.project.Config.TechStack
 		if len(stack.Languages) > 0 || len(stack.Databases) > 0 {
-			techContext = "\n### Known Tech Stack:\n"
+			var parts []string
 			for _, lang := range stack.Languages {
-				techContext += fmt.Sprintf("- %s", lang.Name)
+				part := lang.Name
 				if len(lang.Frameworks) > 0 {
-					techContext += fmt.Sprintf(" (%s)", strings.Join(lang.Frameworks, ", "))
+					part += fmt.Sprintf(" (%s)", strings.Join(lang.Frameworks, ", "))
 				}
-				techContext += "\n"
+				parts = append(parts, "- "+part)
 			}
 			if len(stack.Databases) > 0 {
-				techContext += fmt.Sprintf("- Databases: %s\n", strings.Join(stack.Databases, ", "))
+				parts = append(parts, fmt.Sprintf("- Databases: %s", strings.Join(stack.Databases, ", ")))
 			}
 			if len(stack.Auth) > 0 {
-				techContext += fmt.Sprintf("- Auth: %s\n", strings.Join(stack.Auth, ", "))
+				parts = append(parts, fmt.Sprintf("- Auth: %s", strings.Join(stack.Auth, ", ")))
 			}
+			techContext = strings.Join(parts, "\n")
 		}
 	}
 
-	prompt := fmt.Sprintf(`## Generate Security Hypotheses
+	data := map[string]string{
+		"Context":     context,
+		"TechContext": techContext,
+	}
+
+	prompt, err := executeTemplate("thinking-hypothesis.tmpl", data)
+	if err != nil {
+		prompt = t.hypothesisFallback(context, techContext)
+	}
+
+	return &ThinkingResult{
+		Verb:    VerbHypothesis,
+		Prompt:  prompt,
+		Context: context,
+	}
+}
+
+func (t *Thinker) hypothesisFallback(context, techContext string) string {
+	techSection := ""
+	if techContext != "" {
+		techSection = fmt.Sprintf("\n### Known Tech Stack:\n%s\n", techContext)
+	}
+
+	return fmt.Sprintf(`## Generate Security Hypotheses
 
 Based on the provided context, generate testable security hypotheses.
 
@@ -229,13 +343,7 @@ For each hypothesis, consider:
 - Test: [how to verify]
 
 ### Priority Ranking:
-[Order hypotheses by likelihood and impact]`, context, techContext)
-
-	return &ThinkingResult{
-		Verb:    VerbHypothesis,
-		Prompt:  prompt,
-		Context: context,
-	}
+[Order hypotheses by likelihood and impact]`, context, techSection)
 }
 
 // Validate generates a prompt to validate a finding
@@ -257,7 +365,23 @@ func (t *Thinker) Validate(f *finding.Finding) *ThinkingResult {
 		}
 	}
 
-	prompt := fmt.Sprintf(`## Validate Security Finding
+	data := map[string]string{
+		"FindingDetails": findingDesc.String(),
+	}
+
+	prompt, err := executeTemplate("thinking-validate.tmpl", data)
+	if err != nil {
+		prompt = t.validateFallback(findingDesc.String())
+	}
+
+	return &ThinkingResult{
+		Verb:   VerbValidate,
+		Prompt: prompt,
+	}
+}
+
+func (t *Thinker) validateFallback(findingDesc string) string {
+	return fmt.Sprintf(`## Validate Security Finding
 
 Critically evaluate this security finding for accuracy and completeness.
 
@@ -291,12 +415,7 @@ Critically evaluate this security finding for accuracy and completeness.
 - **Severity Adjustment**: [if needed]
 - **Additional Evidence Needed**: [list]
 - **Related Findings**: [if any]
-- **Recommended Status**: [open/confirmed/false_positive]`, findingDesc.String())
-
-	return &ThinkingResult{
-		Verb:   VerbValidate,
-		Prompt: prompt,
-	}
+- **Recommended Status**: [open/confirmed/false_positive]`, findingDesc)
 }
 
 // GetPrompt returns a thinking prompt for the given verb

@@ -123,6 +123,8 @@ type FilterOptions struct {
 	Confidence Confidence
 	CWE        string
 	Tag        string
+	Limit      int
+	Offset     int
 }
 
 // IsValidSeverity checks if a severity is valid

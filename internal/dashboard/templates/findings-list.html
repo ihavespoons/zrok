@@ -1,0 +1,78 @@
+{{define "findings"}}
+<!-- Filters -->
+<div class="bg-white rounded-lg shadow p-4 mb-4">
+    <div class="flex flex-wrap gap-4 items-center">
+        <select id="filter-severity" class="border rounded px-3 py-2 text-sm" onchange="filterFindings()">
+            <option value="">All Severities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="info">Info</option>
+        </select>
+        <select id="filter-status" class="border rounded px-3 py-2 text-sm" onchange="filterFindings()">
+            <option value="">All Statuses</option>
+            <option value="open">Open</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="false_positive">False Positive</option>
+            <option value="fixed">Fixed</option>
+        </select>
+        <div class="flex-1"></div>
+        <div class="flex gap-2">
+            <button onclick="exportFindings('sarif')" class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
+                Export SARIF
+            </button>
+            <button onclick="exportFindings('json')" class="bg-gray-600 text-white px-4 py-2 rounded text-sm hover:bg-gray-700">
+                Export JSON
+            </button>
+            <button onclick="exportFindings('markdown')" class="bg-gray-600 text-white px-4 py-2 rounded text-sm hover:bg-gray-700">
+                Export Markdown
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Findings List -->
+<div id="findings-content" class="bg-white rounded-lg shadow">
+    {{template "findings-list" .}}
+</div>
+{{end}}
+
+{{define "findings-list"}}
+<div class="divide-y">
+    {{if .Findings}}
+    {{range .Findings}}
+    <div class="p-4 hover:bg-gray-50 cursor-pointer transition-colors" onclick="viewFinding('{{.ID}}')">
+        <div class="flex items-center gap-3">
+            <span class="severity-{{.Severity}} text-xs px-2 py-1 rounded uppercase font-bold whitespace-nowrap">
+                {{.Severity}}
+            </span>
+            <span class="font-medium flex-1 truncate">{{.Title}}</span>
+            <span class="status-{{.Status}} text-xs px-2 py-1 rounded whitespace-nowrap">{{.Status}}</span>
+        </div>
+        <div class="text-gray-500 text-sm mt-1">
+            <span class="font-mono">{{.Location.File}}:{{.Location.LineStart}}</span>
+            {{if .CWE}}<span class="ml-2">• {{.CWE}}</span>{{end}}
+            {{if .Location.Function}}<span class="ml-2">• {{.Location.Function}}</span>{{end}}
+        </div>
+        {{if .Description}}
+        <p class="text-gray-600 text-sm mt-2 line-clamp-2">{{.Description}}</p>
+        {{end}}
+    </div>
+    {{end}}
+    {{else}}
+    <div class="p-8 text-center text-gray-500">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        <p class="mt-2">No findings match your filters</p>
+    </div>
+    {{end}}
+</div>
+
+{{if .Total}}
+<div class="px-4 py-3 border-t text-sm text-gray-500">
+    Showing {{len .Findings}} of {{.Total}} findings
+</div>
+{{end}}
+{{end}}

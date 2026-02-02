@@ -1,0 +1,205 @@
+/* zrok Dashboard Styles */
+
+/* Severity colors */
+.severity-critical {
+    background-color: #dc2626;
+    color: white;
+}
+
+.severity-high {
+    background-color: #ea580c;
+    color: white;
+}
+
+.severity-medium {
+    background-color: #ca8a04;
+    color: white;
+}
+
+.severity-low {
+    background-color: #16a34a;
+    color: white;
+}
+
+.severity-info {
+    background-color: #2563eb;
+    color: white;
+}
+
+/* Status badges */
+.status-open {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.status-confirmed {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.status-false_positive {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.status-fixed {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
+/* Tab active state */
+.tab-btn.active {
+    border-color: #22c55e;
+    color: #16a34a;
+}
+
+/* Card hover effects */
+.card-hover {
+    transition: transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Code snippet styling */
+.code-snippet {
+    background-color: #1f2937;
+    color: #e5e7eb;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+}
+
+/* Loading spinner */
+.spinner {
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #22c55e;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Toast notifications */
+.toast {
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.toast-exit {
+    animation: slideOut 0.3s ease-in forwards;
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* Memory type badges */
+.memory-context {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
+.memory-finding_context {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.memory-pattern {
+    background-color: #f3e8ff;
+    color: #6b21a8;
+}
+
+.memory-scope {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+/* Agent phase badges */
+.phase-recon {
+    background-color: #e0e7ff;
+    color: #3730a3;
+}
+
+.phase-analysis {
+    background-color: #fce7f3;
+    color: #9d174d;
+}
+
+.phase-validation {
+    background-color: #ccfbf1;
+    color: #0f766e;
+}
+
+.phase-reporting {
+    background-color: #fef9c3;
+    color: #854d0e;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+    .tab-btn {
+        font-size: 0.75rem;
+        padding: 0.75rem 0.5rem;
+    }
+}
+
+/* htmx loading indicator */
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator {
+    display: inline-block;
+}
+
+.htmx-request.htmx-indicator {
+    display: inline-block;
+}

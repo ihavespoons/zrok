@@ -235,7 +235,12 @@ var symbolsCmd = &cobra.Command{
 	Long: `Extract code symbols (functions, classes, etc.) from a file.
 
 Use 'symbols find <name>' to search for symbols globally.
-Use 'symbols refs <symbol>' to find references to a symbol.`,
+Use 'symbols refs <symbol>' to find references to a symbol.
+
+Use --method to specify extraction method:
+  auto  - Try LSP first, fall back to regex (default)
+  lsp   - Use only LSP (requires language server installed)
+  regex - Use only regex patterns`,
 	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		p, err := project.EnsureActive()
@@ -243,7 +248,14 @@ Use 'symbols refs <symbol>' to find references to a symbol.`,
 			exitError("%v", err)
 		}
 
-		extractor := navigate.NewSymbolExtractor(p)
+		methodStr, _ := cmd.Flags().GetString("method")
+		method := navigate.ExtractionMethod(methodStr)
+		if method == "" {
+			method = navigate.MethodAuto
+		}
+
+		extractor := navigate.NewUnifiedExtractor(p, method)
+		defer extractor.Close()
 
 		// Check for subcommand
 		if args[0] == "find" {
@@ -327,4 +339,6 @@ func init() {
 	searchCmd.Flags().IntP("context", "C", 0, "Lines of context")
 	searchCmd.Flags().IntP("max", "m", 100, "Maximum results")
 	searchCmd.Flags().StringP("file", "f", "", "File pattern to search")
+
+	symbolsCmd.Flags().StringP("method", "m", "auto", "Extraction method: auto, lsp, regex")
 }
