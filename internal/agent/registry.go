@@ -101,3 +101,19 @@ func GetAgentsByVulnClass(vulnClass string) []AgentConfig {
 	}
 	return agents
 }
+
+// GetAgentsByReviewCategory returns agents that cover a specific review category
+func GetAgentsByReviewCategory(category string) []AgentConfig {
+	loadBuiltinAgents()
+
+	var agents []AgentConfig
+	for _, agent := range builtinAgents {
+		for _, rc := range agent.Specialization.ReviewCategories {
+			if rc == category {
+				agents = append(agents, *agent)
+				break
+			}
+		}
+	}
+	return agents
+}
