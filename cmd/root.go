@@ -9,6 +9,11 @@ import (
 )
 
 var (
+	// Version info (set by ldflags during build)
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+
 	// Global flags
 	jsonOutput bool
 	verbose    bool
@@ -29,8 +34,8 @@ It provides structured tooling for:
 
 Use 'zrok init' to initialize a project, then 'zrok onboard --auto' to detect
 the tech stack and set up for analysis.`,
-	Version: "1.0.0",
 }
+
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 func Execute() {
@@ -43,6 +48,10 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+
+	// Set version info
+	rootCmd.Version = version
+	rootCmd.SetVersionTemplate(fmt.Sprintf("zrok version %s\ncommit: %s\nbuilt: %s\n", version, commit, date))
 }
 
 // outputJSON outputs data as JSON
