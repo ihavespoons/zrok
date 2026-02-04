@@ -3,14 +3,15 @@ module github.com/ihavespoons/zrok
 go 1.25.6
 
 require (
+	github.com/blevesearch/bleve/v2 v2.5.7
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/text v0.8.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
 	github.com/RoaringBitmap/roaring/v2 v2.4.5 // indirect
 	github.com/bits-and-blooms/bitset v1.22.0 // indirect
-	github.com/blevesearch/bleve/v2 v2.5.7 // indirect
 	github.com/blevesearch/bleve_index_api v1.2.11 // indirect
 	github.com/blevesearch/geo v0.2.4 // indirect
 	github.com/blevesearch/go-faiss v1.0.26 // indirect

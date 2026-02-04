@@ -2,7 +2,6 @@ package agent
 
 import (
 	"embed"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -17,7 +16,6 @@ var embeddedAgents embed.FS
 var (
 	builtinAgents     map[string]*AgentConfig
 	builtinAgentsOnce sync.Once
-	builtinAgentsErr  error
 )
 
 // loadBuiltinAgents loads all built-in agents from embedded YAML files
@@ -27,7 +25,6 @@ func loadBuiltinAgents() {
 
 		entries, err := embeddedAgents.ReadDir("configs/agents")
 		if err != nil {
-			builtinAgentsErr = fmt.Errorf("failed to read embedded agents directory: %w", err)
 			return
 		}
 

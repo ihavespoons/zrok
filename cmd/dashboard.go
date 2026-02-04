@@ -36,11 +36,13 @@ The dashboard provides:
 		url := fmt.Sprintf("http://localhost:%d", port)
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"url":     url,
 				"port":    port,
 				"project": p.Config.Name,
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Starting dashboard at %s\n", url)
 			fmt.Printf("Project: %s\n", p.Config.Name)
@@ -70,7 +72,7 @@ func openBrowser(url string) {
 	default:
 		cmd = exec.Command("xdg-open", url)
 	}
-	cmd.Start()
+	_ = cmd.Start() // Best effort to open browser
 }
 
 func init() {

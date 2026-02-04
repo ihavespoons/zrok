@@ -51,7 +51,7 @@ func NewSearchIndex(basePath string) (*SearchIndex, error) {
 		}
 	} else if err != nil {
 		// Try to recover by deleting and recreating
-		os.RemoveAll(indexPath)
+		_ = os.RemoveAll(indexPath)
 		index, err = bleve.New(indexPath, buildIndexMapping())
 		if err != nil {
 			return nil, fmt.Errorf("failed to create search index: %w", err)
@@ -241,7 +241,9 @@ func (s *SearchIndex) Reindex(memories []Memory) error {
 			Description: mem.Description,
 			Tags:        mem.Tags,
 		}
-		batch.Index(mem.Name, doc)
+		if err := batch.Index(mem.Name, doc); err != nil {
+			return fmt.Errorf("failed to index memory %s: %w", mem.Name, err)
+		}
 	}
 
 	return s.index.Batch(batch)

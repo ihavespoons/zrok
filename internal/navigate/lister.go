@@ -264,7 +264,7 @@ func (l *Lister) buildTree(b *strings.Builder, fullPath, prefix string, maxDepth
 			if isLast {
 				newPrefix = prefix + "    "
 			}
-			l.buildTree(b, filepath.Join(fullPath, entry.Name()), newPrefix, maxDepth, depth+1)
+			_ = l.buildTree(b, filepath.Join(fullPath, entry.Name()), newPrefix, maxDepth, depth+1)
 		}
 	}
 

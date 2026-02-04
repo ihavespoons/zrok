@@ -172,7 +172,9 @@ var thinkValidateCmd = &cobra.Command{
 
 func outputThinkResult(result *think.ThinkingResult) {
 	if jsonOutput {
-		outputJSON(result)
+		if err := outputJSON(result); err != nil {
+			exitError("failed to encode JSON: %v", err)
+		}
 	} else {
 		fmt.Println(result.Prompt)
 	}

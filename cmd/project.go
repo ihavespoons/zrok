@@ -31,11 +31,13 @@ memories, findings, and agent configurations.`,
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"success": true,
 				"path":    p.GetZrokPath(),
 				"message": "Project initialized successfully",
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Initialized zrok project at %s\n", p.GetZrokPath())
 			fmt.Println("\nNext steps:")
@@ -63,11 +65,13 @@ var activateCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"success": true,
 				"path":    p.RootPath,
 				"project": p.Config,
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Activated project: %s\n", p.Config.Name)
 			fmt.Printf("Root path: %s\n", p.RootPath)
@@ -115,7 +119,9 @@ var statusCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(status)
+			if err := outputJSON(status); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Project: %s\n", p.Config.Name)
 			fmt.Printf("Path: %s\n", p.RootPath)
@@ -169,7 +175,9 @@ Examples:
 		if len(args) == 0 {
 			// Show all config
 			if jsonOutput {
-				outputJSON(p.Config)
+				if err := outputJSON(p.Config); err != nil {
+					exitError("failed to encode JSON: %v", err)
+				}
 			} else {
 				fmt.Printf("name: %s\n", p.Config.Name)
 				fmt.Printf("version: %s\n", p.Config.Version)
@@ -200,7 +208,9 @@ Examples:
 				exitError("unknown config key: %s", key)
 			}
 			if jsonOutput {
-				outputJSON(map[string]interface{}{key: value})
+				if err := outputJSON(map[string]interface{}{key: value}); err != nil {
+					exitError("failed to encode JSON: %v", err)
+				}
 			} else {
 				fmt.Println(value)
 			}
@@ -227,7 +237,9 @@ Examples:
 			}
 
 			if jsonOutput {
-				outputJSON(map[string]interface{}{"success": true, key: value})
+				if err := outputJSON(map[string]interface{}{"success": true, key: value}); err != nil {
+					exitError("failed to encode JSON: %v", err)
+				}
 			} else {
 				fmt.Printf("Set %s = %s\n", key, value)
 			}
@@ -280,17 +292,19 @@ Use --auto for automatic detection or --wizard for interactive setup.`,
 				Type:    memType,
 				Content: mem.Content,
 			}
-			memStore.Create(m) // Ignore errors for existing memories
+			_ = memStore.Create(m) // Ignore errors for existing memories
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"success":          true,
 				"config":           result.Config,
 				"memories_created": len(result.Memories),
 				"suggested_agents": result.Agents,
 				"warnings":         result.Warnings,
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Println("Onboarding complete!")
 			fmt.Println()

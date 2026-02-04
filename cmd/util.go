@@ -172,7 +172,9 @@ created_by: "injection-agent"
 `
 
 		if jsonOutput {
-			outputJSON(map[string]string{"instructions": instructions})
+			if err := outputJSON(map[string]string{"instructions": instructions}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Print(instructions)
 		}
@@ -222,7 +224,9 @@ var exportContextCmd = &cobra.Command{
 		context["available_agents"] = agentNames
 
 		if jsonOutput {
-			outputJSON(context)
+			if err := outputJSON(context); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			// Text output
 			fmt.Printf("# Context Export for %s\n\n", p.Config.Name)

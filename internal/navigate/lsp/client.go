@@ -221,7 +221,7 @@ func (c *Client) Close() error {
 	_ = c.notify("exit", nil)
 
 	// Close pipes
-	c.stdin.Close()
+	_ = c.stdin.Close()
 
 	// Wait for process with timeout
 	done := make(chan error, 1)
@@ -232,7 +232,7 @@ func (c *Client) Close() error {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		c.cmd.Process.Kill()
+		_ = c.cmd.Process.Kill()
 	}
 
 	close(c.done)

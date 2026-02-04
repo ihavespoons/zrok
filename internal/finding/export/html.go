@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/ihavespoons/zrok/internal/finding"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // HTMLExporter exports findings to HTML format
@@ -187,7 +189,7 @@ func (e *HTMLExporter) Export(findings []finding.Finding) ([]byte, error) {
                 <div class="stat-value" style="color: var(--%s)">%d</div>
                 <div class="stat-label">%s</div>
             </div>
-`, string(sev), count, strings.Title(string(sev))))
+`, string(sev), count, cases.Title(language.English).String(string(sev))))
 		}
 	}
 

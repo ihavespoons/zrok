@@ -52,7 +52,7 @@ func (s *Store) reindexAll() {
 		return
 	}
 
-	s.searchIndex.Reindex(all.Memories)
+	_ = s.searchIndex.Reindex(all.Memories) // Best effort reindex
 }
 
 // Create creates a new memory
@@ -81,7 +81,7 @@ func (s *Store) Create(mem *Memory) error {
 
 	// Index the new memory
 	if s.searchIndex != nil {
-		s.searchIndex.Index(mem)
+		_ = s.searchIndex.Index(mem) // Best effort index
 	}
 
 	return nil
@@ -134,7 +134,7 @@ func (s *Store) Update(mem *Memory) error {
 
 	// Update the search index
 	if s.searchIndex != nil {
-		s.searchIndex.Index(mem)
+		_ = s.searchIndex.Index(mem) // Best effort index
 	}
 
 	return nil
@@ -152,7 +152,7 @@ func (s *Store) Delete(name string, memType MemoryType) error {
 
 	// Remove from search index
 	if s.searchIndex != nil {
-		s.searchIndex.Delete(name)
+		_ = s.searchIndex.Delete(name) // Best effort delete from index
 	}
 
 	return nil
@@ -168,7 +168,7 @@ func (s *Store) DeleteByName(name string) error {
 			}
 			// Remove from search index
 			if s.searchIndex != nil {
-				s.searchIndex.Delete(name)
+				_ = s.searchIndex.Delete(name) // Best effort delete from index
 			}
 			return nil
 		}

@@ -244,7 +244,7 @@ func (f *Finder) searchFile(fullPath, relPath, pattern string, regex *regexp.Reg
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var matches []SearchMatch
 	var lines []string

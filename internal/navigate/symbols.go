@@ -84,7 +84,7 @@ func (s *SymbolExtractor) Extract(path string) (*SymbolResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	symbols, err := extractor(file, path)
 	if err != nil {

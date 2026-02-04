@@ -47,7 +47,9 @@ var agentListCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(result)
+			if err := outputJSON(result); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			// Group by phase
 			phases := map[agent.Phase][]agent.AgentConfig{
@@ -107,7 +109,9 @@ var agentShowCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(config)
+			if err := outputJSON(config); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Name: %s\n", config.Name)
 			fmt.Printf("Description: %s\n", config.Description)
@@ -165,10 +169,12 @@ var agentCreateCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"success": true,
 				"name":    config.Name,
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Created agent: %s\n", config.Name)
 		}
@@ -210,10 +216,12 @@ var agentPromptCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"agent":  config.Name,
 				"prompt": prompt,
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Println(prompt)
 		}
@@ -257,10 +265,12 @@ var agentGenerateCmd = &cobra.Command{
 		recommended = append(recommended, "crypto-agent", "config-agent", "logic-agent")
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"recommended_agents": recommended,
 				"tech_stack":         stack,
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Println("Recommended agents based on tech stack:")
 			fmt.Println()
