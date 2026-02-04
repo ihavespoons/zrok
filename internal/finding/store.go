@@ -146,6 +146,12 @@ func (s *Store) List(opts *FilterOptions) (*FindingList, error) {
 			if opts.Confidence != "" && f.Confidence != opts.Confidence {
 				continue
 			}
+			if opts.Exploitability != "" && f.Exploitability != opts.Exploitability {
+				continue
+			}
+			if opts.FixPriority != "" && f.FixPriority != opts.FixPriority {
+				continue
+			}
 			if opts.CWE != "" && f.CWE != opts.CWE {
 				continue
 			}
@@ -181,11 +187,13 @@ func (s *Store) Stats() (*FindingStats, error) {
 	}
 
 	stats := &FindingStats{
-		Total:        all.Total,
-		BySeverity:   make(map[string]int),
-		ByStatus:     make(map[string]int),
-		ByConfidence: make(map[string]int),
-		ByCWE:        make(map[string]int),
+		Total:            all.Total,
+		BySeverity:       make(map[string]int),
+		ByStatus:         make(map[string]int),
+		ByConfidence:     make(map[string]int),
+		ByExploitability: make(map[string]int),
+		ByFixPriority:    make(map[string]int),
+		ByCWE:            make(map[string]int),
 	}
 
 	tagCounts := make(map[string]int)
@@ -194,6 +202,12 @@ func (s *Store) Stats() (*FindingStats, error) {
 		stats.BySeverity[string(f.Severity)]++
 		stats.ByStatus[string(f.Status)]++
 		stats.ByConfidence[string(f.Confidence)]++
+		if f.Exploitability != "" {
+			stats.ByExploitability[string(f.Exploitability)]++
+		}
+		if f.FixPriority != "" {
+			stats.ByFixPriority[string(f.FixPriority)]++
+		}
 		if f.CWE != "" {
 			stats.ByCWE[f.CWE]++
 		}
@@ -307,6 +321,12 @@ func (s *Store) validate(f *Finding) error {
 	}
 	if f.Status != "" && !IsValidStatus(f.Status) {
 		return fmt.Errorf("invalid status: %s", f.Status)
+	}
+	if f.Exploitability != "" && !IsValidExploitability(f.Exploitability) {
+		return fmt.Errorf("invalid exploitability: %s", f.Exploitability)
+	}
+	if f.FixPriority != "" && !IsValidFixPriority(f.FixPriority) {
+		return fmt.Errorf("invalid fix_priority: %s", f.FixPriority)
 	}
 	if f.Location.File == "" {
 		return fmt.Errorf("location.file is required")

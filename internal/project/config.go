@@ -15,6 +15,7 @@ const (
 	MemoriesDir   = "memories"
 	FindingsDir   = "findings"
 	AgentsDir     = "agents"
+	IndexDir      = "index"
 	RawDir        = "raw"
 	ExportsDir    = "exports"
 	ContextDir    = "context"
@@ -50,6 +51,55 @@ type TechStack struct {
 	Auth           []string   `yaml:"auth,omitempty" json:"auth,omitempty"`
 }
 
+// EmbeddingConfig contains configuration for the embedding provider
+type EmbeddingConfig struct {
+	// Provider is the embedding provider: "ollama", "openai", "huggingface"
+	Provider string `yaml:"provider" json:"provider"`
+	// Model is the model name (provider-specific)
+	Model string `yaml:"model,omitempty" json:"model,omitempty"`
+	// Endpoint is the API endpoint (required for ollama)
+	Endpoint string `yaml:"endpoint,omitempty" json:"endpoint,omitempty"`
+	// APIKeyEnv is the environment variable name for the API key
+	APIKeyEnv string `yaml:"api_key_env,omitempty" json:"api_key_env,omitempty"`
+	// Dimension is the embedding dimension
+	Dimension int `yaml:"dimension,omitempty" json:"dimension,omitempty"`
+}
+
+// IndexConfig contains configuration for semantic indexing
+type IndexConfig struct {
+	// Enabled indicates if semantic indexing is enabled
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// ChunkStrategy is the chunking strategy: "lsp" (default), "regex"
+	ChunkStrategy string `yaml:"chunk_strategy,omitempty" json:"chunk_strategy,omitempty"`
+	// MaxChunkLines is the maximum lines per chunk (default: 100)
+	MaxChunkLines int `yaml:"max_chunk_lines,omitempty" json:"max_chunk_lines,omitempty"`
+	// Embedding contains the embedding provider configuration
+	Embedding EmbeddingConfig `yaml:"embedding" json:"embedding"`
+	// ExcludePatterns are file patterns to exclude from indexing
+	ExcludePatterns []string `yaml:"exclude_patterns,omitempty" json:"exclude_patterns,omitempty"`
+}
+
+// DefaultIndexConfig returns the default index configuration
+func DefaultIndexConfig() IndexConfig {
+	return IndexConfig{
+		Enabled:       false,
+		ChunkStrategy: "lsp",
+		MaxChunkLines: 100,
+		Embedding: EmbeddingConfig{
+			Provider:  "ollama",
+			Model:     "nomic-embed-text",
+			Endpoint:  "http://localhost:11434",
+			Dimension: 768,
+		},
+		ExcludePatterns: []string{
+			"*_test.go",
+			"*.min.js",
+			"vendor/",
+			"node_modules/",
+		},
+	}
+}
+
 // ProjectConfig represents the .zrok/project.yaml configuration
 type ProjectConfig struct {
 	Name          string        `yaml:"name" json:"name"`
@@ -58,6 +108,7 @@ type ProjectConfig struct {
 	DetectedAt    time.Time     `yaml:"detected_at" json:"detected_at"`
 	TechStack     TechStack     `yaml:"tech_stack" json:"tech_stack"`
 	SecurityScope SecurityScope `yaml:"security_scope,omitempty" json:"security_scope,omitempty"`
+	Index         IndexConfig   `yaml:"index,omitempty" json:"index,omitempty"`
 }
 
 // Project represents an active zrok project
@@ -110,6 +161,11 @@ func (p *Project) GetAgentsPath() string {
 	return filepath.Join(p.GetZrokPath(), AgentsDir)
 }
 
+// GetIndexPath returns the path to the index directory
+func (p *Project) GetIndexPath() string {
+	return filepath.Join(p.GetZrokPath(), IndexDir)
+}
+
 // Load loads the project configuration from disk
 func (p *Project) Load() error {
 	data, err := os.ReadFile(p.GetConfigPath())
@@ -158,6 +214,7 @@ func Initialize(rootPath string) (*Project, error) {
 		filepath.Join(zrokPath, FindingsDir, RawDir),
 		filepath.Join(zrokPath, FindingsDir, ExportsDir),
 		filepath.Join(zrokPath, AgentsDir),
+		filepath.Join(zrokPath, IndexDir),
 	}
 
 	for _, dir := range dirs {

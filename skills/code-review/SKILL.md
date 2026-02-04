@@ -13,6 +13,7 @@ This skill is invoked when the user asks for a code review using zrok, such as:
 
 - zrok binary must be built and available (either in PATH or specify location)
 - Target project directory must be accessible
+- (Optional) For semantic search: run `zrok index enable && zrok index build`
 
 ## Workflow
 
@@ -35,6 +36,10 @@ cd <target-project>
 zrok init                    # Creates .zrok directory
 zrok onboard --auto          # Auto-detects tech stack
 zrok lsp status              # Check available LSP servers
+
+# Optional: Enable semantic search (requires Ollama, OpenAI, or Hugging Face)
+zrok index enable --provider ollama
+zrok index build
 ```
 
 ## Phase 2: Spawn Recon Agent
@@ -89,6 +94,8 @@ zrok Binary: <path-to-zrok>
 
 Available Commands:
 - zrok search "<pattern>" --regex
+- zrok semantic "<query>"              # Natural language search
+- zrok semantic "<query>" --multi-hop  # Explore related code
 - zrok read <file>
 - zrok symbols <file>
 - zrok symbols --method lsp <file>
@@ -150,8 +157,9 @@ zrok finding export --format sarif -o report.sarif  # SARIF for CI
 1. **Always delegate** - Spawn subagents for each phase, don't analyze directly
 2. **Parallel analysis** - Spawn security, guards, architecture agents together
 3. **Use LSP** - `zrok symbols --method lsp` for accurate symbol extraction
-4. **Validate findings** - Always run validation-agent before exporting
-5. **Share context** - Use `zrok memory write` to share discoveries between agents
+4. **Use semantic search** - `zrok semantic` for natural language queries like "SQL injection" or "password handling"
+5. **Validate findings** - Always run validation-agent before exporting
+6. **Share context** - Use `zrok memory write` to share discoveries between agents
 
 ## zrok Commands Reference
 
@@ -164,6 +172,22 @@ zrok search "<pattern>" [--regex]
 zrok symbols <file>
 zrok symbols --method lsp <file>
 zrok symbols find "<name>"
+```
+
+### Semantic Search
+```bash
+# Index management (one-time setup)
+zrok index enable [--provider ollama|openai|huggingface]
+zrok index build [--force]
+zrok index update
+zrok index status
+
+# Natural language code search
+zrok semantic "<query>"                    # e.g., "authentication middleware"
+zrok semantic "<query>" --multi-hop        # Explore related code across layers
+zrok semantic "<query>" --type function    # Filter by chunk type
+zrok semantic "<query>" --file "*.go"      # Filter by file pattern
+zrok semantic related <file>               # Find code related to a file
 ```
 
 ### Memory

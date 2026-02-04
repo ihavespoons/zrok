@@ -33,6 +33,46 @@ const (
 	ConfidenceLow    Confidence = "low"
 )
 
+// Exploitability represents how easily a vulnerability can be exploited
+type Exploitability string
+
+const (
+	ExploitabilityProven   Exploitability = "proven"   // Exploitation confirmed/demonstrated
+	ExploitabilityLikely   Exploitability = "likely"   // Exploitation highly probable
+	ExploitabilityPossible Exploitability = "possible" // Exploitation theoretically possible
+	ExploitabilityUnlikely Exploitability = "unlikely" // Exploitation unlikely due to mitigations
+	ExploitabilityUnknown  Exploitability = "unknown"  // Not yet assessed
+)
+
+// ValidExploitabilities contains all valid exploitability levels
+var ValidExploitabilities = []Exploitability{
+	ExploitabilityProven,
+	ExploitabilityLikely,
+	ExploitabilityPossible,
+	ExploitabilityUnlikely,
+	ExploitabilityUnknown,
+}
+
+// FixPriority represents the recommended priority for fixing a vulnerability
+type FixPriority string
+
+const (
+	FixPriorityImmediate FixPriority = "immediate" // Fix ASAP, actively exploitable
+	FixPriorityHigh      FixPriority = "high"      // Fix within days
+	FixPriorityMedium    FixPriority = "medium"    // Fix within weeks
+	FixPriorityLow       FixPriority = "low"       // Fix when convenient
+	FixPriorityDefer     FixPriority = "defer"     // Technical debt, low risk
+)
+
+// ValidFixPriorities contains all valid fix priority levels
+var ValidFixPriorities = []FixPriority{
+	FixPriorityImmediate,
+	FixPriorityHigh,
+	FixPriorityMedium,
+	FixPriorityLow,
+	FixPriorityDefer,
+}
+
 // Status represents the status of a finding
 type Status string
 
@@ -75,23 +115,25 @@ type Evidence struct {
 
 // Finding represents a security vulnerability finding
 type Finding struct {
-	ID          string     `yaml:"id" json:"id"`
-	Title       string     `yaml:"title" json:"title"`
-	Severity    Severity   `yaml:"severity" json:"severity"`
-	Confidence  Confidence `yaml:"confidence" json:"confidence"`
-	Status      Status     `yaml:"status" json:"status"`
-	CWE         string     `yaml:"cwe,omitempty" json:"cwe,omitempty"`
-	CVSS        *CVSS      `yaml:"cvss,omitempty" json:"cvss,omitempty"`
-	Location    Location   `yaml:"location" json:"location"`
-	Description string     `yaml:"description" json:"description"`
-	Impact      string     `yaml:"impact,omitempty" json:"impact,omitempty"`
-	Remediation string     `yaml:"remediation,omitempty" json:"remediation,omitempty"`
-	Evidence    []Evidence `yaml:"evidence,omitempty" json:"evidence,omitempty"`
-	References  []string   `yaml:"references,omitempty" json:"references,omitempty"`
-	Tags        []string   `yaml:"tags,omitempty" json:"tags,omitempty"`
-	CreatedAt   time.Time  `yaml:"created_at" json:"created_at"`
-	UpdatedAt   time.Time  `yaml:"updated_at" json:"updated_at"`
-	CreatedBy   string     `yaml:"created_by,omitempty" json:"created_by,omitempty"`
+	ID             string         `yaml:"id" json:"id"`
+	Title          string         `yaml:"title" json:"title"`
+	Severity       Severity       `yaml:"severity" json:"severity"`
+	Confidence     Confidence     `yaml:"confidence" json:"confidence"`
+	Exploitability Exploitability `yaml:"exploitability,omitempty" json:"exploitability,omitempty"`
+	FixPriority    FixPriority    `yaml:"fix_priority,omitempty" json:"fix_priority,omitempty"`
+	Status         Status         `yaml:"status" json:"status"`
+	CWE            string         `yaml:"cwe,omitempty" json:"cwe,omitempty"`
+	CVSS           *CVSS          `yaml:"cvss,omitempty" json:"cvss,omitempty"`
+	Location       Location       `yaml:"location" json:"location"`
+	Description    string         `yaml:"description" json:"description"`
+	Impact         string         `yaml:"impact,omitempty" json:"impact,omitempty"`
+	Remediation    string         `yaml:"remediation,omitempty" json:"remediation,omitempty"`
+	Evidence       []Evidence     `yaml:"evidence,omitempty" json:"evidence,omitempty"`
+	References     []string       `yaml:"references,omitempty" json:"references,omitempty"`
+	Tags           []string       `yaml:"tags,omitempty" json:"tags,omitempty"`
+	CreatedAt      time.Time      `yaml:"created_at" json:"created_at"`
+	UpdatedAt      time.Time      `yaml:"updated_at" json:"updated_at"`
+	CreatedBy      string         `yaml:"created_by,omitempty" json:"created_by,omitempty"`
 }
 
 // FindingList represents a list of findings with metadata
@@ -102,12 +144,14 @@ type FindingList struct {
 
 // FindingStats represents statistics about findings
 type FindingStats struct {
-	Total         int            `json:"total"`
-	BySeverity    map[string]int `json:"by_severity"`
-	ByStatus      map[string]int `json:"by_status"`
-	ByConfidence  map[string]int `json:"by_confidence"`
-	ByCWE         map[string]int `json:"by_cwe"`
-	TopTags       []TagCount     `json:"top_tags"`
+	Total            int            `json:"total"`
+	BySeverity       map[string]int `json:"by_severity"`
+	ByStatus         map[string]int `json:"by_status"`
+	ByConfidence     map[string]int `json:"by_confidence"`
+	ByExploitability map[string]int `json:"by_exploitability"`
+	ByFixPriority    map[string]int `json:"by_fix_priority"`
+	ByCWE            map[string]int `json:"by_cwe"`
+	TopTags          []TagCount     `json:"top_tags"`
 }
 
 // TagCount represents a tag and its count
@@ -118,13 +162,15 @@ type TagCount struct {
 
 // FilterOptions represents options for filtering findings
 type FilterOptions struct {
-	Severity   Severity
-	Status     Status
-	Confidence Confidence
-	CWE        string
-	Tag        string
-	Limit      int
-	Offset     int
+	Severity       Severity
+	Status         Status
+	Confidence     Confidence
+	Exploitability Exploitability
+	FixPriority    FixPriority
+	CWE            string
+	Tag            string
+	Limit          int
+	Offset         int
 }
 
 // IsValidSeverity checks if a severity is valid
@@ -141,6 +187,26 @@ func IsValidSeverity(s Severity) bool {
 func IsValidStatus(s Status) bool {
 	for _, valid := range ValidStatuses {
 		if s == valid {
+			return true
+		}
+	}
+	return false
+}
+
+// IsValidExploitability checks if an exploitability is valid
+func IsValidExploitability(e Exploitability) bool {
+	for _, valid := range ValidExploitabilities {
+		if e == valid {
+			return true
+		}
+	}
+	return false
+}
+
+// IsValidFixPriority checks if a fix priority is valid
+func IsValidFixPriority(p FixPriority) bool {
+	for _, valid := range ValidFixPriorities {
+		if p == valid {
 			return true
 		}
 	}

@@ -15,7 +15,9 @@ zrok/
 │   ├── navigate.go        # list, find, read, search, symbols
 │   ├── lsp.go             # lsp status/install/list
 │   ├── think.go           # think collected/adherence/done/next/hypothesis
-│   └── dashboard.go       # dashboard server
+│   ├── dashboard.go       # dashboard server
+│   ├── index.go           # index enable/build/update/status/watch/clear
+│   └── semantic.go        # semantic search commands
 ├── internal/
 │   ├── project/           # Project config, tech detection, onboarding
 │   ├── memory/            # Memory store with bleve full-text search
@@ -24,7 +26,11 @@ zrok/
 │   ├── navigate/          # File operations, LSP client
 │   │   └── lsp/           # LSP protocol, server management
 │   ├── think/             # Thinking prompt templates
-│   └── dashboard/         # Web dashboard server
+│   ├── dashboard/         # Web dashboard server
+│   ├── chunk/             # Code chunking for semantic search
+│   ├── embedding/         # Embedding providers (Ollama, OpenAI, Hugging Face)
+│   ├── vectordb/          # Vector storage (HNSW + SQLite)
+│   └── semantic/          # Semantic search engine
 ├── skills/                # Claude Code skills for using zrok
 │   └── code-review/       # Code review orchestration skill
 └── configs/               # External configuration files (planned)
@@ -63,6 +69,12 @@ go test ./...
 - `symbols.go` - Code symbol extraction
 - `lsp/` - LSP client for accurate symbol extraction
 
+### Semantic Search (`internal/semantic/`, `internal/chunk/`, `internal/embedding/`, `internal/vectordb/`)
+- `chunk/` - LSP-based code chunking with regex fallback
+- `embedding/` - Embedding providers (Ollama, OpenAI, Hugging Face)
+- `vectordb/` - HNSW vector index with SQLite metadata
+- `semantic/` - Search coordinator with multi-hop exploration
+
 ### Project Config (`internal/project/`)
 - `config.go` - Project configuration in `.zrok/project.yaml`
 - `detector.go` - Tech stack auto-detection
@@ -94,6 +106,36 @@ go test ./internal/finding/...
 
 # With coverage
 go test -cover ./...
+```
+
+## Semantic Search
+
+zrok includes semantic code search using vector embeddings. This enables natural language queries against the codebase.
+
+### Setup
+```bash
+# Enable with Ollama (local, free)
+zrok index enable --provider ollama
+ollama pull nomic-embed-text  # If not already installed
+
+# Or use Hugging Face (cloud, free tier)
+export HF_API_KEY=your_key
+zrok index enable --provider huggingface
+
+# Or use OpenAI (cloud, paid)
+export OPENAI_API_KEY=your_key
+zrok index enable --provider openai
+
+# Build the index
+zrok index build
+```
+
+### Usage
+```bash
+zrok semantic "authentication middleware"     # Natural language search
+zrok semantic "SQL injection" --multi-hop     # Explore related code
+zrok semantic "error handling" --type function
+zrok semantic related cmd/index.go            # Find related code
 ```
 
 ## Skills
