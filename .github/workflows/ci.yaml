@@ -27,8 +27,7 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v4
-
+        uses: golangci/golangci-lint-action@v9
   build:
     needs: [test, lint]
     strategy:
