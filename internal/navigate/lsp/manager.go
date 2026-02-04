@@ -76,7 +76,7 @@ func (m *Manager) getOrCreateClient(ctx context.Context, config *ServerConfig) (
 
 	// Initialize the client
 	if err := client.Initialize(ctx); err != nil {
-		client.Close()
+		_ = client.Close()
 		return nil, fmt.Errorf("failed to initialize %s: %w", config.Name, err)
 	}
 

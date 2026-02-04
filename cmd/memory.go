@@ -53,7 +53,9 @@ var memoryListCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(result)
+			if err := outputJSON(result); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			if result.Total == 0 {
 				fmt.Println("No memories found")
@@ -91,7 +93,9 @@ var memoryReadCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(mem)
+			if err := outputJSON(mem); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Name: %s\n", mem.Name)
 			fmt.Printf("Type: %s\n", mem.Type)
@@ -179,12 +183,14 @@ Provide content via --content flag or --file flag.`,
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"success": true,
 				"name":    name,
 				"type":    memType,
 				"action":  map[bool]string{true: "updated", false: "created"}[existing != nil],
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			action := "Created"
 			if existing != nil {
@@ -214,11 +220,13 @@ var memoryDeleteCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"success": true,
 				"name":    args[0],
 				"action":  "deleted",
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Deleted memory: %s\n", args[0])
 		}
@@ -244,7 +252,9 @@ var memorySearchCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(result)
+			if err := outputJSON(result); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			if result.Total == 0 {
 				fmt.Println("No matches found")

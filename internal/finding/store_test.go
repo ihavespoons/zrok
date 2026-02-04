@@ -17,12 +17,12 @@ func setupTestProject(t *testing.T) (*project.Project, func()) {
 
 	p, err := project.Initialize(tmpDir)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("failed to initialize project: %v", err)
 	}
 
 	cleanup := func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return p, cleanup
@@ -444,7 +444,7 @@ func TestStoreImport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	yaml := `title: Imported Finding
 severity: high
@@ -457,7 +457,7 @@ description: An imported finding
 	if _, err := tmpFile.WriteString(yaml); err != nil {
 		t.Fatalf("failed to write temp file: %v", err)
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Import
 	f, err := store.Import(tmpFile.Name())

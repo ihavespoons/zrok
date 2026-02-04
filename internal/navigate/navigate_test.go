@@ -19,12 +19,12 @@ func setupTestProject(t *testing.T) (*project.Project, func()) {
 
 	p, err := project.Initialize(tmpDir)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("failed to initialize project: %v", err)
 	}
 
 	cleanup := func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return p, cleanup
@@ -224,9 +224,15 @@ func TestListerTree(t *testing.T) {
 	defer cleanup()
 
 	// Create structure
-	os.MkdirAll(filepath.Join(p.RootPath, "src"), 0755)
-	os.WriteFile(filepath.Join(p.RootPath, "src", "main.go"), []byte("test"), 0644)
-	os.WriteFile(filepath.Join(p.RootPath, "README.md"), []byte("test"), 0644)
+	if err := os.MkdirAll(filepath.Join(p.RootPath, "src"), 0755); err != nil {
+		t.Fatalf("failed to create src dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(p.RootPath, "src", "main.go"), []byte("test"), 0644); err != nil {
+		t.Fatalf("failed to write main.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(p.RootPath, "README.md"), []byte("test"), 0644); err != nil {
+		t.Fatalf("failed to write README.md: %v", err)
+	}
 
 	lister := NewLister(p)
 	tree, err := lister.Tree(".", 2)
@@ -511,8 +517,12 @@ func TestSymbolFind(t *testing.T) {
 	defer cleanup()
 
 	// Create files with functions
-	os.WriteFile(filepath.Join(p.RootPath, "a.go"), []byte("package main\nfunc HandleUser() {}"), 0644)
-	os.WriteFile(filepath.Join(p.RootPath, "b.go"), []byte("package main\nfunc HandleOrder() {}"), 0644)
+	if err := os.WriteFile(filepath.Join(p.RootPath, "a.go"), []byte("package main\nfunc HandleUser() {}"), 0644); err != nil {
+		t.Fatalf("failed to write a.go: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(p.RootPath, "b.go"), []byte("package main\nfunc HandleOrder() {}"), 0644); err != nil {
+		t.Fatalf("failed to write b.go: %v", err)
+	}
 
 	extractor := NewSymbolExtractor(p)
 	result, err := extractor.Find("Handle")

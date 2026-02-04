@@ -49,7 +49,9 @@ Use --lines to read specific line ranges (e.g., --lines 10:20).`,
 		}
 
 		if jsonOutput {
-			outputJSON(result)
+			if err := outputJSON(result); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			if linesFlag != "" {
 				// Show line numbers for partial reads
@@ -108,7 +110,9 @@ Use --recursive to list subdirectories, and --depth to limit depth.`,
 		}
 
 		if jsonOutput {
-			outputJSON(result)
+			if err := outputJSON(result); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			for _, entry := range result.Entries {
 				suffix := ""
@@ -153,7 +157,9 @@ Use --type to filter by file or directory.`,
 		}
 
 		if jsonOutput {
-			outputJSON(result)
+			if err := outputJSON(result); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			for _, match := range result.Matches {
 				suffix := ""
@@ -204,7 +210,9 @@ Use --context N to show N lines of context around matches.`,
 		}
 
 		if jsonOutput {
-			outputJSON(result)
+			if err := outputJSON(result); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			currentFile := ""
 			for _, match := range result.Matches {
@@ -255,7 +263,7 @@ Use --method to specify extraction method:
 		}
 
 		extractor := navigate.NewUnifiedExtractor(p, method)
-		defer extractor.Close()
+		defer func() { _ = extractor.Close() }()
 
 		// Check for subcommand
 		if args[0] == "find" {
@@ -267,7 +275,9 @@ Use --method to specify extraction method:
 				exitError("%v", err)
 			}
 			if jsonOutput {
-				outputJSON(result)
+				if err := outputJSON(result); err != nil {
+					exitError("failed to encode JSON: %v", err)
+				}
 			} else {
 				for _, sym := range result.Symbols {
 					fmt.Printf("%s %s (%s:%d)\n", sym.Kind, sym.Name, sym.File, sym.Line)
@@ -286,7 +296,9 @@ Use --method to specify extraction method:
 				exitError("%v", err)
 			}
 			if jsonOutput {
-				outputJSON(result)
+				if err := outputJSON(result); err != nil {
+					exitError("failed to encode JSON: %v", err)
+				}
 			} else {
 				for _, match := range result.Matches {
 					fmt.Printf("%s:%d: %s\n", match.File, match.Line, match.Content)
@@ -303,7 +315,9 @@ Use --method to specify extraction method:
 		}
 
 		if jsonOutput {
-			outputJSON(result)
+			if err := outputJSON(result); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Symbols in %s:\n\n", result.File)
 			for _, sym := range result.Symbols {

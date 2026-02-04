@@ -394,7 +394,9 @@ func TestSARIFSeverityMapping(t *testing.T) {
 
 			data, _ := exporter.Export(findings)
 			var sarif SarifLog
-			json.Unmarshal(data, &sarif)
+			if err := json.Unmarshal(data, &sarif); err != nil {
+				t.Fatalf("failed to unmarshal SARIF: %v", err)
+			}
 
 			if sarif.Runs[0].Results[0].Level != tt.expected {
 				t.Errorf("expected level %s, got %s", tt.expected, sarif.Runs[0].Results[0].Level)

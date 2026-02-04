@@ -18,12 +18,12 @@ func setupTestProject(t *testing.T) (*project.Project, func()) {
 
 	p, err := project.Initialize(tmpDir)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("failed to initialize project: %v", err)
 	}
 
 	cleanup := func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return p, cleanup

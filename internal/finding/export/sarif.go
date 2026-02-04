@@ -2,7 +2,6 @@ package export
 
 import (
 	"encoding/json"
-	"strings"
 	"time"
 
 	"github.com/ihavespoons/zrok/internal/finding"
@@ -292,9 +291,4 @@ func (e *SARIFExporter) FileExtension() string {
 // FormatName returns the format name
 func (e *SARIFExporter) FormatName() string {
 	return "sarif"
-}
-
-// Helper to make tags SARIF-compliant (lowercase, hyphenated)
-func sanitizeTag(tag string) string {
-	return strings.ToLower(strings.ReplaceAll(tag, " ", "-"))
 }

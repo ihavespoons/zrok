@@ -13,7 +13,7 @@ func TestInitialize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize project
 	p, err := Initialize(tmpDir)
@@ -67,7 +67,7 @@ func TestInitializeAlreadyExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize once
 	_, err = Initialize(tmpDir)
@@ -87,7 +87,7 @@ func TestProjectLoadSave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize
 	p, err := Initialize(tmpDir)
@@ -141,7 +141,7 @@ func TestFindProjectRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize project
 	_, err = Initialize(tmpDir)
@@ -171,7 +171,7 @@ func TestFindProjectRootNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Don't initialize - should fail to find
 	_, err = FindProjectRoot(tmpDir)
@@ -185,7 +185,7 @@ func TestActivate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize
 	_, err = Initialize(tmpDir)

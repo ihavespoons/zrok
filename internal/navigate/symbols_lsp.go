@@ -56,7 +56,7 @@ func (e *LSPExtractor) Extract(ctx context.Context, path string) (*SymbolResult,
 	if err := client.DidOpen(ctx, uri, languageID, string(content)); err != nil {
 		return nil, err
 	}
-	defer client.DidClose(ctx, uri)
+	defer func() { _ = client.DidClose(ctx, uri) }()
 
 	// Get document symbols
 	lspSymbols, err := client.DocumentSymbols(ctx, uri)

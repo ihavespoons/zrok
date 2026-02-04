@@ -124,13 +124,13 @@ func (s *Server) Broadcast(event SSEEvent) {
 
 func (s *Server) writeJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 func (s *Server) writeError(w http.ResponseWriter, err error, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 }
 
 func (s *Server) renderTemplate(w http.ResponseWriter, name string, data interface{}) {
@@ -149,7 +149,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	data, _ := staticFiles.ReadFile("static/index.html")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(data)
+	_, _ = w.Write(data)
 }
 
 // SSE handler
@@ -179,7 +179,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Send initial connected event
-	fmt.Fprintf(w, "event: connected\ndata: {}\n\n")
+	_, _ = fmt.Fprintf(w, "event: connected\ndata: {}\n\n")
 	flusher.Flush()
 
 	// Keep-alive ticker
@@ -191,11 +191,11 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-ticker.C:
-			fmt.Fprintf(w, ": keepalive\n\n")
+			_, _ = fmt.Fprintf(w, ": keepalive\n\n")
 			flusher.Flush()
 		case event := <-client:
 			data, _ := json.Marshal(event.Data)
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Event, data)
+			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Event, data)
 			flusher.Flush()
 		}
 	}
@@ -547,5 +547,5 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", exporter.ContentType())
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=findings%s", exporter.FileExtension()))
-	w.Write(data)
+	_, _ = w.Write(data)
 }

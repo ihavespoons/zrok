@@ -11,7 +11,7 @@ func TestDetectorDetectGo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create go.mod
 	goMod := `module example.com/test
@@ -75,7 +75,7 @@ func TestDetectorDetectNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create package.json
 	packageJSON := `{
@@ -137,7 +137,7 @@ func TestDetectorDetectPython(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create requirements.txt
 	requirements := `django==4.2.0
@@ -191,7 +191,7 @@ func TestDetectorDetectDatabases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create docker-compose.yml with database services
 	dockerCompose := `version: '3'
@@ -243,7 +243,7 @@ func TestDetectorDetectInfrastructure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create Dockerfile
 	if err := os.WriteFile(filepath.Join(tmpDir, "Dockerfile"), []byte("FROM golang:1.21"), 0644); err != nil {
@@ -308,7 +308,7 @@ func TestDetectorDetectSensitiveAreas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create sensitive directories
 	sensitiveDirs := []string{
@@ -366,7 +366,7 @@ func TestDetectorEmptyProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	detector := NewDetector(tmpDir)
 	stack, err := detector.DetectAll()

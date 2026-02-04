@@ -59,16 +59,14 @@ func (r *Reader) ReadLines(path string, start, end int) (*ReadResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var lines []string
-	var allLines []string
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
 
 	for scanner.Scan() {
 		lineNum++
-		allLines = append(allLines, scanner.Text())
 		if lineNum >= start && lineNum <= end {
 			lines = append(lines, scanner.Text())
 		}

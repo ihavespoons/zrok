@@ -61,30 +61,9 @@ func outputJSON(data interface{}) error {
 	return encoder.Encode(data)
 }
 
-// output outputs data in the appropriate format
-func output(data interface{}, textFormatter func(interface{}) string) {
-	if jsonOutput {
-		if err := outputJSON(data); err != nil {
-			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-			os.Exit(1)
-		}
-	} else {
-		fmt.Print(textFormatter(data))
-	}
-}
-
 // exitError prints an error message and exits
 func exitError(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
 	os.Exit(1)
 }
 
-// exitErrorJSON outputs an error in JSON format if --json flag is set
-func exitErrorJSON(err error) {
-	if jsonOutput {
-		outputJSON(map[string]string{"error": err.Error()})
-	} else {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-	}
-	os.Exit(1)
-}

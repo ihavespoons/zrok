@@ -67,11 +67,13 @@ Example YAML format:
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"success": true,
 				"id":      f.ID,
 				"finding": f,
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Created finding: %s\n", f.ID)
 			fmt.Printf("Title: %s\n", f.Title)
@@ -118,10 +120,12 @@ You can update status, severity, or provide a new YAML file.`,
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"success": true,
 				"finding": f,
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Updated finding: %s\n", f.ID)
 		}
@@ -158,7 +162,9 @@ var findingListCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(result)
+			if err := outputJSON(result); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			if result.Total == 0 {
 				fmt.Println("No findings")
@@ -194,7 +200,9 @@ var findingShowCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(f)
+			if err := outputJSON(f); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("%s %s\n", getSeverityBadge(f.Severity), f.Title)
 			fmt.Printf("ID: %s\n", f.ID)
@@ -280,19 +288,23 @@ Supported formats: sarif, json, md (markdown), html, csv`,
 				dir = store.GetExportsPath()
 				output = filepath.Join(dir, output)
 			}
-			os.MkdirAll(filepath.Dir(output), 0755)
+			if err := os.MkdirAll(filepath.Dir(output), 0755); err != nil {
+				exitError("failed to create directory: %v", err)
+			}
 
 			if err := os.WriteFile(output, data, 0644); err != nil {
 				exitError("failed to write file: %v", err)
 			}
 
 			if jsonOutput {
-				outputJSON(map[string]interface{}{
+				if err := outputJSON(map[string]interface{}{
 					"success": true,
 					"format":  format,
 					"file":    output,
 					"count":   result.Total,
-				})
+				}); err != nil {
+					exitError("failed to encode JSON: %v", err)
+				}
 			} else {
 				fmt.Printf("Exported %d findings to %s\n", result.Total, output)
 			}
@@ -322,10 +334,12 @@ var findingImportCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"success": true,
 				"finding": f,
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Imported finding: %s\n", f.ID)
 		}
@@ -350,7 +364,9 @@ var findingStatsCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(stats)
+			if err := outputJSON(stats); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Total Findings: %d\n\n", stats.Total)
 
@@ -406,11 +422,13 @@ var findingDeleteCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]interface{}{
+			if err := outputJSON(map[string]interface{}{
 				"success": true,
 				"id":      args[0],
 				"action":  "deleted",
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 		} else {
 			fmt.Printf("Deleted finding: %s\n", args[0])
 		}

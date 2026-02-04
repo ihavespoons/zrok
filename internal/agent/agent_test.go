@@ -20,7 +20,7 @@ func setupTestProject(t *testing.T) (*project.Project, func()) {
 
 	p, err := project.Initialize(tmpDir)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("failed to initialize project: %v", err)
 	}
 
@@ -33,10 +33,10 @@ func setupTestProject(t *testing.T) (*project.Project, func()) {
 		Databases: []string{"postgresql"},
 		Auth:      []string{"jwt"},
 	}
-	p.Save()
+	_ = p.Save()
 
 	cleanup := func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return p, cleanup
@@ -323,7 +323,7 @@ func TestPromptGeneratorGenerate(t *testing.T) {
 		Type:    memory.MemoryTypeContext,
 		Content: "This is a test project overview.",
 	}
-	memStore.Create(mem)
+	_ = memStore.Create(mem)
 
 	generator := NewPromptGenerator(p, memStore)
 
