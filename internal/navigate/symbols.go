@@ -2,6 +2,8 @@ package navigate
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +12,21 @@ import (
 
 	"github.com/ihavespoons/zrok/internal/project"
 )
+
+// ExtractionMethod specifies how to extract symbols
+type ExtractionMethod string
+
+const (
+	// MethodAuto tries LSP first, falls back to regex
+	MethodAuto ExtractionMethod = "auto"
+	// MethodLSP uses only LSP
+	MethodLSP ExtractionMethod = "lsp"
+	// MethodRegex uses only regex
+	MethodRegex ExtractionMethod = "regex"
+)
+
+// ErrLSPNotAvailable indicates that LSP is not available for this file type
+var ErrLSPNotAvailable = errors.New("LSP not available for this file type")
 
 // SymbolKind represents the kind of symbol
 type SymbolKind string
@@ -512,4 +529,90 @@ func (s *SymbolExtractor) shouldIgnore(name string) bool {
 		}
 	}
 	return false
+}
+
+// UnifiedExtractor provides symbol extraction with configurable method
+type UnifiedExtractor struct {
+	project       *project.Project
+	method        ExtractionMethod
+	regexExtractor *SymbolExtractor
+	lspExtractor   *LSPExtractor
+}
+
+// NewUnifiedExtractor creates a new unified symbol extractor
+func NewUnifiedExtractor(p *project.Project, method ExtractionMethod) *UnifiedExtractor {
+	return &UnifiedExtractor{
+		project:       p,
+		method:        method,
+		regexExtractor: NewSymbolExtractor(p),
+		lspExtractor:   NewLSPExtractor(p),
+	}
+}
+
+// Extract extracts symbols from a file using the configured method
+func (u *UnifiedExtractor) Extract(path string) (*SymbolResult, error) {
+	return u.ExtractWithContext(context.Background(), path)
+}
+
+// ExtractWithContext extracts symbols from a file with a context
+func (u *UnifiedExtractor) ExtractWithContext(ctx context.Context, path string) (*SymbolResult, error) {
+	switch u.method {
+	case MethodLSP:
+		return u.lspExtractor.Extract(ctx, path)
+	case MethodRegex:
+		return u.regexExtractor.Extract(path)
+	case MethodAuto:
+		fallthrough
+	default:
+		// Try LSP first
+		if u.lspExtractor.CanHandle(path) {
+			result, err := u.lspExtractor.Extract(ctx, path)
+			if err == nil {
+				return result, nil
+			}
+			// Fall back to regex on error
+		}
+		return u.regexExtractor.Extract(path)
+	}
+}
+
+// Find searches for symbols by name
+func (u *UnifiedExtractor) Find(name string) (*SymbolResult, error) {
+	return u.FindWithContext(context.Background(), name)
+}
+
+// FindWithContext searches for symbols by name with a context
+func (u *UnifiedExtractor) FindWithContext(ctx context.Context, name string) (*SymbolResult, error) {
+	switch u.method {
+	case MethodLSP:
+		return u.lspExtractor.Find(ctx, name)
+	case MethodRegex:
+		return u.regexExtractor.Find(name)
+	case MethodAuto:
+		fallthrough
+	default:
+		// For find, always use regex since it's faster for project-wide search
+		// LSP would require opening every file
+		return u.regexExtractor.Find(name)
+	}
+}
+
+// FindReferences finds references to a symbol
+func (u *UnifiedExtractor) FindReferences(symbol string) (*SearchResult, error) {
+	return u.regexExtractor.FindReferences(symbol)
+}
+
+// Close closes all extractors and releases resources
+func (u *UnifiedExtractor) Close() error {
+	return u.lspExtractor.Close()
+}
+
+// Method returns the current extraction method
+func (u *UnifiedExtractor) Method() ExtractionMethod {
+	return u.method
+}
+
+// SetMethod sets the extraction method
+func (u *UnifiedExtractor) SetMethod(method ExtractionMethod) {
+	u.method = method
 }

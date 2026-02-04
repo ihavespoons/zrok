@@ -1,0 +1,121 @@
+{{define "overview"}}
+<!-- Stats Cards -->
+<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+    <div class="bg-white rounded-lg shadow p-4 text-center card-hover">
+        <div class="text-3xl font-bold text-gray-700">{{.Stats.Total}}</div>
+        <div class="text-gray-500 text-sm">Total Findings</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center card-hover">
+        <div class="text-3xl font-bold text-red-600">{{index .Stats.BySeverity "critical"}}</div>
+        <div class="text-gray-500 text-sm">Critical</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center card-hover">
+        <div class="text-3xl font-bold text-orange-600">{{index .Stats.BySeverity "high"}}</div>
+        <div class="text-gray-500 text-sm">High</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center card-hover">
+        <div class="text-3xl font-bold text-yellow-600">{{index .Stats.BySeverity "medium"}}</div>
+        <div class="text-gray-500 text-sm">Medium</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4 text-center card-hover">
+        <div class="text-3xl font-bold text-green-600">{{index .Stats.BySeverity "low"}}</div>
+        <div class="text-gray-500 text-sm">Low</div>
+    </div>
+</div>
+
+<div class="grid md:grid-cols-2 gap-6">
+    <!-- Project Info -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="border-b px-4 py-3">
+            <h2 class="font-semibold text-gray-700">Project Information</h2>
+        </div>
+        <div class="p-4 space-y-3">
+            <div>
+                <span class="text-gray-500 text-sm">Name</span>
+                <div class="font-medium">{{.Project.Name}}</div>
+            </div>
+            <div>
+                <span class="text-gray-500 text-sm">Path</span>
+                <div class="font-mono text-sm text-gray-600">{{.Project.Path}}</div>
+            </div>
+            {{if .Project.TechStack.Languages}}
+            <div>
+                <span class="text-gray-500 text-sm">Tech Stack</span>
+                <div class="flex flex-wrap gap-2 mt-1">
+                    {{range .Project.TechStack.Languages}}
+                    <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">{{.Name}}</span>
+                    {{range .Frameworks}}
+                    <span class="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs">{{.}}</span>
+                    {{end}}
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+        </div>
+    </div>
+
+    <!-- Status Summary -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="border-b px-4 py-3">
+            <h2 class="font-semibold text-gray-700">Finding Status</h2>
+        </div>
+        <div class="p-4">
+            <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-600">Open</span>
+                    <span class="status-open px-2 py-1 rounded text-sm font-medium">{{index .Stats.ByStatus "open"}}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-600">Confirmed</span>
+                    <span class="status-confirmed px-2 py-1 rounded text-sm font-medium">{{index .Stats.ByStatus "confirmed"}}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-600">Fixed</span>
+                    <span class="status-fixed px-2 py-1 rounded text-sm font-medium">{{index .Stats.ByStatus "fixed"}}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-600">False Positive</span>
+                    <span class="status-false_positive px-2 py-1 rounded text-sm font-medium">{{index .Stats.ByStatus "false_positive"}}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Findings -->
+<div class="mt-6 bg-white rounded-lg shadow">
+    <div class="border-b px-4 py-3 flex justify-between items-center">
+        <h2 class="font-semibold text-gray-700">Recent Findings</h2>
+        <button class="text-sm text-green-600 hover:text-green-700"
+                hx-get="/partials/findings"
+                hx-target="#main-content"
+                hx-swap="innerHTML"
+                onclick="document.querySelector('[data-tab=findings]').click()">
+            View All →
+        </button>
+    </div>
+    <div class="divide-y">
+        {{if .RecentFindings}}
+        {{range .RecentFindings}}
+        <div class="p-4 hover:bg-gray-50 cursor-pointer" onclick="viewFinding('{{.ID}}')">
+            <div class="flex items-center gap-3">
+                <span class="severity-{{.Severity}} text-xs px-2 py-1 rounded uppercase font-bold">
+                    {{.Severity}}
+                </span>
+                <span class="font-medium flex-1 truncate">{{.Title}}</span>
+                <span class="status-{{.Status}} text-xs px-2 py-1 rounded">{{.Status}}</span>
+            </div>
+            <div class="text-gray-500 text-sm mt-1 truncate">
+                {{.Location.File}}:{{.Location.LineStart}}
+                {{if .CWE}} • {{.CWE}}{{end}}
+            </div>
+        </div>
+        {{end}}
+        {{else}}
+        <div class="p-8 text-center text-gray-500">
+            No findings yet. Run an analysis to get started.
+        </div>
+        {{end}}
+    </div>
+</div>
+{{end}}

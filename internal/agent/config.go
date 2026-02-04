@@ -22,6 +22,7 @@ const (
 
 // Specialization defines what the agent specializes in
 type Specialization struct {
+	ReviewCategories     []string `yaml:"review_categories,omitempty" json:"review_categories,omitempty"`
 	VulnerabilityClasses []string `yaml:"vulnerability_classes,omitempty" json:"vulnerability_classes,omitempty"`
 	OWASPCategories      []string `yaml:"owasp_categories,omitempty" json:"owasp_categories,omitempty"`
 	TechStack            []string `yaml:"tech_stack,omitempty" json:"tech_stack,omitempty"`

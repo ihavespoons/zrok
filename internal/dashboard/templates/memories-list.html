@@ -1,0 +1,116 @@
+{{define "memories"}}
+<!-- Search and Filters -->
+<div class="bg-white rounded-lg shadow p-4 mb-4">
+    <div class="flex flex-wrap gap-4 items-center">
+        <input type="text" id="memory-search" placeholder="Search memories..."
+               class="border rounded px-3 py-2 text-sm flex-1 min-w-[200px]"
+               onkeyup="if(event.key==='Enter') searchMemories()">
+        <select id="memory-type-filter" class="border rounded px-3 py-2 text-sm" onchange="searchMemories()">
+            <option value="">All Types</option>
+            <option value="context">Context</option>
+            <option value="finding_context">Finding Context</option>
+            <option value="pattern">Pattern</option>
+            <option value="scope">Scope</option>
+        </select>
+        <button onclick="searchMemories()" class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
+            Search
+        </button>
+    </div>
+</div>
+
+<!-- Memories List -->
+<div id="memories-content" class="bg-white rounded-lg shadow">
+    {{template "memories-list" .}}
+</div>
+{{end}}
+
+{{define "memories-list"}}
+<div class="divide-y">
+    {{if .Memories}}
+    {{range .Memories}}
+    <div class="p-4 hover:bg-gray-50 cursor-pointer transition-colors" onclick="viewMemory('{{.Name}}')">
+        <div class="flex items-center gap-3 mb-2">
+            <span class="memory-{{.Type}} text-xs px-2 py-1 rounded capitalize">{{.Type}}</span>
+            <span class="font-medium flex-1 truncate">{{.Name}}</span>
+            {{if .Tags}}
+            <div class="flex gap-1">
+                {{range $i, $tag := .Tags}}
+                {{if lt $i 3}}
+                <span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">{{$tag}}</span>
+                {{end}}
+                {{end}}
+            </div>
+            {{end}}
+        </div>
+        {{if .Description}}
+        <p class="text-gray-600 text-sm line-clamp-2">{{.Description}}</p>
+        {{end}}
+        <div class="text-gray-400 text-xs mt-2">
+            Updated: {{.UpdatedAt.Format "Jan 02, 2006 15:04"}}
+        </div>
+    </div>
+    {{end}}
+    {{else}}
+    <div class="p-8 text-center text-gray-500">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+        </svg>
+        <p class="mt-2">No memories found</p>
+    </div>
+    {{end}}
+</div>
+
+{{if .Total}}
+<div class="px-4 py-3 border-t text-sm text-gray-500">
+    {{.Total}} memories
+</div>
+{{end}}
+{{end}}
+
+{{define "memory-detail"}}
+<div class="space-y-4">
+    <!-- Header -->
+    <div class="flex justify-between items-start">
+        <div class="flex items-center gap-2">
+            <span class="memory-{{.Type}} text-xs px-2 py-1 rounded capitalize">{{.Type}}</span>
+        </div>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+    </div>
+
+    <h2 class="text-xl font-bold text-gray-800">{{.Name}}</h2>
+
+    {{if .Description}}
+    <p class="text-gray-600">{{.Description}}</p>
+    {{end}}
+
+    <!-- Content -->
+    <div>
+        <h3 class="text-sm font-medium text-gray-500 mb-2">Content</h3>
+        <pre class="bg-gray-100 p-4 rounded-lg text-sm overflow-x-auto whitespace-pre-wrap">{{.Content}}</pre>
+    </div>
+
+    <!-- Tags -->
+    {{if .Tags}}
+    <div>
+        <h3 class="text-sm font-medium text-gray-500 mb-2">Tags</h3>
+        <div class="flex flex-wrap gap-2">
+            {{range .Tags}}
+            <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">{{.}}</span>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+
+    <!-- Metadata -->
+    <div class="grid grid-cols-2 gap-4 text-sm text-gray-500 pt-4 border-t">
+        <div>
+            <span>Created:</span>
+            <span class="text-gray-700">{{.CreatedAt.Format "Jan 02, 2006 15:04"}}</span>
+        </div>
+        <div>
+            <span>Updated:</span>
+            <span class="text-gray-700">{{.UpdatedAt.Format "Jan 02, 2006 15:04"}}</span>
+        </div>
+    </div>
+</div>
+{{end}}

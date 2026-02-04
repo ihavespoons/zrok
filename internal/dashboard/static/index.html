@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>zrok Security Dashboard</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body class="bg-gray-100 min-h-screen" hx-ext="sse">
+    <!-- Navigation -->
+    <nav class="bg-gray-900 text-white shadow-lg">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-4">
+                    <h1 class="text-xl font-bold text-green-400">zrok</h1>
+                    <span class="text-gray-400 text-sm">Security Analysis Dashboard</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span id="project-name" class="text-gray-300"></span>
+                    <span id="connection-status" class="w-2 h-2 rounded-full bg-green-500" title="Connected"></span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Tab Navigation -->
+    <div class="bg-white border-b shadow-sm">
+        <div class="container mx-auto px-4">
+            <nav class="flex space-x-8" aria-label="Tabs">
+                <button class="tab-btn active border-b-2 border-green-500 py-4 px-1 text-sm font-medium text-green-600"
+                        hx-get="/partials/overview"
+                        hx-target="#main-content"
+                        hx-swap="innerHTML"
+                        data-tab="overview">
+                    Overview
+                </button>
+                <button class="tab-btn border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                        hx-get="/partials/findings"
+                        hx-target="#main-content"
+                        hx-swap="innerHTML"
+                        data-tab="findings">
+                    Findings
+                </button>
+                <button class="tab-btn border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                        hx-get="/partials/memories"
+                        hx-target="#main-content"
+                        hx-swap="innerHTML"
+                        data-tab="memories">
+                    Memory
+                </button>
+                <button class="tab-btn border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                        hx-get="/partials/agents"
+                        hx-target="#main-content"
+                        hx-swap="innerHTML"
+                        data-tab="agents">
+                    Agents
+                </button>
+                <button class="tab-btn border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                        hx-get="/partials/reports"
+                        hx-target="#main-content"
+                        hx-swap="innerHTML"
+                        data-tab="reports">
+                    Reports
+                </button>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-4">
+        <div id="main-content" hx-get="/partials/overview" hx-trigger="load" hx-swap="innerHTML">
+            <div class="flex justify-center items-center h-64">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Finding Detail Modal -->
+    <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6" id="modal-content"></div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+    <!-- SSE Connection for real-time updates -->
+    <div hx-sse="connect:/api/events"
+         hx-trigger="sse:finding-created, sse:finding-updated, sse:memory-created"
+         hx-on="sse:finding-created: refreshIfOnTab('findings')"
+         hx-on="sse:finding-updated: refreshIfOnTab('findings')"
+         hx-on="sse:memory-created: refreshIfOnTab('memories')">
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

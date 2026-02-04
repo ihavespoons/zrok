@@ -299,45 +299,53 @@ func (o *Onboarder) generateInitialMemories(config *ProjectConfig) []MemoryToCre
 }
 
 func (o *Onboarder) suggestAgents(config *ProjectConfig) []string {
+	// Core agents always suggested
 	agents := []string{
-		"recon-agent",      // Always suggest reconnaissance
-		"static-agent",     // Always suggest static analysis
-		"dataflow-agent",   // Always suggest dataflow
-		"validation-agent", // Always suggest validation
+		"recon-agent",      // Always run reconnaissance first
+		"architecture-agent", // Code structure and patterns
+		"guards-agent",     // Validation and defensive coding
+		"validation-agent", // Validate and prioritize findings
 	}
 
-	// Vulnerability class agents based on tech stack
-	if len(config.TechStack.Databases) > 0 {
-		agents = append(agents, "injection-agent")
-	}
-
-	if len(config.TechStack.Auth) > 0 {
-		agents = append(agents, "auth-agent")
-	}
-
-	// Check for crypto usage
+	// Content handling if web frameworks detected
+	hasWebFramework := false
 	for _, lang := range config.TechStack.Languages {
 		for _, fw := range lang.Frameworks {
-			if strings.Contains(strings.ToLower(fw), "crypto") {
-				agents = append(agents, "crypto-agent")
+			fwLower := strings.ToLower(fw)
+			if strings.Contains(fwLower, "rails") ||
+				strings.Contains(fwLower, "django") ||
+				strings.Contains(fwLower, "express") ||
+				strings.Contains(fwLower, "gin") ||
+				strings.Contains(fwLower, "spring") ||
+				strings.Contains(fwLower, "react") ||
+				strings.Contains(fwLower, "vue") {
+				hasWebFramework = true
 				break
 			}
 		}
 	}
-
-	// Config agent for infrastructure
-	if len(config.TechStack.Infrastructure) > 0 {
-		agents = append(agents, "config-agent")
+	if hasWebFramework {
+		agents = append(agents, "content-agent")
 	}
 
-	// Logic agent always useful
-	agents = append(agents, "logic-agent")
+	// Dependencies agent for projects with package managers
+	if len(config.TechStack.Languages) > 0 {
+		agents = append(agents, "dependencies-agent")
+	}
 
-	// Tech-specific agents
-	for _, lang := range config.TechStack.Languages {
-		for _, fw := range lang.Frameworks {
-			agents = append(agents, fmt.Sprintf("%s-agent", strings.ToLower(fw)))
-		}
+	// Logging agent for production systems
+	if len(config.TechStack.Infrastructure) > 0 {
+		agents = append(agents, "logging-agent")
+	}
+
+	// References agent for external integrations
+	if len(config.TechStack.Databases) > 0 || len(config.TechStack.Infrastructure) > 0 {
+		agents = append(agents, "references-agent")
+	}
+
+	// Security agent for auth/authz/crypto concerns
+	if len(config.TechStack.Auth) > 0 || len(config.TechStack.Databases) > 0 {
+		agents = append(agents, "security-agent")
 	}
 
 	return agents
