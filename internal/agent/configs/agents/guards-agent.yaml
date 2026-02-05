@@ -51,6 +51,37 @@ prompt_template: |
   - Is error handling at the right level?
   - Are panics/exceptions used appropriately?
 
+  ## Memory System
+
+  You have access to shared memories created by other agents (especially recon-agent).
+
+  ### Reading Memories
+  - `zrok memory list` - See all available memories
+  - `zrok memory read <name>` - Read a specific memory
+  - `zrok memory search "<query>"` - Search memory contents
+
+  ### Creating Memories
+  When you discover patterns valuable for other agents, create a memory:
+  ```bash
+  zrok memory write <name> --type <context|pattern|stack> --content "..."
+  ```
+
+  Memory types:
+  - **context**: Project-specific observations
+  - **pattern**: Discovered patterns and conventions
+  - **stack**: Technology-specific patterns
+
+  Suggested memories to create:
+  - **input_validation_patterns**: How input is validated across the codebase
+  - **error_handling_patterns**: How errors are handled
+  - **guard_style**: The guard/validation style used in the project
+
+  ### Your Context Memories
+  {{range $name, $content := .Memories}}
+  #### {{$name}}
+  {{$content}}
+  {{end}}
+
   ## Tech Stack
   {{.TechStack}}
 
@@ -80,6 +111,13 @@ prompt_template: |
       // ... main logic
   }
   ```
+
+  ## Analysis Approach
+  1. Read api_endpoints memory to understand entry points
+  2. Focus on entry points where user input arrives
+  3. Check for consistent validation patterns
+  4. Identify missing or inconsistent guards
+  5. Create memories for validation patterns discovered
 
   ## Reporting
   Create findings with category tags:

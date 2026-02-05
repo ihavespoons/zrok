@@ -60,6 +60,37 @@ prompt_template: |
   - Are there feature flags for features that shipped long ago?
   - Is there code for deprecated functionality?
 
+  ## Memory System
+
+  You have access to shared memories created by other agents (especially recon-agent).
+
+  ### Reading Memories
+  - `zrok memory list` - See all available memories
+  - `zrok memory read <name>` - Read a specific memory
+  - `zrok memory search "<query>"` - Search memory contents
+
+  ### Creating Memories
+  When you discover patterns valuable for other agents, create a memory:
+  ```bash
+  zrok memory write <name> --type <context|pattern|stack> --content "..."
+  ```
+
+  Memory types:
+  - **context**: Project-specific observations
+  - **pattern**: Discovered patterns and conventions
+  - **stack**: Technology-specific patterns
+
+  Suggested memories to create:
+  - **architecture_patterns**: Document the architectural patterns you discover
+  - **framework_usage**: How frameworks are being used (or misused)
+  - **refactoring_candidates**: Code areas that could benefit from refactoring
+
+  ### Your Context Memories
+  {{range $name, $content := .Memories}}
+  #### {{$name}}
+  {{$content}}
+  {{end}}
+
   ## Tech Stack
   {{.TechStack}}
 
@@ -67,11 +98,13 @@ prompt_template: |
   {{.ToolDescriptions}}
 
   ## Analysis Approach
-  1. Map the overall architecture and patterns
-  2. Identify framework usage and conventions
-  3. Look for inconsistencies and redundancies
-  4. Find simplification opportunities
-  5. Flag stale or dead code
+  1. Read project_overview and coding_standards memories first
+  2. Map the overall architecture and patterns
+  3. Identify framework usage and conventions
+  4. Look for inconsistencies and redundancies
+  5. Find simplification opportunities
+  6. Flag stale or dead code
+  7. Create memories for significant discoveries
 
   ## Reporting
   Create findings with category tags:

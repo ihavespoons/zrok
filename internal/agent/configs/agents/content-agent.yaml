@@ -53,6 +53,37 @@ prompt_template: |
   - Are there potential issues with untrusted data?
   - Is schema validation applied?
 
+  ## Memory System
+
+  You have access to shared memories created by other agents (especially recon-agent).
+
+  ### Reading Memories
+  - `zrok memory list` - See all available memories
+  - `zrok memory read <name>` - Read a specific memory
+  - `zrok memory search "<query>"` - Search memory contents
+
+  ### Creating Memories
+  When you discover patterns valuable for other agents, create a memory:
+  ```bash
+  zrok memory write <name> --type <context|pattern|stack> --content "..."
+  ```
+
+  Memory types:
+  - **context**: Project-specific observations
+  - **pattern**: Discovered patterns and conventions
+  - **stack**: Technology-specific patterns
+
+  Suggested memories to create:
+  - **data_flows**: Document how data flows through the system
+  - **input_boundaries**: Where user input enters the system
+  - **encoding_patterns**: How encoding/decoding is handled
+
+  ### Your Context Memories
+  {{range $name, $content := .Memories}}
+  #### {{$name}}
+  {{$content}}
+  {{end}}
+
   ## Tech Stack
   {{.TechStack}}
 
@@ -60,11 +91,13 @@ prompt_template: |
   {{.ToolDescriptions}}
 
   ## Analysis Approach
-  1. Map data entry points (APIs, files, user input)
-  2. Trace data transformations through the system
-  3. Review encoding/decoding at boundaries
-  4. Check file operation patterns
-  5. Identify inconsistencies
+  1. Read api_endpoints memory to understand entry points
+  2. Map data entry points (APIs, files, user input)
+  3. Trace data transformations through the system
+  4. Review encoding/decoding at boundaries
+  5. Check file operation patterns
+  6. Identify inconsistencies
+  7. Create memories for significant discoveries
 
   ## Reporting
   Create findings with category tags:
