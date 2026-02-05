@@ -14,7 +14,7 @@
     <h2 class="text-xl font-bold text-gray-800">{{.Title}}</h2>
 
     <!-- Metadata Grid -->
-    <div class="grid grid-cols-2 gap-4 text-sm">
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
         <div>
             <span class="text-gray-500">Status</span>
             <div class="status-{{.Status}} inline-block px-2 py-1 rounded mt-1">{{.Status}}</div>
@@ -23,6 +23,18 @@
             <span class="text-gray-500">Confidence</span>
             <div class="font-medium mt-1 capitalize">{{.Confidence}}</div>
         </div>
+        {{if .Exploitability}}
+        <div>
+            <span class="text-gray-500">Exploitability</span>
+            <div class="exploitability-{{.Exploitability}} inline-block px-2 py-1 rounded mt-1 capitalize">{{.Exploitability}}</div>
+        </div>
+        {{end}}
+        {{if .FixPriority}}
+        <div>
+            <span class="text-gray-500">Fix Priority</span>
+            <div class="fix-priority-{{.FixPriority}} inline-block px-2 py-1 rounded mt-1 capitalize">{{.FixPriority}}</div>
+        </div>
+        {{end}}
         {{if .CWE}}
         <div>
             <span class="text-gray-500">CWE</span>
@@ -100,6 +112,29 @@
         {{end}}
     </div>
     {{end}}
+
+    <!-- References -->
+    {{if .References}}
+    <div>
+        <h3 class="text-sm font-medium text-gray-500 mb-2">References</h3>
+        <ul class="list-disc list-inside text-sm space-y-1">
+            {{range .References}}
+            <li><a href="{{.}}" target="_blank" class="text-blue-600 hover:underline">{{.}}</a></li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    <!-- Metadata Footer -->
+    <div class="text-xs text-gray-400 pt-4 border-t space-y-1">
+        {{if .CreatedBy}}
+        <div>Created by: <span class="font-medium">{{.CreatedBy}}</span></div>
+        {{end}}
+        <div>Created: {{.CreatedAt.Format "2006-01-02 15:04:05"}}</div>
+        {{if not .UpdatedAt.IsZero}}
+        <div>Updated: {{.UpdatedAt.Format "2006-01-02 15:04:05"}}</div>
+        {{end}}
+    </div>
 
     <!-- Actions -->
     <div class="flex gap-2 pt-4 border-t">

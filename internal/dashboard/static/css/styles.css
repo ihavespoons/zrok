@@ -47,6 +47,58 @@
     color: #1e40af;
 }
 
+/* Exploitability badges */
+.exploitability-proven {
+    background-color: #dc2626;
+    color: white;
+}
+
+.exploitability-likely {
+    background-color: #ea580c;
+    color: white;
+}
+
+.exploitability-possible {
+    background-color: #ca8a04;
+    color: white;
+}
+
+.exploitability-unlikely {
+    background-color: #16a34a;
+    color: white;
+}
+
+.exploitability-unknown {
+    background-color: #6b7280;
+    color: white;
+}
+
+/* Fix priority badges */
+.fix-priority-immediate {
+    background-color: #7c2d12;
+    color: white;
+}
+
+.fix-priority-high {
+    background-color: #9a3412;
+    color: white;
+}
+
+.fix-priority-medium {
+    background-color: #a16207;
+    color: white;
+}
+
+.fix-priority-low {
+    background-color: #15803d;
+    color: white;
+}
+
+.fix-priority-defer {
+    background-color: #4b5563;
+    color: white;
+}
+
 /* Tab active state */
 .tab-btn.active {
     border-color: #22c55e;

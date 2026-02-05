@@ -10,8 +10,9 @@ A Go CLI tool that provides structured tooling for LLM-assisted security code re
 - **Findings Management**: Create, update, and track security findings with full CVSS and CWE support
 - **Multi-Format Export**: Export findings to SARIF, JSON, Markdown, HTML, and CSV formats
 - **Agent System**: Built-in security analysis agents with customizable prompts
+- **Semantic Search**: Natural language code search using vector embeddings (Ollama, OpenAI, or Hugging Face)
 - **Thinking Tools**: Structured prompts for LLM self-reflection and task management
-- **Web Dashboard**: Visual interface for browsing findings and project status
+- **Web Dashboard**: Visual interface for browsing findings, memories, and project status
 
 ## Installation
 
@@ -131,6 +132,28 @@ zrok agent create <name>    # Create custom agent
 zrok agent prompt <name>    # Generate agent prompt
 ```
 
+### Semantic Search
+
+```bash
+# Setup (one-time)
+zrok index enable --provider ollama      # Use Ollama (local, free)
+zrok index enable --provider openai      # Use OpenAI (requires OPENAI_API_KEY)
+zrok index enable --provider huggingface # Use Hugging Face (requires HF_API_KEY)
+zrok index build                         # Build the index
+
+# Index management
+zrok index status                        # Check index status
+zrok index update                        # Update index with new changes
+zrok index watch                         # Watch for file changes
+zrok index clear                         # Clear the index
+
+# Search
+zrok semantic "<query>"                  # Natural language search
+zrok semantic "<query>" --multi-hop      # Explore related code
+zrok semantic "<query>" --type function  # Filter by chunk type
+zrok semantic related <file>             # Find code related to a file
+```
+
 ### Dashboard
 
 ```bash
@@ -205,9 +228,11 @@ tags: [injection, database, owasp-top-10]
 | Agent | Phase | Description |
 |-------|-------|-------------|
 | `recon-agent` | Recon | Initial reconnaissance, maps attack surface |
-| `static-agent` | Analysis | Static code analysis patterns |
-| `dataflow-agent` | Analysis | Taint tracking, data flow analysis |
+| `security-agent` | Analysis | Authentication, authorization, crypto, secrets |
+| `guards-agent` | Analysis | Input validation, CSRF, error handling |
+| `architecture-agent` | Analysis | Code patterns, technical debt |
 | `validation-agent` | Validation | Validates and deduplicates findings |
+| `review-agent` | Validation | Deep validation of individual findings |
 
 ### By Vulnerability Class
 
@@ -294,12 +319,19 @@ zrok/
 ├── internal/
 │   ├── project/              # Project management
 │   ├── navigate/             # Code navigation
+│   │   └── lsp/              # LSP protocol client
 │   ├── memory/               # Memory system
 │   ├── finding/              # Findings management
 │   │   └── export/           # Export formats
 │   ├── agent/                # Agent system
 │   ├── think/                # Thinking tools
-│   └── dashboard/            # Web dashboard
+│   ├── dashboard/            # Web dashboard
+│   ├── chunk/                # Code chunking for semantic search
+│   ├── embedding/            # Embedding providers (Ollama, OpenAI, HF)
+│   ├── vectordb/             # Vector storage (HNSW + SQLite)
+│   └── semantic/             # Semantic search engine
+├── skills/                   # Claude Code skills
+│   └── code-review/          # Code review orchestration
 ├── go.mod
 ├── go.sum
 ├── main.go

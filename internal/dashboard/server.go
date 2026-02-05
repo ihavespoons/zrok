@@ -12,10 +12,12 @@ import (
 	"time"
 
 	"github.com/ihavespoons/zrok/internal/agent"
+	"github.com/ihavespoons/zrok/internal/embedding"
 	"github.com/ihavespoons/zrok/internal/finding"
 	"github.com/ihavespoons/zrok/internal/finding/export"
 	"github.com/ihavespoons/zrok/internal/memory"
 	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/zrok/internal/semantic"
 )
 
 //go:embed static/*
@@ -89,6 +91,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/partials/memory/", s.handleMemoryDetailPartial)
 	mux.HandleFunc("/partials/agents", s.handleAgentsPartial)
 	mux.HandleFunc("/partials/reports", s.handleReportsPartial)
+	mux.HandleFunc("/partials/index", s.handleIndexPartial)
 
 	// API routes
 	mux.HandleFunc("/api/project", s.handleProject)
@@ -99,6 +102,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/agents", s.handleAgents)
 	mux.HandleFunc("/api/agents/", s.handleAgent)
 	mux.HandleFunc("/api/stats", s.handleStats)
+	mux.HandleFunc("/api/index", s.handleIndexStatus)
 	mux.HandleFunc("/api/export", s.handleExport)
 	mux.HandleFunc("/api/events", s.handleSSE)
 
@@ -221,8 +225,10 @@ func (s *Server) handleOverviewPartial(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleFindingsPartial(w http.ResponseWriter, r *http.Request) {
 	opts := &finding.FilterOptions{
-		Severity: finding.Severity(r.URL.Query().Get("severity")),
-		Status:   finding.Status(r.URL.Query().Get("status")),
+		Severity:       finding.Severity(r.URL.Query().Get("severity")),
+		Status:         finding.Status(r.URL.Query().Get("status")),
+		Exploitability: finding.Exploitability(r.URL.Query().Get("exploitability")),
+		FixPriority:    finding.FixPriority(r.URL.Query().Get("fix_priority")),
 	}
 
 	result, _ := s.findingStore.List(opts)
@@ -232,8 +238,10 @@ func (s *Server) handleFindingsPartial(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleFindingsListPartial(w http.ResponseWriter, r *http.Request) {
 	opts := &finding.FilterOptions{
-		Severity: finding.Severity(r.URL.Query().Get("severity")),
-		Status:   finding.Status(r.URL.Query().Get("status")),
+		Severity:       finding.Severity(r.URL.Query().Get("severity")),
+		Status:         finding.Status(r.URL.Query().Get("status")),
+		Exploitability: finding.Exploitability(r.URL.Query().Get("exploitability")),
+		FixPriority:    finding.FixPriority(r.URL.Query().Get("fix_priority")),
 	}
 
 	result, _ := s.findingStore.List(opts)
@@ -307,6 +315,10 @@ func (s *Server) handleReportsPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderTemplate(w, "reports", data)
+}
+
+func (s *Server) handleIndexPartial(w http.ResponseWriter, r *http.Request) {
+	s.renderTemplate(w, "index-status", nil)
 }
 
 // API handlers
@@ -512,6 +524,75 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, stats)
+}
+
+func (s *Server) handleIndexStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, fmt.Errorf("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check if indexing is enabled
+	if !s.project.Config.Index.Enabled {
+		s.writeJSON(w, map[string]interface{}{
+			"enabled": false,
+		})
+		return
+	}
+
+	// Try to get index stats
+	indexer, err := s.createIndexer()
+	if err != nil {
+		s.writeJSON(w, map[string]interface{}{
+			"enabled":  true,
+			"provider": s.project.Config.Index.Embedding.Provider,
+			"model":    s.project.Config.Index.Embedding.Model,
+			"error":    err.Error(),
+		})
+		return
+	}
+	defer func() { _ = indexer.Close() }()
+
+	stats, err := indexer.Stats()
+	if err != nil {
+		s.writeJSON(w, map[string]interface{}{
+			"enabled":  true,
+			"provider": s.project.Config.Index.Embedding.Provider,
+			"model":    s.project.Config.Index.Embedding.Model,
+			"error":    err.Error(),
+		})
+		return
+	}
+
+	s.writeJSON(w, map[string]interface{}{
+		"enabled":         true,
+		"provider":        s.project.Config.Index.Embedding.Provider,
+		"model":           s.project.Config.Index.Embedding.Model,
+		"total_chunks":    stats.TotalChunks,
+		"total_files":     stats.TotalFiles,
+		"type_counts":     stats.TypeCounts,
+		"language_counts": stats.LanguageCounts,
+	})
+}
+
+func (s *Server) createIndexer() (*semantic.Indexer, error) {
+	embConfig := &embedding.Config{
+		Provider:  s.project.Config.Index.Embedding.Provider,
+		Model:     s.project.Config.Index.Embedding.Model,
+		Endpoint:  s.project.Config.Index.Embedding.Endpoint,
+		APIKeyEnv: s.project.Config.Index.Embedding.APIKeyEnv,
+		Dimension: s.project.Config.Index.Embedding.Dimension,
+	}
+
+	config := &semantic.IndexerConfig{
+		StorePath:       s.project.GetIndexPath(),
+		ProviderConfig:  embConfig,
+		ChunkStrategy:   s.project.Config.Index.ChunkStrategy,
+		MaxChunkLines:   s.project.Config.Index.MaxChunkLines,
+		ExcludePatterns: s.project.Config.Index.ExcludePatterns,
+	}
+
+	return semantic.NewIndexer(s.project, config)
 }
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
