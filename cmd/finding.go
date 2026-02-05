@@ -114,6 +114,12 @@ You can update status, severity, or provide a new YAML file.`,
 		if confidence, _ := cmd.Flags().GetString("confidence"); confidence != "" {
 			f.Confidence = finding.Confidence(confidence)
 		}
+		if exploitability, _ := cmd.Flags().GetString("exploitability"); exploitability != "" {
+			f.Exploitability = finding.Exploitability(exploitability)
+		}
+		if fixPriority, _ := cmd.Flags().GetString("fix-priority"); fixPriority != "" {
+			f.FixPriority = finding.FixPriority(fixPriority)
+		}
 
 		if err := store.Update(f); err != nil {
 			exitError("%v", err)
@@ -151,6 +157,12 @@ var findingListCmd = &cobra.Command{
 		}
 		if status, _ := cmd.Flags().GetString("status"); status != "" {
 			opts.Status = finding.Status(status)
+		}
+		if exp, _ := cmd.Flags().GetString("exploitability"); exp != "" {
+			opts.Exploitability = finding.Exploitability(exp)
+		}
+		if pri, _ := cmd.Flags().GetString("fix-priority"); pri != "" {
+			opts.FixPriority = finding.FixPriority(pri)
 		}
 		if cwe, _ := cmd.Flags().GetString("cwe"); cwe != "" {
 			opts.CWE = cwe
@@ -208,6 +220,12 @@ var findingShowCmd = &cobra.Command{
 			fmt.Printf("ID: %s\n", f.ID)
 			fmt.Printf("Status: %s\n", f.Status)
 			fmt.Printf("Confidence: %s\n", f.Confidence)
+			if f.Exploitability != "" {
+				fmt.Printf("Exploitability: %s\n", f.Exploitability)
+			}
+			if f.FixPriority != "" {
+				fmt.Printf("Fix Priority: %s\n", f.FixPriority)
+			}
 			if f.CWE != "" {
 				fmt.Printf("CWE: %s\n", f.CWE)
 			}
@@ -386,6 +404,26 @@ var findingStatsCmd = &cobra.Command{
 			}
 			fmt.Println()
 
+			if len(stats.ByExploitability) > 0 {
+				fmt.Println("By Exploitability:")
+				for _, exp := range finding.ValidExploitabilities {
+					if count := stats.ByExploitability[string(exp)]; count > 0 {
+						fmt.Printf("  %s: %d\n", exp, count)
+					}
+				}
+				fmt.Println()
+			}
+
+			if len(stats.ByFixPriority) > 0 {
+				fmt.Println("By Fix Priority:")
+				for _, pri := range finding.ValidFixPriorities {
+					if count := stats.ByFixPriority[string(pri)]; count > 0 {
+						fmt.Printf("  %s: %d\n", pri, count)
+					}
+				}
+				fmt.Println()
+			}
+
 			if len(stats.ByCWE) > 0 {
 				fmt.Println("By CWE:")
 				for cwe, count := range stats.ByCWE {
@@ -468,9 +506,13 @@ func init() {
 	findingUpdateCmd.Flags().String("status", "", "Update status (open, confirmed, false_positive, fixed)")
 	findingUpdateCmd.Flags().String("severity", "", "Update severity")
 	findingUpdateCmd.Flags().String("confidence", "", "Update confidence")
+	findingUpdateCmd.Flags().String("exploitability", "", "Update exploitability (proven, likely, possible, unlikely, unknown)")
+	findingUpdateCmd.Flags().String("fix-priority", "", "Update fix priority (immediate, high, medium, low, defer)")
 
 	findingListCmd.Flags().String("severity", "", "Filter by severity")
 	findingListCmd.Flags().String("status", "", "Filter by status")
+	findingListCmd.Flags().String("exploitability", "", "Filter by exploitability")
+	findingListCmd.Flags().String("fix-priority", "", "Filter by fix priority")
 	findingListCmd.Flags().String("cwe", "", "Filter by CWE")
 
 	findingExportCmd.Flags().StringP("format", "f", "json", "Export format (sarif, json, md, html, csv)")

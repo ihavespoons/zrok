@@ -173,6 +173,9 @@ func (g *PromptGenerator) buildSensitiveAreasDescription() string {
 
 // buildToolDescriptions builds descriptions of available tools
 func (g *PromptGenerator) buildToolDescriptions(tools []string) string {
+	// Check if semantic search is enabled
+	semanticEnabled := g.project != nil && g.project.Config != nil && g.project.Config.Index.Enabled
+
 	toolDocs := map[string]string{
 		"read": `**read** - Read file contents
   Usage: zrok read <file> [--lines N:M]
@@ -216,14 +219,42 @@ func (g *PromptGenerator) buildToolDescriptions(tools []string) string {
   Self-reflection tools for maintaining analysis quality.`,
 	}
 
+	// Add semantic search tool if enabled
+	if semanticEnabled {
+		toolDocs["semantic"] = `**semantic** - Natural language code search
+  Usage: zrok semantic "<query>"
+  Usage: zrok semantic "<query>" --multi-hop
+  Usage: zrok semantic "<query>" --type <function|method|class>
+  Usage: zrok semantic related <file>
+  Search code using natural language queries. Finds semantically similar code.
+  Examples:
+    zrok semantic "authentication bypass"
+    zrok semantic "SQL query construction" --multi-hop
+    zrok semantic "input validation" --type function`
+	}
+
 	var b strings.Builder
 	b.WriteString("Available Tools:\n\n")
 
+	semanticRequested := false
 	for _, tool := range tools {
+		if tool == "semantic" {
+			semanticRequested = true
+		}
 		if doc, ok := toolDocs[tool]; ok {
 			b.WriteString(doc)
 			b.WriteString("\n\n")
 		}
+	}
+
+	// Add note if semantic was requested but not enabled
+	if semanticRequested && !semanticEnabled {
+		b.WriteString(`**semantic** - Natural language code search (NOT AVAILABLE)
+  Semantic search is not enabled for this project.
+  To enable: zrok index enable --provider <ollama|openai|huggingface>
+  Then build: zrok index build
+
+`)
 	}
 
 	return b.String()

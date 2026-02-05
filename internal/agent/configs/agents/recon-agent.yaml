@@ -16,6 +16,7 @@ tools_allowed:
   - symbols
   - memory
   - think
+  - semantic
 context_memories:
   - project_overview
 prompt_template: |

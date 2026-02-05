@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -42,6 +43,9 @@ type Client struct {
 func NewClient(ctx context.Context, config *ServerConfig, rootPath string) (*Client, error) {
 	cmd := exec.CommandContext(ctx, config.Command, config.Args...)
 	cmd.Env = os.Environ()
+	cmd.Dir = rootPath // Set working directory to project root for proper language server context
+	// Create a new process group so we can kill all child processes
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -76,7 +80,26 @@ func NewClient(ctx context.Context, config *ServerConfig, rootPath string) (*Cli
 	// Start response reader goroutine
 	go c.readResponses()
 
+	// Start stderr drainer to prevent buffer accumulation
+	go c.drainStderr()
+
 	return c, nil
+}
+
+// drainStderr reads and discards stderr to prevent buffer accumulation
+func (c *Client) drainStderr() {
+	buf := make([]byte, 4096)
+	for {
+		select {
+		case <-c.done:
+			return
+		default:
+			_, err := c.stderr.Read(buf)
+			if err != nil {
+				return
+			}
+		}
+	}
 }
 
 // Initialize sends the initialize request to the language server
@@ -222,6 +245,7 @@ func (c *Client) Close() error {
 
 	// Close pipes
 	_ = c.stdin.Close()
+	_ = c.stderr.Close()
 
 	// Wait for process with timeout
 	done := make(chan error, 1)
@@ -232,7 +256,10 @@ func (c *Client) Close() error {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		_ = c.cmd.Process.Kill()
+		// Kill entire process group (negative pid) to ensure child processes are killed
+		// This is important for LSP servers like solargraph that spawn child processes
+		pgid := c.cmd.Process.Pid
+		_ = syscall.Kill(-pgid, syscall.SIGKILL)
 	}
 
 	close(c.done)
