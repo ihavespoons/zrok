@@ -44,8 +44,25 @@ func NewSQLiteMetaStore(path string) (*SQLiteMetaStore, error) {
 	return store, nil
 }
 
-// init creates the database schema
+// init creates the database schema and configures SQLite for low memory usage
 func (s *SQLiteMetaStore) init() error {
+	// Configure SQLite for low memory usage
+	pragmas := []string{
+		"PRAGMA journal_mode=WAL",         // Write-ahead logging
+		"PRAGMA synchronous=NORMAL",       // Balance between safety and speed
+		"PRAGMA cache_size=-2000",         // 2MB cache (negative = KB)
+		"PRAGMA mmap_size=0",              // Disable memory-mapped I/O
+		"PRAGMA temp_store=FILE",          // Use disk for temp tables
+		"PRAGMA page_size=4096",           // Standard page size
+	}
+
+	for _, pragma := range pragmas {
+		if _, err := s.db.Exec(pragma); err != nil {
+			// Log warning but continue - some pragmas may not be supported
+			fmt.Printf("Warning: failed to set %s: %v\n", pragma, err)
+		}
+	}
+
 	schema := `
 		CREATE TABLE IF NOT EXISTS chunks (
 			id TEXT PRIMARY KEY,
@@ -78,31 +95,72 @@ func (s *SQLiteMetaStore) init() error {
 	return nil
 }
 
+// Checkpoint forces a WAL checkpoint to release memory
+func (s *SQLiteMetaStore) Checkpoint() error {
+	_, err := s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	return err
+}
+
+// ShrinkMemory releases unused memory back to the OS
+func (s *SQLiteMetaStore) ShrinkMemory() error {
+	_, err := s.db.Exec("PRAGMA shrink_memory")
+	return err
+}
+
 // Insert adds a chunk to the store
 func (s *SQLiteMetaStore) Insert(c *chunk.Chunk, vectorIdx int) error {
+	return s.InsertWithTx(nil, c, vectorIdx)
+}
+
+// InsertWithTx adds a chunk to the store using an existing transaction
+func (s *SQLiteMetaStore) InsertWithTx(tx *sql.Tx, c *chunk.Chunk, vectorIdx int) error {
 	query := `
 		INSERT OR REPLACE INTO chunks
 		(id, file, language, type, name, content, start_line, end_line, parent_id, parent_name, signature, content_hash, vector_idx)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := s.db.Exec(query,
-		c.ID,
-		c.File,
-		c.Language,
-		string(c.Type),
-		c.Name,
-		c.Content,
-		c.StartLine,
-		c.EndLine,
-		c.ParentID,
-		c.ParentName,
-		c.Signature,
-		c.ContentHash,
-		vectorIdx,
-	)
+	var err error
+	if tx != nil {
+		_, err = tx.Exec(query,
+			c.ID,
+			c.File,
+			c.Language,
+			string(c.Type),
+			c.Name,
+			c.Content,
+			c.StartLine,
+			c.EndLine,
+			c.ParentID,
+			c.ParentName,
+			c.Signature,
+			c.ContentHash,
+			vectorIdx,
+		)
+	} else {
+		_, err = s.db.Exec(query,
+			c.ID,
+			c.File,
+			c.Language,
+			string(c.Type),
+			c.Name,
+			c.Content,
+			c.StartLine,
+			c.EndLine,
+			c.ParentID,
+			c.ParentName,
+			c.Signature,
+			c.ContentHash,
+			vectorIdx,
+		)
+	}
 
 	return err
+}
+
+// BeginTx starts a new transaction
+func (s *SQLiteMetaStore) BeginTx() (*sql.Tx, error) {
+	return s.db.Begin()
 }
 
 // Get retrieves a chunk by ID

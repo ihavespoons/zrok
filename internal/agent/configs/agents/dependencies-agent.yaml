@@ -17,6 +17,7 @@ tools_allowed:
   - memory
   - finding
   - think
+  - semantic
 context_memories:
   - project_overview
   - tech_stack

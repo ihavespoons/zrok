@@ -66,6 +66,16 @@ func NewHuggingFaceProvider(config *Config) (*HuggingFaceProvider, error) {
 		batchSize = 32
 	}
 
+	// Configure transport with strict limits to prevent memory accumulation
+	transport := &http.Transport{
+		MaxIdleConns:        1,              // Minimize idle connection pool
+		MaxIdleConnsPerHost: 1,              // Only 1 idle conn per host
+		MaxConnsPerHost:     2,              // Limit concurrent connections
+		IdleConnTimeout:     30 * time.Second,
+		DisableKeepAlives:   false,          // Keep-alive is fine, just limit pool
+		ForceAttemptHTTP2:   false,          // HTTP/1.1 is simpler
+	}
+
 	return &HuggingFaceProvider{
 		config: &Config{
 			Provider:  "huggingface",
@@ -75,7 +85,8 @@ func NewHuggingFaceProvider(config *Config) (*HuggingFaceProvider, error) {
 			BatchSize: batchSize,
 		},
 		client: &http.Client{
-			Timeout: 120 * time.Second, // HF can be slow on cold starts
+			Timeout:   120 * time.Second, // HF can be slow on cold starts
+			Transport: transport,
 		},
 		apiKey: apiKey,
 	}, nil
@@ -163,7 +174,11 @@ func (p *HuggingFaceProvider) embedBatchInternal(ctx context.Context, texts []st
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request to Hugging Face: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		// Drain any remaining body to allow connection reuse
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -176,13 +191,17 @@ func (p *HuggingFaceProvider) embedBatchInternal(ctx context.Context, texts []st
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(body, &errResp) == nil && errResp.Error != "" {
+			body = nil // Release memory
 			return nil, fmt.Errorf("hugging face API error: %s", errResp.Error)
 		}
-		return nil, fmt.Errorf("hugging face API error (status %d): %s", resp.StatusCode, string(body))
+		errMsg := fmt.Errorf("hugging face API error (status %d): %s", resp.StatusCode, string(body))
+		body = nil // Release memory
+		return nil, errMsg
 	}
 
 	// Parse response - could be single embedding or batch
 	embeddings, err := p.parseResponse(body, len(texts))
+	body = nil // Release response body memory after parsing
 	if err != nil {
 		return nil, err
 	}

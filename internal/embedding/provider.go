@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 )
 
 // Provider is the interface for embedding providers
@@ -37,27 +38,28 @@ type Config struct {
 }
 
 // DefaultConfigs contains default configurations for each provider
+// Batch sizes are very conservative to minimize memory pressure
 var DefaultConfigs = map[string]*Config{
 	"ollama": {
 		Provider:  "ollama",
 		Model:     "nomic-embed-text",
 		Endpoint:  "http://localhost:11434",
 		Dimension: 768,
-		BatchSize: 32,
+		BatchSize: 64, // Ollama handles large batches well locally
 	},
 	"openai": {
 		Provider:  "openai",
 		Model:     "text-embedding-3-small",
 		APIKeyEnv: "OPENAI_API_KEY",
 		Dimension: 1536,
-		BatchSize: 100,
+		BatchSize: 100, // OpenAI handles large batches efficiently
 	},
 	"huggingface": {
 		Provider:  "huggingface",
 		Model:     "BAAI/bge-small-en-v1.5",
 		APIKeyEnv: "HF_API_KEY",
 		Dimension: 384,
-		BatchSize: 32,
+		BatchSize: 64, // HuggingFace Inference API handles large batches well
 	},
 }
 
@@ -152,7 +154,14 @@ func ValidateConfig(config *Config) error {
 		if ok {
 			config.BatchSize = defaultConfig.BatchSize
 		} else {
-			config.BatchSize = 32
+			config.BatchSize = 16
+		}
+	}
+
+	// Allow env var override for batch size (ZROK_PROVIDER_BATCH_SIZE)
+	if envVal := os.Getenv("ZROK_PROVIDER_BATCH_SIZE"); envVal != "" {
+		if size, err := strconv.Atoi(envVal); err == nil && size > 0 {
+			config.BatchSize = size
 		}
 	}
 

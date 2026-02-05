@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 )
@@ -126,10 +127,21 @@ func (m *Manager) CloseAll(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
+	if debugVerbose && len(m.clients) > 0 {
+		fmt.Printf("[LSP-MANAGER] Closing %d active clients\n", len(m.clients))
+	}
+
 	var lastErr error
 	for lang, client := range m.clients {
+		if debugVerbose {
+			fmt.Printf("[LSP-MANAGER] Closing %s client\n", lang)
+		}
 		if err := client.Close(); err != nil {
 			lastErr = fmt.Errorf("failed to close %s client: %w", lang, err)
+			if debugVerbose {
+				fmt.Printf("[LSP-MANAGER] Error closing %s: %v\n", lang, err)
+			}
 		}
 	}
 

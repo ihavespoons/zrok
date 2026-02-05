@@ -90,17 +90,64 @@ func (s *HNSWStore) Insert(c *chunk.Chunk, embedding []float32) error {
 	return nil
 }
 
-// InsertBatch adds multiple chunks with their embeddings
+// InsertBatch adds multiple chunks with their embeddings using a transaction
 func (s *HNSWStore) InsertBatch(chunks []*chunk.Chunk, embeddings [][]float32) error {
 	if len(chunks) != len(embeddings) {
 		return fmt.Errorf("chunks and embeddings count mismatch")
 	}
 
+	if len(chunks) == 0 {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Start a transaction for batch insert
+	tx, err := s.meta.BeginTx()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// Ensure transaction is rolled back on error
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
 	for i, c := range chunks {
-		if err := s.Insert(c, embeddings[i]); err != nil {
+		embedding := embeddings[i]
+
+		if len(embedding) != s.config.Dimension {
+			return fmt.Errorf("embedding dimension mismatch: got %d, expected %d", len(embedding), s.config.Dimension)
+		}
+
+		// Get vector index (reuse from free list or allocate new)
+		var vectorIdx int
+		if len(s.freeList) > 0 {
+			vectorIdx = s.freeList[len(s.freeList)-1]
+			s.freeList = s.freeList[:len(s.freeList)-1]
+		} else {
+			vectorIdx = s.nextIdx
+			s.nextIdx++
+		}
+
+		// Insert into HNSW index
+		s.index.insert(vectorIdx, embedding)
+
+		// Insert into metadata store using transaction
+		if err := s.meta.InsertWithTx(tx, c, vectorIdx); err != nil {
 			return fmt.Errorf("failed to insert chunk %s: %w", c.ID, err)
 		}
 	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	committed = true
 
 	return nil
 }
@@ -247,6 +294,55 @@ func (s *HNSWStore) GetStats() (*StoreStats, error) {
 	return s.meta.GetStats()
 }
 
+// SaveIndex saves the current index to disk without closing
+// Can be called periodically during long operations to persist state
+func (s *HNSWStore) SaveIndex() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	indexPath := filepath.Join(s.config.Path, "vectors.bin")
+	return s.saveIndex(indexPath)
+}
+
+// EnableDiskMode switches to disk-backed storage for low-memory indexing
+// This dramatically reduces memory usage during large index builds
+func (s *HNSWStore) EnableDiskMode() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	vectorPath := filepath.Join(s.config.Path, "vectors_temp.bin")
+	return s.index.EnableDiskMode(vectorPath)
+}
+
+// DisableDiskMode switches back to memory mode, loading vectors from disk
+func (s *HNSWStore) DisableDiskMode() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.index.DisableDiskMode()
+}
+
+// IsDiskMode returns whether the store is in disk-backed mode
+func (s *HNSWStore) IsDiskMode() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.index.diskMode
+}
+
+// ReleaseMemory forces SQLite to release memory and checkpoints WAL
+func (s *HNSWStore) ReleaseMemory() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Checkpoint WAL to release pages
+	if err := s.meta.Checkpoint(); err != nil {
+		return err
+	}
+
+	// Ask SQLite to release unused memory
+	return s.meta.ShrinkMemory()
+}
+
 // Clear removes all data from the store
 func (s *HNSWStore) Clear() error {
 	s.mu.Lock()
@@ -360,6 +456,9 @@ func (s *HNSWStore) loadIndex(path string) error {
 }
 
 // hnswIndex is a simple HNSW-like index implementation
+// Supports two modes:
+// - Memory mode: vectors stored in map (fast search, high memory)
+// - Disk mode: vectors stored on disk, only offsets in memory (slow search, low memory)
 type hnswIndex struct {
 	dimension      int
 	m              int
@@ -369,6 +468,12 @@ type hnswIndex struct {
 	deleted        map[int]bool
 	neighbors      map[int][]int // Simple flat index for now
 	mu             sync.RWMutex
+
+	// Disk-backed mode fields
+	diskMode       bool
+	vectorFile     *os.File
+	vectorOffsets  map[int]int64 // vector_idx -> file offset
+	graphBuilt     bool          // Whether neighbor graph has been built
 }
 
 func newHNSWIndex(dimension, m, efConstruction, efSearch int) *hnswIndex {
@@ -380,16 +485,139 @@ func newHNSWIndex(dimension, m, efConstruction, efSearch int) *hnswIndex {
 		vectors:        make(map[int][]float32),
 		deleted:        make(map[int]bool),
 		neighbors:      make(map[int][]int),
+		vectorOffsets:  make(map[int]int64),
+		graphBuilt:     true, // Memory mode has graph built on insert
 	}
+}
+
+// EnableDiskMode switches to disk-backed storage for low-memory indexing
+func (h *hnswIndex) EnableDiskMode(path string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.diskMode {
+		return nil // Already in disk mode
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to create vector file: %w", err)
+	}
+
+	h.vectorFile = f
+	h.diskMode = true
+	h.graphBuilt = false // Graph will be built on first search
+	h.vectorOffsets = make(map[int]int64)
+
+	return nil
+}
+
+// DisableDiskMode switches back to memory mode, loading vectors from disk
+func (h *hnswIndex) DisableDiskMode() error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if !h.diskMode {
+		return nil
+	}
+
+	// Load all vectors from disk into memory
+	if err := h.loadVectorsFromDisk(); err != nil {
+		return err
+	}
+
+	if h.vectorFile != nil {
+		_ = h.vectorFile.Close()
+		h.vectorFile = nil
+	}
+
+	h.diskMode = false
+	h.graphBuilt = true
+
+	return nil
+}
+
+// loadVectorsFromDisk loads vectors from disk file into memory map
+func (h *hnswIndex) loadVectorsFromDisk() error {
+	if h.vectorFile == nil {
+		return nil
+	}
+
+	for idx, offset := range h.vectorOffsets {
+		vec, err := h.readVectorAt(offset)
+		if err != nil {
+			return fmt.Errorf("failed to read vector %d: %w", idx, err)
+		}
+		h.vectors[idx] = vec
+	}
+
+	return nil
+}
+
+// readVectorAt reads a vector from the given file offset
+func (h *hnswIndex) readVectorAt(offset int64) ([]float32, error) {
+	if h.vectorFile == nil {
+		return nil, fmt.Errorf("vector file not open")
+	}
+
+	vec := make([]float32, h.dimension)
+	_, err := h.vectorFile.Seek(offset, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range vec {
+		if err := binary.Read(h.vectorFile, binary.LittleEndian, &vec[i]); err != nil {
+			return nil, err
+		}
+	}
+
+	return vec, nil
+}
+
+// writeVectorToDisk writes a vector to disk and returns its offset
+func (h *hnswIndex) writeVectorToDisk(vector []float32) (int64, error) {
+	if h.vectorFile == nil {
+		return 0, fmt.Errorf("vector file not open")
+	}
+
+	// Get current position (end of file)
+	offset, err := h.vectorFile.Seek(0, 2)
+	if err != nil {
+		return 0, err
+	}
+
+	// Write vector
+	for _, v := range vector {
+		if err := binary.Write(h.vectorFile, binary.LittleEndian, v); err != nil {
+			return 0, err
+		}
+	}
+
+	return offset, nil
 }
 
 func (h *hnswIndex) insert(idx int, vector []float32) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	// Store vector
-	h.vectors[idx] = vector
 	delete(h.deleted, idx)
+
+	if h.diskMode {
+		// Disk mode: write vector to disk, store only offset
+		offset, err := h.writeVectorToDisk(vector)
+		if err != nil {
+			// Fall back to memory mode on error
+			h.vectors[idx] = vector
+		} else {
+			h.vectorOffsets[idx] = offset
+		}
+		// Skip neighbor building in disk mode - deferred until search
+		return
+	}
+
+	// Memory mode: store vector and build neighbors
+	h.vectors[idx] = vector
 
 	// Update neighbor graph (simplified: connect to nearest existing vectors)
 	if len(h.vectors) > 1 {
@@ -427,8 +655,16 @@ type searchCandidate struct {
 }
 
 func (h *hnswIndex) search(query []float32, k int) []searchCandidate {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+	h.mu.Lock() // Use write lock in case we need to load vectors
+	defer h.mu.Unlock()
+
+	// If in disk mode and vectors not loaded, load them for search
+	if h.diskMode && len(h.vectors) == 0 && len(h.vectorOffsets) > 0 {
+		if err := h.loadVectorsFromDisk(); err != nil {
+			// Return empty results on error
+			return nil
+		}
+	}
 
 	// Brute force search (simplified; real HNSW would use graph traversal)
 	var candidates []searchCandidate
@@ -467,6 +703,17 @@ func (h *hnswIndex) numVectors() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
+	// Count from disk offsets if in disk mode
+	if h.diskMode && len(h.vectorOffsets) > 0 {
+		count := 0
+		for idx := range h.vectorOffsets {
+			if !h.deleted[idx] {
+				count++
+			}
+		}
+		return count
+	}
+
 	count := 0
 	for idx := range h.vectors {
 		if !h.deleted[idx] {
@@ -476,16 +723,50 @@ func (h *hnswIndex) numVectors() int {
 	return count
 }
 
+// closeDiskFile closes the disk file if open
+func (h *hnswIndex) closeDiskFile() {
+	if h.vectorFile != nil {
+		_ = h.vectorFile.Close()
+		h.vectorFile = nil
+	}
+}
+
 func (h *hnswIndex) save(f *os.File) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
+	// Determine total vectors (memory + disk)
+	totalVectors := len(h.vectors)
+	if h.diskMode && len(h.vectorOffsets) > 0 {
+		totalVectors = len(h.vectorOffsets)
+	}
+
 	// Write number of vectors
-	if err := binary.Write(f, binary.LittleEndian, int32(len(h.vectors))); err != nil {
+	if err := binary.Write(f, binary.LittleEndian, int32(totalVectors)); err != nil {
 		return err
 	}
 
-	// Write each vector
+	// Write neighbor graph header
+	if err := binary.Write(f, binary.LittleEndian, int32(len(h.neighbors))); err != nil {
+		return err
+	}
+
+	// Write neighbor graph
+	for idx, neighbors := range h.neighbors {
+		if err := binary.Write(f, binary.LittleEndian, int32(idx)); err != nil {
+			return err
+		}
+		if err := binary.Write(f, binary.LittleEndian, int32(len(neighbors))); err != nil {
+			return err
+		}
+		for _, neighborIdx := range neighbors {
+			if err := binary.Write(f, binary.LittleEndian, int32(neighborIdx)); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Write vectors from memory
 	for idx, vec := range h.vectors {
 		if err := binary.Write(f, binary.LittleEndian, int32(idx)); err != nil {
 			return err
@@ -496,6 +777,35 @@ func (h *hnswIndex) save(f *os.File) error {
 		for _, v := range vec {
 			if err := binary.Write(f, binary.LittleEndian, v); err != nil {
 				return err
+			}
+		}
+	}
+
+	// Write vectors from disk (if in disk mode and vectors not in memory)
+	if h.diskMode && h.vectorFile != nil {
+		for idx, offset := range h.vectorOffsets {
+			// Skip if already written from memory
+			if _, exists := h.vectors[idx]; exists {
+				continue
+			}
+
+			if err := binary.Write(f, binary.LittleEndian, int32(idx)); err != nil {
+				return err
+			}
+			if err := binary.Write(f, binary.LittleEndian, h.deleted[idx]); err != nil {
+				return err
+			}
+
+			// Read vector from disk file
+			vec, err := h.readVectorAt(offset)
+			if err != nil {
+				return fmt.Errorf("failed to read vector %d from disk: %w", idx, err)
+			}
+
+			for _, v := range vec {
+				if err := binary.Write(f, binary.LittleEndian, v); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -511,6 +821,39 @@ func (h *hnswIndex) load(f *os.File, dimension int) error {
 	var numVectors int32
 	if err := binary.Read(f, binary.LittleEndian, &numVectors); err != nil {
 		return err
+	}
+
+	// Read number of neighbor entries
+	var numNeighbors int32
+	if err := binary.Read(f, binary.LittleEndian, &numNeighbors); err != nil {
+		// Old format without neighbor graph - fall back to rebuild
+		numNeighbors = 0
+		// Seek back to read vectors
+		_, _ = f.Seek(-4, 1)
+	}
+
+	// Read neighbor graph if present (for compatibility with saved files)
+	if numNeighbors > 0 {
+		h.neighbors = make(map[int][]int)
+		for i := int32(0); i < numNeighbors; i++ {
+			var idx, count int32
+			if err := binary.Read(f, binary.LittleEndian, &idx); err != nil {
+				return err
+			}
+			if err := binary.Read(f, binary.LittleEndian, &count); err != nil {
+				return err
+			}
+
+			neighbors := make([]int, count)
+			for j := int32(0); j < count; j++ {
+				var neighborIdx int32
+				if err := binary.Read(f, binary.LittleEndian, &neighborIdx); err != nil {
+					return err
+				}
+				neighbors[j] = int(neighborIdx)
+			}
+			h.neighbors[int(idx)] = neighbors
+		}
 	}
 
 	// Read each vector
@@ -538,32 +881,10 @@ func (h *hnswIndex) load(f *os.File, dimension int) error {
 		}
 	}
 
-	// Rebuild neighbor graph
-	for idx, vec := range h.vectors {
-		if h.deleted[idx] {
-			continue
-		}
+	// Skip neighbor graph rebuild - search uses brute force anyway, so the graph isn't needed
+	// The O(n²) rebuild was causing index load to hang for large indices
 
-		var candidates []searchCandidate
-		for existingIdx, existingVec := range h.vectors {
-			if existingIdx == idx || h.deleted[existingIdx] {
-				continue
-			}
-			dist := cosineDistance(vec, existingVec)
-			candidates = append(candidates, searchCandidate{idx: existingIdx, distance: dist})
-		}
-
-		sort.Slice(candidates, func(i, j int) bool {
-			return candidates[i].distance < candidates[j].distance
-		})
-
-		neighbors := make([]int, 0, h.m)
-		for i := 0; i < len(candidates) && i < h.m; i++ {
-			neighbors = append(neighbors, candidates[i].idx)
-		}
-		h.neighbors[idx] = neighbors
-	}
-
+	h.graphBuilt = true
 	return nil
 }
 

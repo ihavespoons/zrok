@@ -3,6 +3,7 @@ package chunk
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -61,6 +62,15 @@ func (e *Extractor) SetMaxChunkLines(max int) {
 func (e *Extractor) Close() error {
 	if e.manager != nil {
 		return e.manager.CloseAll(context.Background())
+	}
+	return nil
+}
+
+// ResetClients closes all LSP clients to release memory
+// New clients will be lazily created on next Extract call
+func (e *Extractor) ResetClients(ctx context.Context) error {
+	if e.manager != nil {
+		return e.manager.CloseAll(ctx)
 	}
 	return nil
 }
@@ -133,10 +143,20 @@ func (e *Extractor) ExtractAll(ctx context.Context) (*ChunkList, error) {
 
 // extractLSP extracts chunks using LSP document symbols
 func (e *Extractor) extractLSP(ctx context.Context, relPath, fullPath string) (*ChunkList, error) {
+	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
+
+	if debugVerbose {
+		fmt.Printf("[LSP] Getting client for: %s\n", relPath)
+	}
+
 	// Get client for this file
 	client, err := e.manager.GetClient(ctx, fullPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if debugVerbose {
+		fmt.Printf("[LSP] Got client, reading file: %s\n", relPath)
 	}
 
 	// Read file content
@@ -153,15 +173,27 @@ func (e *Extractor) extractLSP(ctx context.Context, relPath, fullPath string) (*
 	ext := filepath.Ext(fullPath)
 	languageID := lsp.GetLanguageID(ext)
 
+	if debugVerbose {
+		fmt.Printf("[LSP] Opening document: %s (%d bytes)\n", relPath, len(content))
+	}
+
 	if err := client.DidOpen(ctx, uri, languageID, string(content)); err != nil {
 		return nil, err
 	}
 	defer func() { _ = client.DidClose(ctx, uri) }()
 
+	if debugVerbose {
+		fmt.Printf("[LSP] Getting symbols: %s\n", relPath)
+	}
+
 	// Get document symbols
 	symbols, err := client.DocumentSymbols(ctx, uri)
 	if err != nil {
 		return nil, err
+	}
+
+	if debugVerbose {
+		fmt.Printf("[LSP] Got %d symbols: %s\n", len(symbols), relPath)
 	}
 
 	// Convert symbols to chunks
@@ -179,9 +211,19 @@ func (e *Extractor) extractLSP(ctx context.Context, relPath, fullPath string) (*
 
 // convertSymbolsToChunks converts LSP DocumentSymbols to Chunks
 func (e *Extractor) convertSymbolsToChunks(symbols []lsp.DocumentSymbol, file, language string, lines []string, parentName string) []*Chunk {
+	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
 	var chunks []*Chunk
 
-	for _, sym := range symbols {
+	if debugVerbose && len(symbols) > 0 {
+		fmt.Printf("[CONVERT] Processing %d symbols for %s (parent: %s)\n", len(symbols), file, parentName)
+	}
+
+	for i, sym := range symbols {
+		if debugVerbose {
+			fmt.Printf("[CONVERT] Symbol %d: %s (kind=%d, children=%d, range=%d-%d)\n",
+				i, sym.Name, sym.Kind, len(sym.Children), sym.Range.Start.Line, sym.Range.End.Line)
+		}
+
 		chunkType := mapLSPKindToChunkType(sym.Kind)
 		if chunkType == "" {
 			// Skip unsupported symbol types but process children
@@ -768,6 +810,7 @@ func (e *Extractor) findRubyBlockEnd(lines []string, startIdx int) int {
 
 // splitLargeChunks splits chunks that exceed maxChunkLines into smaller pieces
 func (e *Extractor) splitLargeChunks(chunks []*Chunk, lines []string, language string) []*Chunk {
+	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
 	var result []*Chunk
 
 	for _, chunk := range chunks {
@@ -776,14 +819,31 @@ func (e *Extractor) splitLargeChunks(chunks []*Chunk, lines []string, language s
 			continue
 		}
 
+		if debugVerbose {
+			fmt.Printf("[SPLIT] Splitting chunk %s: lines %d-%d (%d lines, max=%d)\n",
+				chunk.Name, chunk.StartLine, chunk.EndLine, chunk.LineCount(), e.maxChunkLines)
+		}
+
 		// Split into smaller chunks with overlap
 		overlap := 5
 		chunkSize := e.maxChunkLines - overlap
 
+		if chunkSize <= 0 {
+			if debugVerbose {
+				fmt.Printf("[SPLIT] ERROR: chunkSize=%d (maxChunkLines=%d, overlap=%d)\n",
+					chunkSize, e.maxChunkLines, overlap)
+			}
+			result = append(result, chunk) // Don't split if chunkSize is invalid
+			continue
+		}
+
+		splitCount := 0
 		for start := chunk.StartLine; start <= chunk.EndLine; {
 			end := start + chunkSize - 1
-			if end > chunk.EndLine {
+			reachedEnd := false
+			if end >= chunk.EndLine {
 				end = chunk.EndLine
+				reachedEnd = true // Mark that this is the final chunk
 			}
 
 			content := e.extractContent(lines, start, end)
@@ -793,11 +853,19 @@ func (e *Extractor) splitLargeChunks(chunks []*Chunk, lines []string, language s
 			part.Signature = chunk.Signature
 
 			result = append(result, part)
+			splitCount++
 
-			start = end - overlap + 1
-			if start >= chunk.EndLine {
+			// If we've reached the end, break immediately
+			if reachedEnd {
 				break
 			}
+
+			// Advance start with overlap
+			start = end - overlap + 1
+		}
+
+		if debugVerbose {
+			fmt.Printf("[SPLIT] Created %d parts from chunk %s\n", splitCount, chunk.Name)
 		}
 	}
 
