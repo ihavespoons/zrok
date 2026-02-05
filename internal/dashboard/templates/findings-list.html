@@ -17,6 +17,21 @@
             <option value="false_positive">False Positive</option>
             <option value="fixed">Fixed</option>
         </select>
+        <select id="filter-exploitability" class="border rounded px-3 py-2 text-sm" onchange="filterFindings()">
+            <option value="">All Exploitability</option>
+            <option value="proven">Proven</option>
+            <option value="likely">Likely</option>
+            <option value="possible">Possible</option>
+            <option value="unlikely">Unlikely</option>
+        </select>
+        <select id="filter-fix-priority" class="border rounded px-3 py-2 text-sm" onchange="filterFindings()">
+            <option value="">All Priorities</option>
+            <option value="immediate">Immediate</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="defer">Defer</option>
+        </select>
         <div class="flex-1"></div>
         <div class="flex gap-2">
             <button onclick="exportFindings('sarif')" class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
@@ -48,12 +63,19 @@
                 {{.Severity}}
             </span>
             <span class="font-medium flex-1 truncate">{{.Title}}</span>
+            {{if .Exploitability}}
+            <span class="exploitability-{{.Exploitability}} text-xs px-2 py-1 rounded whitespace-nowrap capitalize">{{.Exploitability}}</span>
+            {{end}}
+            {{if .FixPriority}}
+            <span class="fix-priority-{{.FixPriority}} text-xs px-2 py-1 rounded whitespace-nowrap capitalize">{{.FixPriority}}</span>
+            {{end}}
             <span class="status-{{.Status}} text-xs px-2 py-1 rounded whitespace-nowrap">{{.Status}}</span>
         </div>
         <div class="text-gray-500 text-sm mt-1">
             <span class="font-mono">{{.Location.File}}:{{.Location.LineStart}}</span>
             {{if .CWE}}<span class="ml-2">• {{.CWE}}</span>{{end}}
             {{if .Location.Function}}<span class="ml-2">• {{.Location.Function}}</span>{{end}}
+            {{if .CreatedBy}}<span class="ml-2">• {{.CreatedBy}}</span>{{end}}
         </div>
         {{if .Description}}
         <p class="text-gray-600 text-sm mt-2 line-clamp-2">{{.Description}}</p>

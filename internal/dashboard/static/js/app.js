@@ -180,10 +180,14 @@ function searchMemories() {
 function filterFindings() {
     const severity = document.getElementById('filter-severity').value;
     const status = document.getElementById('filter-status').value;
+    const exploitability = document.getElementById('filter-exploitability')?.value;
+    const fixPriority = document.getElementById('filter-fix-priority')?.value;
 
     let url = '/partials/findings-list?';
     if (severity) url += `severity=${encodeURIComponent(severity)}&`;
-    if (status) url += `status=${encodeURIComponent(status)}`;
+    if (status) url += `status=${encodeURIComponent(status)}&`;
+    if (exploitability) url += `exploitability=${encodeURIComponent(exploitability)}&`;
+    if (fixPriority) url += `fix_priority=${encodeURIComponent(fixPriority)}`;
 
     htmx.ajax('GET', url, '#findings-content');
 }

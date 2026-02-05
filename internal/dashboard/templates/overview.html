@@ -82,6 +82,57 @@
     </div>
 </div>
 
+<!-- Semantic Search Status -->
+<div class="mt-6 bg-white rounded-lg shadow">
+    <div class="border-b px-4 py-3">
+        <h2 class="font-semibold text-gray-700">Semantic Search</h2>
+    </div>
+    <div class="p-4" id="index-status" hx-get="/api/index" hx-trigger="load" hx-swap="innerHTML">
+        <div class="flex items-center gap-2 text-gray-500">
+            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-green-500"></div>
+            <span>Loading...</span>
+        </div>
+    </div>
+</div>
+
+<script>
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target.id === 'index-status') {
+        try {
+            var data = JSON.parse(evt.detail.xhr.responseText);
+            var html = '';
+            if (!data.enabled) {
+                html = '<div class="flex items-center gap-2">' +
+                    '<span class="w-2 h-2 rounded-full bg-gray-400"></span>' +
+                    '<span class="text-gray-600">Not enabled</span>' +
+                    '</div>' +
+                    '<p class="text-sm text-gray-500 mt-2">Run <code class="bg-gray-100 px-1 rounded">zrok index enable</code> to enable semantic search</p>';
+            } else if (data.error) {
+                html = '<div class="flex items-center gap-2">' +
+                    '<span class="w-2 h-2 rounded-full bg-yellow-400"></span>' +
+                    '<span class="text-gray-600">Enabled but not ready</span>' +
+                    '</div>' +
+                    '<p class="text-sm text-gray-500 mt-2">Provider: ' + data.provider + ' / ' + data.model + '</p>' +
+                    '<p class="text-sm text-red-500 mt-1">' + data.error + '</p>';
+            } else {
+                html = '<div class="flex items-center gap-2 mb-3">' +
+                    '<span class="w-2 h-2 rounded-full bg-green-500"></span>' +
+                    '<span class="text-gray-600">Active</span>' +
+                    '<span class="text-gray-400 text-sm">(' + data.provider + ' / ' + data.model + ')</span>' +
+                    '</div>' +
+                    '<div class="grid grid-cols-2 gap-4">' +
+                    '<div><span class="text-gray-500 text-sm">Chunks</span><div class="font-medium">' + data.total_chunks.toLocaleString() + '</div></div>' +
+                    '<div><span class="text-gray-500 text-sm">Files</span><div class="font-medium">' + data.total_files.toLocaleString() + '</div></div>' +
+                    '</div>';
+            }
+            evt.detail.target.innerHTML = html;
+        } catch(e) {
+            evt.detail.target.innerHTML = '<span class="text-red-500">Failed to load status</span>';
+        }
+    }
+});
+</script>
+
 <!-- Recent Findings -->
 <div class="mt-6 bg-white rounded-lg shadow">
     <div class="border-b px-4 py-3 flex justify-between items-center">
