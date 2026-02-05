@@ -9,10 +9,19 @@ import (
 
 // OnboardingResult contains the results of the onboarding process
 type OnboardingResult struct {
-	Config        *ProjectConfig
-	Memories      []MemoryToCreate
-	Agents        []string
-	Warnings      []string
+	Config   *ProjectConfig
+	Memories []MemoryToCreate
+	Agents   []string
+	Warnings []string
+}
+
+// AgentOnboardingResult contains results for agent-assisted onboarding
+// The AgentPrompt field will be populated by the caller (cmd/project.go)
+// since generating it requires the agent package, which would create a cycle
+type AgentOnboardingResult struct {
+	Config      *ProjectConfig
+	Memories    []MemoryToCreate
+	AgentPrompt string
 }
 
 // MemoryToCreate represents a memory that should be created during onboarding
@@ -36,6 +45,44 @@ func NewOnboarder(project *Project) *Onboarder {
 		detector: NewDetector(project.RootPath),
 		reader:   bufio.NewReader(os.Stdin),
 	}
+}
+
+// RunAgent performs agent-assisted onboarding
+// It does quick static detection, saves config, and prepares for recon-agent execution.
+// The AgentPrompt field must be populated by the caller (to avoid import cycles).
+func (o *Onboarder) RunAgent() (*AgentOnboardingResult, error) {
+	result := &AgentOnboardingResult{
+		Config: o.project.Config,
+	}
+
+	// Step 1: Quick static detection for baseline
+	stack, err := o.detector.DetectAll()
+	if err != nil {
+		// Non-fatal, continue with empty stack
+		stack = &TechStack{}
+	}
+	result.Config.TechStack = *stack
+
+	// Step 2: Detect sensitive areas
+	areas, err := o.detector.DetectSensitiveAreas()
+	if err != nil {
+		// Non-fatal, continue with empty areas
+		areas = []SensitiveArea{}
+	}
+	result.Config.SecurityScope.SensitiveAreas = areas
+
+	// Step 3: Save initial config
+	if err := o.project.Save(); err != nil {
+		return nil, fmt.Errorf("failed to save project config: %w", err)
+	}
+
+	// Step 4: Generate basic initial memories
+	result.Memories = o.generateInitialMemories(result.Config)
+
+	// Note: AgentPrompt must be populated by the caller using the agent package
+	// This avoids import cycles between project -> agent -> memory -> project
+
+	return result, nil
 }
 
 // RunAuto performs automatic onboarding without user interaction

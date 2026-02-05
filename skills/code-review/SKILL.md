@@ -34,35 +34,110 @@ zrok index build
 ## Workflow Overview
 
 ```
-1. Setup          → zrok init && zrok onboard --auto
-2. Recon Agent    → Maps codebase structure, tech stack
-3. Analysis Agents → Run in parallel (security, guards, architecture, content)
-4. Validation     → Reviews all findings (dedup, priority, triage)
-5. Review Agents  → Deep validation per finding (one agent per finding, parallel)
-6. Export         → Generate markdown/SARIF reports
+1. Setup & Onboard  → zrok init && zrok onboard (outputs recon prompt)
+2. Recon Agent      → Spawn recon-agent with prompt, creates memories
+3. Analysis Agents  → Run in parallel (security, guards, architecture, content)
+4. Validation       → Reviews all findings (dedup, priority, triage)
+5. Review Agents    → Deep validation per finding (one agent per finding, parallel)
+6. Export           → Generate markdown/SARIF reports
 ```
 
 ---
 
-## Phase 1: Project Setup
+## Phase 1: Project Setup & Onboarding
 
-Initialize zrok in the target project:
+### Option A: Agent-Assisted Onboarding (Recommended)
+
+Agent-assisted onboarding runs static detection first, then outputs the recon-agent prompt for LLM execution. This provides richer context than static detection alone.
 
 ```bash
 cd <target-project>
 zrok init                    # Creates .zrok directory
-zrok onboard --auto          # Auto-detects tech stack
-zrok lsp status              # Check available LSP servers
+zrok onboard                 # Agent mode (default) - outputs recon prompt
+```
 
-# Optional: Enable semantic search
+The `zrok onboard` command will:
+1. Run quick static tech stack detection
+2. Detect sensitive areas
+3. Create initial memories
+4. Output the recon-agent prompt
+
+**JSON output for programmatic use:**
+```bash
+zrok onboard --json
+# Returns: { "status": "ready_for_recon", "tech_stack": {...}, "agent_prompt": "..." }
+```
+
+Then spawn the recon-agent using the Task tool:
+
+```
+Task tool:
+- subagent_type: "general-purpose"
+- description: "recon-agent: onboarding"
+- prompt: |
+    You are running recon-agent for initial project onboarding.
+
+    Working Directory: <target-project>
+    zrok Binary: <path-to-zrok>
+
+    <paste the agent_prompt from zrok onboard output here>
+
+    Complete the onboarding by:
+    1. Exploring the codebase structure
+    2. Creating all required memories (project_overview, tech_stack, coding_standards, api_endpoints, auth_patterns, review_targets)
+    3. Identifying areas needing security review
+    4. Summarizing findings
+```
+
+After recon-agent completes, verify memories were created:
+```bash
+zrok memory list
+# Should show: project_overview, tech_stack, coding_standards, api_endpoints, auth_patterns, review_targets
+```
+
+### Option B: Static Onboarding (Fast, No LLM)
+
+Use when you need quick setup without LLM involvement:
+
+```bash
+cd <target-project>
+zrok init
+zrok onboard --static       # Static detection only
+zrok lsp status             # Check available LSP servers
+```
+
+Use static mode when:
+- Quick setup needed
+- LLM not available
+- Already familiar with codebase
+- Testing/development
+
+### Optional: Enable Semantic Search
+
+Check and enable semantic search for natural language queries:
+
+```bash
 zrok index status            # Check if already enabled
+
+# If not enabled:
+zrok index enable --provider ollama
+zrok index build
 ```
 
 ---
 
 ## Phase 2: Spawn Recon Agent
 
-Use the Task tool to spawn the recon-agent:
+**Note:** If you used Option A above, the recon-agent was already spawned during onboarding. Skip to Phase 3.
+
+If you used Option B (static onboarding), spawn the recon-agent now:
+
+```bash
+# Get the recon-agent prompt
+zrok agent prompt recon-agent
+```
+
+Then use the Task tool:
 
 ```
 Task tool:
@@ -82,6 +157,7 @@ Task tool:
     - api_endpoints
     - auth_patterns
     - review_targets
+    - coding_standards
 
     # If semantic search is available, also use:
     # zrok semantic "entry points"
@@ -114,7 +190,7 @@ You are running as the {agent-name} for a zrok code review.
 Working Directory: <target-project>
 zrok Binary: <path-to-zrok>
 
-{output from: zrok agent prompt <agent-name|}
+{output from: zrok agent prompt <agent-name>}
 
 ## Available Commands
 
@@ -138,7 +214,9 @@ Example semantic queries for {agent-name}:
 {agent-specific semantic query examples}
 
 ### Memory & Findings
+- zrok memory list                     # See shared memories
 - zrok memory read <name>              # Read shared context
+- zrok memory write <name> --type <type> --content "..."  # Share discoveries
 - zrok finding create --file /tmp/finding.yaml  # Create finding
 
 ## Finding YAML Format
@@ -217,16 +295,18 @@ Task tool:
     {output from: zrok agent prompt validation-agent}
 
     ## Your Tasks
-    1. List all findings: zrok finding list
-    2. For each finding:
+    1. Read context memories first: zrok memory list && zrok memory read auth_patterns
+    2. List all findings: zrok finding list
+    3. For each finding:
        - Read the finding: zrok finding show <id>
        - Verify code exists at location: zrok read <file> --lines N:M
        - Check for duplicates
        - Assess initial priority
-    3. Update findings:
+    4. Update findings:
        - Confirmed: zrok finding update <id> --status confirmed
        - False positive: zrok finding update <id> --status false_positive
        - Duplicate: zrok finding update <id> --status duplicate
+    5. Create validation_summary memory with statistics
 
     ## Output
     Provide a summary of:
@@ -290,6 +370,12 @@ Task tool:
     ## Finding to Investigate
     {output from: zrok finding show FIND-XXX}
 
+    ## Context Memories
+    IMPORTANT: Read these memories FIRST to understand the codebase:
+    - zrok memory read auth_patterns
+    - zrok memory read coding_standards
+    - zrok memory read input_validation_patterns (if exists)
+
     ## Your Mission
     Deeply investigate this finding to determine:
     1. Does the issue actually exist at the reported location?
@@ -298,30 +384,33 @@ Task tool:
 
     ## Investigation Process
 
-    ### Step 1: Verify the Issue Exists
+    ### Step 1: Read Context Memories
+    Start by reading relevant memories to understand project patterns.
+
+    ### Step 2: Verify the Issue Exists
     - Read the code: zrok read <file> --lines <start>:<end+10>
     - Check symbols: zrok symbols --method lsp <file>
     - Search for related code: zrok search "<pattern>" --regex
 
-    ### Step 2: Trace Data Flow (if semantic search available)
+    ### Step 3: Trace Data Flow (if semantic search available)
     - zrok semantic "user input to <sink>"
     - zrok semantic "<function-name> callers"
     - zrok semantic "validation of <parameter>"
 
-    ### Step 3: Search for Mitigations
+    ### Step 4: Search for Mitigations
     - Look for input validation
     - Check for authorization guards
     - Find sanitization/encoding
     - Identify if code path is reachable
 
-    ### Step 4: Assess Exploitability
+    ### Step 5: Assess Exploitability
     Rate as one of:
     - **proven**: Clear unmitigated path from user input to vulnerable sink
     - **likely**: Path exists with minimal barriers
     - **possible**: Theoretically exploitable but barriers exist
     - **unlikely**: Significant mitigations found in code
 
-    ### Step 5: Determine Fix Priority
+    ### Step 6: Determine Fix Priority
     Rate as one of:
     - **immediate**: Actively exploitable, high impact
     - **high**: Exploitable with effort, significant impact
@@ -329,7 +418,7 @@ Task tool:
     - **low**: Unlikely exploitation or low impact
     - **defer**: Technical debt, not a security concern
 
-    ### Step 6: Update the Finding
+    ### Step 7: Update the Finding
     zrok finding update FIND-XXX \
       --status <confirmed|false_positive> \
       --exploitability <proven|likely|possible|unlikely> \
@@ -382,27 +471,33 @@ zrok finding export --format json -o report.json       # Machine-readable
 ## Key Principles
 
 1. **Always delegate** - Spawn subagents for each phase, don't analyze code directly
-2. **Parallel analysis** - Spawn security, guards, architecture agents together in one message
-3. **Parallel review** - Spawn all review-agents together in one message
-4. **Use LSP when available** - `zrok symbols --method lsp` for accurate symbol extraction
-5. **Use semantic search when available** - Check `zrok index status` first, use for natural language queries
-6. **Validate findings** - Always run validation-agent before review-agents
-7. **Deep review for high severity** - Always spawn review-agents for high/critical findings
-8. **Share context** - Use `zrok memory write` to share discoveries between agents
+2. **Agent onboarding by default** - Use `zrok onboard` (agent mode) for richer context
+3. **Parallel analysis** - Spawn security, guards, architecture agents together in one message
+4. **Parallel review** - Spawn all review-agents together in one message
+5. **Use LSP when available** - `zrok symbols --method lsp` for accurate symbol extraction
+6. **Use semantic search when available** - Check `zrok index status` first, use for natural language queries
+7. **Validate findings** - Always run validation-agent before review-agents
+8. **Deep review for high severity** - Always spawn review-agents for high/critical findings
+9. **Share context via memories** - Use `zrok memory write` to share discoveries between agents
+10. **Read memories first** - Agents should read context memories before starting analysis
 
 ---
 
 ## Complete Workflow Example
 
 ```bash
-# Phase 1: Setup
+# Phase 1: Setup & Agent Onboarding
 cd /path/to/target-project
 zrok init
-zrok onboard --auto
-zrok index status  # Check if semantic search available
+zrok onboard                 # Outputs recon-agent prompt
+# → Spawn recon-agent with the prompt
+# → Creates memories: project_overview, tech_stack, coding_standards, api_endpoints, auth_patterns, review_targets
 
-# Phase 2: Recon (spawn via Task tool)
-# → Creates memories: project_overview, tech_stack, etc.
+# Verify onboarding complete
+zrok memory list
+
+# Check if semantic search available
+zrok index status
 
 # Phase 3: Analysis (spawn 3-4 agents in parallel via Task tool)
 # → Creates findings
@@ -476,6 +571,15 @@ zrok finding stats
 zrok agent list
 zrok agent show <name>
 zrok agent prompt <name>
+```
+
+### Onboarding
+```bash
+zrok init                    # Initialize .zrok directory
+zrok onboard                 # Agent-assisted onboarding (default, outputs recon prompt)
+zrok onboard --static        # Static detection only (fast, no LLM)
+zrok onboard --wizard        # Interactive wizard mode
+zrok onboard --json          # JSON output for programmatic use
 ```
 
 ### Thinking

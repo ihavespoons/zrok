@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ihavespoons/zrok/internal/agent"
 	"github.com/ihavespoons/zrok/internal/memory"
 	"github.com/ihavespoons/zrok/internal/project"
 	"github.com/spf13/cobra"
@@ -41,7 +42,8 @@ memories, findings, and agent configurations.`,
 		} else {
 			fmt.Printf("Initialized zrok project at %s\n", p.GetZrokPath())
 			fmt.Println("\nNext steps:")
-			fmt.Println("  zrok onboard --auto    # Auto-detect tech stack")
+			fmt.Println("  zrok onboard           # Agent-assisted onboarding (recommended)")
+			fmt.Println("  zrok onboard --static  # Static detection only (fast)")
 			fmt.Println("  zrok onboard --wizard  # Interactive setup")
 		}
 	},
@@ -256,13 +258,17 @@ var onboardCmd = &cobra.Command{
 	Short: "Run project onboarding workflow",
 	Long: `Run the project onboarding workflow to detect tech stack and configure analysis.
 
-Use --auto for automatic detection or --wizard for interactive setup.`,
+Modes:
+  (default)      Agent-assisted onboarding - outputs recon-agent prompt for LLM execution
+  --static       Static detection only (fast, no LLM required)
+  --wizard       Interactive wizard mode for human setup`,
 	Run: func(cmd *cobra.Command, args []string) {
-		autoMode, _ := cmd.Flags().GetBool("auto")
+		staticMode, _ := cmd.Flags().GetBool("static")
 		wizardMode, _ := cmd.Flags().GetBool("wizard")
-
-		if !autoMode && !wizardMode {
-			exitError("specify --auto or --wizard mode")
+		// --auto is deprecated, treat as --static
+		autoMode, _ := cmd.Flags().GetBool("auto")
+		if autoMode {
+			staticMode = true
 		}
 
 		p, err := project.EnsureActive()
@@ -271,9 +277,88 @@ Use --auto for automatic detection or --wizard for interactive setup.`,
 		}
 
 		onboarder := project.NewOnboarder(p)
-		var result *project.OnboardingResult
 
-		if autoMode {
+		// Default to agent mode unless --static or --wizard specified
+		if !staticMode && !wizardMode {
+			// Agent mode (default)
+			agentResult, err := onboarder.RunAgent()
+			if err != nil {
+				exitError("agent onboarding failed: %v", err)
+			}
+
+			// Create initial memories
+			memStore := memory.NewStore(p)
+			for _, mem := range agentResult.Memories {
+				memType, _ := memory.ParseMemoryType(mem.Type)
+				m := &memory.Memory{
+					Name:    mem.Name,
+					Type:    memType,
+					Content: mem.Content,
+				}
+				_ = memStore.Create(m) // Ignore errors for existing memories
+			}
+
+			// Generate recon-agent prompt
+			reconAgent := agent.GetBuiltinAgent("recon-agent")
+			if reconAgent == nil {
+				exitError("recon-agent not found in built-in agents")
+			}
+
+			promptGen := agent.NewPromptGenerator(p, memStore)
+			agentPrompt, err := promptGen.Generate(reconAgent)
+			if err != nil {
+				exitError("failed to generate recon-agent prompt: %v", err)
+			}
+
+			if jsonOutput {
+				if err := outputJSON(map[string]interface{}{
+					"status":           "ready_for_recon",
+					"tech_stack":       agentResult.Config.TechStack,
+					"sensitive_areas":  agentResult.Config.SecurityScope.SensitiveAreas,
+					"agent_prompt":     agentPrompt,
+					"memories_created": len(agentResult.Memories),
+					"next_step":        "Run the recon-agent prompt with your LLM",
+				}); err != nil {
+					exitError("failed to encode JSON: %v", err)
+				}
+			} else {
+				fmt.Println("=== Agent Onboarding ===")
+				fmt.Println()
+
+				stack := agentResult.Config.TechStack
+				if len(stack.Languages) > 0 {
+					fmt.Println("Static Detection Results:")
+					for _, lang := range stack.Languages {
+						fmt.Printf("  - %s", lang.Name)
+						if lang.Version != "" {
+							fmt.Printf(" (%s)", lang.Version)
+						}
+						if len(lang.Frameworks) > 0 {
+							fmt.Printf(": %s", strings.Join(lang.Frameworks, ", "))
+						}
+						fmt.Println()
+					}
+					fmt.Println()
+				}
+
+				if len(agentResult.Config.SecurityScope.SensitiveAreas) > 0 {
+					fmt.Println("Detected Sensitive Areas:")
+					for _, area := range agentResult.Config.SecurityScope.SensitiveAreas {
+						fmt.Printf("  - %s: %s\n", area.Path, area.Reason)
+					}
+					fmt.Println()
+				}
+
+				fmt.Printf("Created %d initial memories\n\n", len(agentResult.Memories))
+				fmt.Println("--- BEGIN RECON AGENT PROMPT ---")
+				fmt.Println(agentPrompt)
+				fmt.Println("--- END RECON AGENT PROMPT ---")
+			}
+			return
+		}
+
+		var result *project.OnboardingResult
+		if staticMode {
 			result, err = onboarder.RunAuto()
 		} else {
 			result, err = onboarder.RunWizard()
@@ -365,6 +450,8 @@ func init() {
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(onboardCmd)
 
-	onboardCmd.Flags().Bool("auto", false, "Auto-detect mode")
+	onboardCmd.Flags().Bool("static", false, "Static detection only (fast, no LLM)")
 	onboardCmd.Flags().Bool("wizard", false, "Interactive wizard mode")
+	onboardCmd.Flags().Bool("auto", false, "Deprecated: use --static instead")
+	_ = onboardCmd.Flags().MarkDeprecated("auto", "use --static instead")
 }

@@ -53,6 +53,37 @@ prompt_template: |
   - Are there dependencies that are unmaintained?
   - Are patches being applied consistently?
 
+  ## Memory System
+
+  You have access to shared memories created by other agents (especially recon-agent).
+
+  ### Reading Memories
+  - `zrok memory list` - See all available memories
+  - `zrok memory read <name>` - Read a specific memory
+  - `zrok memory search "<query>"` - Search memory contents
+
+  ### Creating Memories
+  When you discover patterns valuable for other agents, create a memory:
+  ```bash
+  zrok memory write <name> --type <context|pattern|stack> --content "..."
+  ```
+
+  Memory types:
+  - **context**: Project-specific observations
+  - **pattern**: Discovered patterns and conventions
+  - **stack**: Technology-specific patterns
+
+  Suggested memories to create:
+  - **dependency_analysis**: Summary of dependency health
+  - **vulnerable_dependencies**: Known vulnerabilities found
+  - **update_candidates**: Dependencies needing updates
+
+  ### Your Context Memories
+  {{range $name, $content := .Memories}}
+  #### {{$name}}
+  {{$content}}
+  {{end}}
+
   ## Tech Stack
   {{.TechStack}}
 
@@ -68,11 +99,13 @@ prompt_template: |
   - pom.xml, build.gradle (Java)
 
   ## Analysis Approach
-  1. Identify all dependency manifests
-  2. Audit each dependency for necessity
-  3. Check versions and update status
-  4. Review vendoring practices
-  5. Flag concerning patterns
+  1. Read tech_stack memory to understand languages in use
+  2. Identify all dependency manifests
+  3. Audit each dependency for necessity
+  4. Check versions and update status
+  5. Review vendoring practices
+  6. Flag concerning patterns
+  7. Create memories for significant discoveries
 
   ## Reporting
   Create findings with category tags:

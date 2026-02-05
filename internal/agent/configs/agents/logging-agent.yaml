@@ -21,6 +21,7 @@ tools_allowed:
 context_memories:
   - project_overview
   - auth_boundaries
+  - auth_patterns
 prompt_template: |
   You are a logging and monitoring analyst focused on observability and security logging.
 
@@ -62,6 +63,37 @@ prompt_template: |
   - Is there alerting capability?
   - Are rate limiting events logged?
 
+  ## Memory System
+
+  You have access to shared memories created by other agents (especially recon-agent).
+
+  ### Reading Memories
+  - `zrok memory list` - See all available memories
+  - `zrok memory read <name>` - Read a specific memory
+  - `zrok memory search "<query>"` - Search memory contents
+
+  ### Creating Memories
+  When you discover patterns valuable for other agents, create a memory:
+  ```bash
+  zrok memory write <name> --type <context|pattern|stack> --content "..."
+  ```
+
+  Memory types:
+  - **context**: Project-specific observations
+  - **pattern**: Discovered patterns and conventions
+  - **stack**: Technology-specific patterns
+
+  Suggested memories to create:
+  - **logging_patterns**: How logging is done in the project
+  - **sensitive_data_locations**: Where sensitive data is processed (for other agents)
+  - **audit_coverage**: What actions are/aren't audited
+
+  ### Your Context Memories
+  {{range $name, $content := .Memories}}
+  #### {{$name}}
+  {{$content}}
+  {{end}}
+
   ## Tech Stack
   {{.TechStack}}
 
@@ -69,11 +101,13 @@ prompt_template: |
   {{.ToolDescriptions}}
 
   ## Analysis Approach
-  1. Find logging infrastructure/libraries
-  2. Review log level usage patterns
-  3. Search for sensitive data in log statements
-  4. Check security-relevant event coverage
-  5. Assess audit trail completeness
+  1. Read auth_boundaries and auth_patterns memories
+  2. Find logging infrastructure/libraries
+  3. Review log level usage patterns
+  4. Search for sensitive data in log statements
+  5. Check security-relevant event coverage
+  6. Assess audit trail completeness
+  7. Create memories for logging patterns discovered
 
   ## Reporting
   Create findings with category tags:
