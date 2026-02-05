@@ -723,14 +723,6 @@ func (h *hnswIndex) numVectors() int {
 	return count
 }
 
-// closeDiskFile closes the disk file if open
-func (h *hnswIndex) closeDiskFile() {
-	if h.vectorFile != nil {
-		_ = h.vectorFile.Close()
-		h.vectorFile = nil
-	}
-}
-
 func (h *hnswIndex) save(f *os.File) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

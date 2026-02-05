@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
-	"runtime/pprof"
 	"strconv"
 	"strings"
 	"sync"
@@ -186,7 +185,11 @@ func (idx *Indexer) Build(ctx context.Context, force bool, progress ProgressCall
 
 			// Each worker gets its own extractor with its own LSP clients
 			workerExtractor := chunk.NewExtractor(idx.project)
-			defer workerExtractor.Close()
+			defer func() {
+				if err := workerExtractor.Close(); err != nil {
+					fmt.Printf("Warning: failed to close extractor: %v\n", err)
+				}
+			}()
 
 			var localFilesProcessed int
 
@@ -389,12 +392,6 @@ const defaultMaxChunksPerFile = 500
 // Can be overridden via ZROK_EMBEDDING_CONCURRENCY env var
 const defaultEmbeddingConcurrency = 4
 
-// fileWorkers is the number of parallel file processing workers
-// Each worker has its own LSP client, so memory usage scales linearly
-// Auto-calculated based on available RAM if not specified
-// Can be overridden via ZROK_FILE_WORKERS env var
-const defaultFileWorkers = 0 // 0 means auto-detect based on RAM
-
 // Estimated memory per worker (LSP server + buffers)
 // Solargraph: ~400MB, TypeScript: ~200MB, conservative estimate
 const estimatedMemoryPerWorkerMB = 500
@@ -522,21 +519,6 @@ func getLSPResetInterval() int {
 func releaseMemory() {
 	runtime.GC()
 	debug.FreeOSMemory() // Force return memory to OS
-}
-
-// writeMemProfile writes a memory profile to a file for debugging
-func writeMemProfile(filename string) {
-	f, err := os.Create(filename)
-	if err != nil {
-		fmt.Printf("Warning: could not create memory profile: %v\n", err)
-		return
-	}
-	defer f.Close()
-
-	runtime.GC() // Get up-to-date statistics
-	if err := pprof.WriteHeapProfile(f); err != nil {
-		fmt.Printf("Warning: could not write memory profile: %v\n", err)
-	}
 }
 
 // printMemStats prints current memory statistics
