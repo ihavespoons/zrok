@@ -90,6 +90,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/partials/memories", s.handleMemoriesPartial)
 	mux.HandleFunc("/partials/memory/", s.handleMemoryDetailPartial)
 	mux.HandleFunc("/partials/agents", s.handleAgentsPartial)
+	mux.HandleFunc("/partials/agent/", s.handleAgentDetailPartial)
 	mux.HandleFunc("/partials/reports", s.handleReportsPartial)
 	mux.HandleFunc("/partials/index", s.handleIndexPartial)
 
@@ -305,6 +306,22 @@ func (s *Server) handleMemoryDetailPartial(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleAgentsPartial(w http.ResponseWriter, r *http.Request) {
 	result, _ := s.agentManager.List()
 	s.renderTemplate(w, "agents", result)
+}
+
+func (s *Server) handleAgentDetailPartial(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/partials/agent/")
+	if name == "" {
+		http.Error(w, "Agent name required", http.StatusBadRequest)
+		return
+	}
+
+	agentConfig, err := s.agentManager.Get(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	s.renderTemplate(w, "agent-detail", agentConfig)
 }
 
 func (s *Server) handleReportsPartial(w http.ResponseWriter, r *http.Request) {

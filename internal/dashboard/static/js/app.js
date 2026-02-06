@@ -164,6 +164,17 @@ async function viewMemory(name) {
     }
 }
 
+// View agent prompt
+async function viewAgentPrompt(name) {
+    try {
+        const res = await fetch(`/partials/agent/${encodeURIComponent(name)}`);
+        const html = await res.text();
+        openModal(html);
+    } catch (err) {
+        showToast('Failed to load agent prompt', 'error');
+    }
+}
+
 // Search memories
 function searchMemories() {
     const query = document.getElementById('memory-search').value;
