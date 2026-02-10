@@ -4,6 +4,13 @@ A CLI tool for LLM-assisted security code review. zrok provides structured tooli
 
 ## Installation
 
+### Homebrew
+
+```bash
+brew tap ihavespoons/zrok
+brew install zrok
+```
+
 ### From Source
 
 ```bash
