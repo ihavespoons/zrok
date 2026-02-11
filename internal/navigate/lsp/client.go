@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 )
 
@@ -45,7 +44,7 @@ func NewClient(ctx context.Context, config *ServerConfig, rootPath string) (*Cli
 	cmd.Env = os.Environ()
 	cmd.Dir = rootPath // Set working directory to project root for proper language server context
 	// Create a new process group so we can kill all child processes
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setSysProcAttr(cmd)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -256,10 +255,9 @@ func (c *Client) Close() error {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		// Kill entire process group (negative pid) to ensure child processes are killed
+		// Kill entire process group to ensure child processes are killed
 		// This is important for LSP servers like solargraph that spawn child processes
-		pgid := c.cmd.Process.Pid
-		_ = syscall.Kill(-pgid, syscall.SIGKILL)
+		killProcessGroup(c.cmd.Process)
 	}
 
 	close(c.done)
