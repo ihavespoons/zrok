@@ -27,10 +27,19 @@ go install github.com/ihavespoons/zrok@latest
 
 ## Adding the Skill to Claude Code
 
-zrok ships with a Claude Code skill that orchestrates the full review workflow. To add it to a target project:
+zrok ships with a Claude Code skill that orchestrates the full review workflow.
+
+### Automatic (recommended)
 
 ```bash
-# Copy the skill into your project's Claude Code skills directory
+zrok init --install-skill
+```
+
+This installs the skill to `~/.claude/skills/zrok-code-review/SKILL.md`, making it globally available across all projects.
+
+### Manual
+
+```bash
 mkdir -p /path/to/your/project/.claude/skills
 cp -r /path/to/zrok/skills/code-review /path/to/your/project/.claude/skills/code-review
 ```

@@ -9,6 +9,7 @@ import (
 	"github.com/ihavespoons/zrok/internal/agent"
 	"github.com/ihavespoons/zrok/internal/memory"
 	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/zrok/internal/skill"
 	"github.com/spf13/cobra"
 )
 
@@ -31,16 +32,32 @@ memories, findings, and agent configurations.`,
 			exitError("%v", err)
 		}
 
+		installSkill, _ := cmd.Flags().GetBool("install-skill")
+		var skillResult *skill.InstallResult
+		if installSkill {
+			skillResult, err = skill.Install()
+			if err != nil {
+				exitError("failed to install skill: %v", err)
+			}
+		}
+
 		if jsonOutput {
-			if err := outputJSON(map[string]interface{}{
+			result := map[string]interface{}{
 				"success": true,
 				"path":    p.GetZrokPath(),
 				"message": "Project initialized successfully",
-			}); err != nil {
+			}
+			if skillResult != nil {
+				result["skill"] = skillResult
+			}
+			if err := outputJSON(result); err != nil {
 				exitError("failed to encode JSON: %v", err)
 			}
 		} else {
 			fmt.Printf("Initialized zrok project at %s\n", p.GetZrokPath())
+			if skillResult != nil {
+				fmt.Printf("Installed code-review skill to %s\n", skillResult.Path)
+			}
 			fmt.Println("\nNext steps:")
 			fmt.Println("  zrok onboard           # Agent-assisted onboarding (recommended)")
 			fmt.Println("  zrok onboard --static  # Static detection only (fast)")
@@ -449,6 +466,8 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(onboardCmd)
+
+	initCmd.Flags().Bool("install-skill", false, "Install the code-review skill to ~/.claude/skills/ for global Claude Code availability")
 
 	onboardCmd.Flags().Bool("static", false, "Static detection only (fast, no LLM)")
 	onboardCmd.Flags().Bool("wizard", false, "Interactive wizard mode")

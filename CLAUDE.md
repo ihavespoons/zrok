@@ -27,6 +27,7 @@ zrok/
 │   │   └── lsp/           # LSP protocol, server management
 │   ├── think/             # Thinking prompt templates
 │   ├── dashboard/         # Web dashboard server
+│   ├── skill/             # Embedded skill installer (go:embed)
 │   ├── chunk/             # Code chunking for semantic search
 │   ├── embedding/         # Embedding providers (Ollama, OpenAI, Hugging Face)
 │   ├── vectordb/          # Vector storage (HNSW + SQLite)
