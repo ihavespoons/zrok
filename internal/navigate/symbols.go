@@ -153,6 +153,12 @@ func (s *SymbolExtractor) FindReferences(symbol string) (*SearchResult, error) {
 	})
 }
 
+// patternEntry pairs a regex with its symbol kind for ordered matching.
+type patternEntry struct {
+	pattern *regexp.Regexp
+	kind    SymbolKind
+}
+
 type symbolExtractorFunc func(*os.File, string) ([]Symbol, error)
 
 func (s *SymbolExtractor) getExtractor(ext string) symbolExtractorFunc {
@@ -181,25 +187,26 @@ func (s *SymbolExtractor) extractGo(file *os.File, path string) ([]Symbol, error
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
 
-	patterns := map[*regexp.Regexp]SymbolKind{
-		regexp.MustCompile(`^func\s+\(([^)]+)\)\s+(\w+)\s*\(`): SymbolMethod,
-		regexp.MustCompile(`^func\s+(\w+)\s*\(`):               SymbolFunction,
-		regexp.MustCompile(`^type\s+(\w+)\s+struct`):           SymbolStruct,
-		regexp.MustCompile(`^type\s+(\w+)\s+interface`):        SymbolInterface,
-		regexp.MustCompile(`^type\s+(\w+)\s+`):                 SymbolType,
-		regexp.MustCompile(`^var\s+(\w+)\s+`):                  SymbolVariable,
-		regexp.MustCompile(`^const\s+(\w+)\s+`):                SymbolConstant,
+	// Ordered slice — specific patterns must come before generic ones
+	patterns := []patternEntry{
+		{regexp.MustCompile(`^func\s+\(([^)]+)\)\s+(\w+)\s*\(`), SymbolMethod},
+		{regexp.MustCompile(`^func\s+(\w+)\s*\(`), SymbolFunction},
+		{regexp.MustCompile(`^type\s+(\w+)\s+struct`), SymbolStruct},
+		{regexp.MustCompile(`^type\s+(\w+)\s+interface`), SymbolInterface},
+		{regexp.MustCompile(`^type\s+(\w+)\s+`), SymbolType},
+		{regexp.MustCompile(`^var\s+(\w+)\s+`), SymbolVariable},
+		{regexp.MustCompile(`^const\s+(\w+)\s+`), SymbolConstant},
 	}
 
 	for scanner.Scan() {
 		lineNum++
 		line := strings.TrimSpace(scanner.Text())
 
-		for pattern, kind := range patterns {
-			if matches := pattern.FindStringSubmatch(line); len(matches) > 0 {
+		for _, entry := range patterns {
+			if matches := entry.pattern.FindStringSubmatch(line); len(matches) > 0 {
 				var name string
 				var parent string
-				if kind == SymbolMethod {
+				if entry.kind == SymbolMethod {
 					// Method: receiver is in matches[1], name in matches[2]
 					parent = strings.TrimSpace(matches[1])
 					// Extract type from receiver
@@ -213,7 +220,7 @@ func (s *SymbolExtractor) extractGo(file *os.File, path string) ([]Symbol, error
 
 				symbols = append(symbols, Symbol{
 					Name:      name,
-					Kind:      kind,
+					Kind:      entry.kind,
 					File:      path,
 					Line:      lineNum,
 					Signature: line,
@@ -232,15 +239,16 @@ func (s *SymbolExtractor) extractJavaScript(file *os.File, path string) ([]Symbo
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
 
-	patterns := map[*regexp.Regexp]SymbolKind{
-		regexp.MustCompile(`(?:export\s+)?(?:async\s+)?function\s+(\w+)`):                      SymbolFunction,
-		regexp.MustCompile(`(?:export\s+)?class\s+(\w+)`):                                       SymbolClass,
-		regexp.MustCompile(`(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(`):    SymbolFunction,
-		regexp.MustCompile(`(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*\(`):                 SymbolFunction,
-		regexp.MustCompile(`(?:export\s+)?interface\s+(\w+)`):                                   SymbolInterface,
-		regexp.MustCompile(`(?:export\s+)?type\s+(\w+)`):                                        SymbolType,
-		regexp.MustCompile(`(\w+)\s*:\s*(?:async\s+)?function`):                                 SymbolMethod,
-		regexp.MustCompile(`(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{`):                               SymbolMethod,
+	// Ordered slice — specific patterns must come before generic ones
+	patterns := []patternEntry{
+		{regexp.MustCompile(`(?:export\s+)?(?:async\s+)?function\s+(\w+)`), SymbolFunction},
+		{regexp.MustCompile(`(?:export\s+)?class\s+(\w+)`), SymbolClass},
+		{regexp.MustCompile(`(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(`), SymbolFunction},
+		{regexp.MustCompile(`(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*\(`), SymbolFunction},
+		{regexp.MustCompile(`(?:export\s+)?interface\s+(\w+)`), SymbolInterface},
+		{regexp.MustCompile(`(?:export\s+)?type\s+(\w+)`), SymbolType},
+		{regexp.MustCompile(`(\w+)\s*:\s*(?:async\s+)?function`), SymbolMethod},
+		{regexp.MustCompile(`(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{`), SymbolMethod},
 	}
 
 	for scanner.Scan() {
@@ -248,11 +256,11 @@ func (s *SymbolExtractor) extractJavaScript(file *os.File, path string) ([]Symbo
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 
-		for pattern, kind := range patterns {
-			if matches := pattern.FindStringSubmatch(trimmed); len(matches) > 1 {
+		for _, entry := range patterns {
+			if matches := entry.pattern.FindStringSubmatch(trimmed); len(matches) > 1 {
 				symbols = append(symbols, Symbol{
 					Name:      matches[1],
-					Kind:      kind,
+					Kind:      entry.kind,
 					File:      path,
 					Line:      lineNum,
 					Signature: trimmed,
@@ -423,26 +431,27 @@ func (s *SymbolExtractor) extractRust(file *os.File, path string) ([]Symbol, err
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
 
-	patterns := map[*regexp.Regexp]SymbolKind{
-		regexp.MustCompile(`^(?:pub\s+)?fn\s+(\w+)`):          SymbolFunction,
-		regexp.MustCompile(`^(?:pub\s+)?struct\s+(\w+)`):      SymbolStruct,
-		regexp.MustCompile(`^(?:pub\s+)?enum\s+(\w+)`):        SymbolType,
-		regexp.MustCompile(`^(?:pub\s+)?trait\s+(\w+)`):       SymbolInterface,
-		regexp.MustCompile(`^(?:pub\s+)?type\s+(\w+)`):        SymbolType,
-		regexp.MustCompile(`^(?:pub\s+)?const\s+(\w+)`):       SymbolConstant,
-		regexp.MustCompile(`^(?:pub\s+)?static\s+(\w+)`):      SymbolVariable,
-		regexp.MustCompile(`^\s+(?:pub\s+)?fn\s+(\w+)`):       SymbolMethod,
+	// Ordered slice — indented method pattern must come before top-level fn
+	patterns := []patternEntry{
+		{regexp.MustCompile(`^\s+(?:pub\s+)?fn\s+(\w+)`), SymbolMethod},
+		{regexp.MustCompile(`^(?:pub\s+)?fn\s+(\w+)`), SymbolFunction},
+		{regexp.MustCompile(`^(?:pub\s+)?struct\s+(\w+)`), SymbolStruct},
+		{regexp.MustCompile(`^(?:pub\s+)?enum\s+(\w+)`), SymbolType},
+		{regexp.MustCompile(`^(?:pub\s+)?trait\s+(\w+)`), SymbolInterface},
+		{regexp.MustCompile(`^(?:pub\s+)?type\s+(\w+)`), SymbolType},
+		{regexp.MustCompile(`^(?:pub\s+)?const\s+(\w+)`), SymbolConstant},
+		{regexp.MustCompile(`^(?:pub\s+)?static\s+(\w+)`), SymbolVariable},
 	}
 
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
 
-		for pattern, kind := range patterns {
-			if matches := pattern.FindStringSubmatch(line); len(matches) > 1 {
+		for _, entry := range patterns {
+			if matches := entry.pattern.FindStringSubmatch(line); len(matches) > 1 {
 				symbols = append(symbols, Symbol{
 					Name:      matches[1],
-					Kind:      kind,
+					Kind:      entry.kind,
 					File:      path,
 					Line:      lineNum,
 					Signature: strings.TrimSpace(line),
