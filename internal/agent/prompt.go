@@ -146,9 +146,9 @@ func (g *PromptGenerator) buildProjectContext() string {
 	cfg := g.project.Config
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("Project: %s\n", cfg.Name))
+	fmt.Fprintf(&b, "Project: %s\n", cfg.Name)
 	if cfg.Description != "" {
-		b.WriteString(fmt.Sprintf("Description: %s\n", cfg.Description))
+		fmt.Fprintf(&b, "Description: %s\n", cfg.Description)
 	}
 
 	return b.String()
@@ -166,27 +166,27 @@ func (g *PromptGenerator) buildTechStackDescription() string {
 	if len(stack.Languages) > 0 {
 		b.WriteString("Languages:\n")
 		for _, lang := range stack.Languages {
-			b.WriteString(fmt.Sprintf("- %s", lang.Name))
+			fmt.Fprintf(&b, "- %s", lang.Name)
 			if lang.Version != "" {
-				b.WriteString(fmt.Sprintf(" (%s)", lang.Version))
+				fmt.Fprintf(&b, " (%s)", lang.Version)
 			}
 			if len(lang.Frameworks) > 0 {
-				b.WriteString(fmt.Sprintf(": %s", strings.Join(lang.Frameworks, ", ")))
+				fmt.Fprintf(&b, ": %s", strings.Join(lang.Frameworks, ", "))
 			}
 			b.WriteString("\n")
 		}
 	}
 
 	if len(stack.Databases) > 0 {
-		b.WriteString(fmt.Sprintf("Databases: %s\n", strings.Join(stack.Databases, ", ")))
+		fmt.Fprintf(&b, "Databases: %s\n", strings.Join(stack.Databases, ", "))
 	}
 
 	if len(stack.Auth) > 0 {
-		b.WriteString(fmt.Sprintf("Auth: %s\n", strings.Join(stack.Auth, ", ")))
+		fmt.Fprintf(&b, "Auth: %s\n", strings.Join(stack.Auth, ", "))
 	}
 
 	if len(stack.Infrastructure) > 0 {
-		b.WriteString(fmt.Sprintf("Infrastructure: %s\n", strings.Join(stack.Infrastructure, ", ")))
+		fmt.Fprintf(&b, "Infrastructure: %s\n", strings.Join(stack.Infrastructure, ", "))
 	}
 
 	return b.String()
@@ -206,7 +206,7 @@ func (g *PromptGenerator) buildSensitiveAreasDescription() string {
 	var b strings.Builder
 	b.WriteString("Sensitive Areas:\n")
 	for _, area := range areas {
-		b.WriteString(fmt.Sprintf("- %s: %s\n", area.Path, area.Reason))
+		fmt.Fprintf(&b, "- %s: %s\n", area.Path, area.Reason)
 	}
 
 	return b.String()
@@ -312,19 +312,19 @@ func buildCWEChecklist(config *AgentConfig) string {
 	b.WriteString("Check for the following vulnerability classes during analysis:\n\n")
 
 	for _, item := range config.CWEChecklist {
-		b.WriteString(fmt.Sprintf("### %s: %s\n", item.ID, item.Name))
+		fmt.Fprintf(&b, "### %s: %s\n", item.ID, item.Name)
 
 		if len(item.DetectionHints) > 0 {
 			b.WriteString("**Detection hints:**\n")
 			for _, hint := range item.DetectionHints {
-				b.WriteString(fmt.Sprintf("- %s\n", hint))
+				fmt.Fprintf(&b, "- %s\n", hint)
 			}
 		}
 
 		if len(item.FlowPatterns) > 0 {
 			b.WriteString("**Expected flow patterns:**\n")
 			for _, pattern := range item.FlowPatterns {
-				b.WriteString(fmt.Sprintf("- `%s`\n", pattern))
+				fmt.Fprintf(&b, "- `%s`\n", pattern)
 			}
 		}
 
@@ -406,14 +406,14 @@ func buildFewShotExamples(config *AgentConfig) string {
 	b.WriteString("Study these vulnerable vs. patched code pairs to calibrate your analysis:\n\n")
 
 	for _, ex := range selected {
-		b.WriteString(fmt.Sprintf("### %s: %s (%s)\n", ex.CWE, ex.Name, ex.Language))
+		fmt.Fprintf(&b, "### %s: %s (%s)\n", ex.CWE, ex.Name, ex.Language)
 		b.WriteString("**Vulnerable:**\n```\n")
 		b.WriteString(ex.Vulnerable)
 		b.WriteString("\n```\n")
 		b.WriteString("**Patched:**\n```\n")
 		b.WriteString(ex.Patched)
 		b.WriteString("\n```\n")
-		b.WriteString(fmt.Sprintf("**Why:** %s\n\n", ex.Explanation))
+		fmt.Fprintf(&b, "**Why:** %s\n\n", ex.Explanation)
 	}
 
 	return b.String()
