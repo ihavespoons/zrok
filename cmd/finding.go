@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -173,6 +174,16 @@ var findingListCmd = &cobra.Command{
 			exitError("%v", err)
 		}
 
+		// Apply diff filter if specified
+		if diffBase, _ := cmd.Flags().GetString("diff"); diffBase != "" {
+			changedFiles, err := getChangedFiles(diffBase)
+			if err != nil {
+				exitError("%v", err)
+			}
+			result.Findings = filterFindingsByDiff(result.Findings, changedFiles)
+			result.Total = len(result.Findings)
+		}
+
 		if jsonOutput {
 			if err := outputJSON(result); err != nil {
 				exitError("failed to encode JSON: %v", err)
@@ -292,6 +303,16 @@ Supported formats: sarif, json, md (markdown), html, csv`,
 		result, err := store.List(nil)
 		if err != nil {
 			exitError("%v", err)
+		}
+
+		// Apply diff filter if specified
+		if diffBase, _ := cmd.Flags().GetString("diff"); diffBase != "" {
+			changedFiles, err := getChangedFiles(diffBase)
+			if err != nil {
+				exitError("%v", err)
+			}
+			result.Findings = filterFindingsByDiff(result.Findings, changedFiles)
+			result.Total = len(result.Findings)
 		}
 
 		data, err := export.ExportFindings(result.Findings, format, p.Config.Name)
@@ -432,6 +453,14 @@ var findingStatsCmd = &cobra.Command{
 				fmt.Println()
 			}
 
+			if len(stats.ByCreatedBy) > 0 {
+				fmt.Println("By Agent:")
+				for agent, count := range stats.ByCreatedBy {
+					fmt.Printf("  %s: %d\n", agent, count)
+				}
+				fmt.Println()
+			}
+
 			if len(stats.TopTags) > 0 {
 				fmt.Println("Top Tags:")
 				for _, tag := range stats.TopTags {
@@ -471,6 +500,34 @@ var findingDeleteCmd = &cobra.Command{
 			fmt.Printf("Deleted finding: %s\n", args[0])
 		}
 	},
+}
+
+// getChangedFiles returns the list of files changed between base-ref and HEAD
+func getChangedFiles(baseRef string) (map[string]bool, error) {
+	cmd := exec.Command("git", "diff", "--name-only", baseRef+"...HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff failed: %w", err)
+	}
+
+	files := make(map[string]bool)
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			files[line] = true
+		}
+	}
+	return files, nil
+}
+
+// filterFindingsByDiff filters findings to only those in changed files
+func filterFindingsByDiff(findings []finding.Finding, changedFiles map[string]bool) []finding.Finding {
+	var filtered []finding.Finding
+	for _, f := range findings {
+		if changedFiles[f.Location.File] {
+			filtered = append(filtered, f)
+		}
+	}
+	return filtered
 }
 
 func getSeverityBadge(s finding.Severity) string {
@@ -514,7 +571,9 @@ func init() {
 	findingListCmd.Flags().String("exploitability", "", "Filter by exploitability")
 	findingListCmd.Flags().String("fix-priority", "", "Filter by fix priority")
 	findingListCmd.Flags().String("cwe", "", "Filter by CWE")
+	findingListCmd.Flags().String("diff", "", "Filter to findings in files changed since base ref (e.g., main)")
 
 	findingExportCmd.Flags().StringP("format", "f", "json", "Export format (sarif, json, md, html, csv)")
 	findingExportCmd.Flags().StringP("output", "o", "", "Output file (default: stdout)")
+	findingExportCmd.Flags().String("diff", "", "Filter to findings in files changed since base ref (e.g., main)")
 }

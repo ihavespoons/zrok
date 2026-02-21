@@ -8,6 +8,21 @@ specialization:
     - file-paths
     - hardcoded-values
     - documentation-links
+cwe_checklist:
+  - id: CWE-601
+    name: URL Redirection to Untrusted Site
+    detection_hints:
+      - "Redirect URLs constructed from user input without validation"
+      - "Open redirect parameters in login/auth flows"
+    flow_patterns:
+      - "SOURCE: user-supplied URL -> GUARD: allowlist check -> SINK: HTTP redirect response"
+  - id: CWE-610
+    name: Externally Controlled Reference to a Resource
+    detection_hints:
+      - "Resource paths or identifiers derived from user input"
+      - "External references loaded without origin validation"
+    flow_patterns:
+      - "SOURCE: user-controlled reference -> GUARD: allowlist/origin check -> SINK: resource load"
 tools_allowed:
   - read
   - search
@@ -88,6 +103,15 @@ prompt_template: |
   ## Available Tools
   {{.ToolDescriptions}}
 
+  {{if .CWEChecklist}}
+  {{.CWEChecklist}}
+  {{end}}
+  {{if .FlowGuidance}}
+  {{.FlowGuidance}}
+  {{end}}
+  {{if .FewShotExamples}}
+  {{.FewShotExamples}}
+  {{end}}
   ## Search Patterns
   - URLs: `https?://`, `ftp://`, `//`
   - Domains: Look for `.com`, `.io`, `.org`, etc.

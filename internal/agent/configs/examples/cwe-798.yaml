@@ -1,0 +1,17 @@
+cwe: CWE-798
+name: Use of Hard-coded Credentials
+examples:
+  - language: go
+    vulnerable: |
+      db, err := sql.Open("postgres", "postgres://admin:password123@localhost/mydb")
+    patched: |
+      dsn := os.Getenv("DATABASE_URL")
+      db, err := sql.Open("postgres", dsn)
+    explanation: "Credentials in source code vs environment variable"
+  - language: python
+    vulnerable: |
+      API_KEY = "sk-1234567890abcdef"
+      client = OpenAI(api_key=API_KEY)
+    patched: |
+      client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    explanation: "Hardcoded API key vs environment variable lookup"

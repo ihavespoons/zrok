@@ -10,6 +10,28 @@ specialization:
     - sensitive-actions
     - audit-logging
     - detection-response
+cwe_checklist:
+  - id: CWE-532
+    name: Insertion of Sensitive Information into Log File
+    detection_hints:
+      - "Passwords, tokens, or PII written to log output"
+      - "Full request/response bodies logged without redaction"
+    flow_patterns:
+      - "SOURCE: sensitive data (password, token, PII) -> GUARD: redaction filter -> SINK: log output"
+  - id: CWE-778
+    name: Insufficient Logging
+    detection_hints:
+      - "Security-relevant events (auth failures, access denied) not logged"
+      - "Missing audit trail for administrative actions"
+    flow_patterns:
+      - "SOURCE: security event -> GUARD: logging check -> SINK: log store/SIEM"
+  - id: CWE-117
+    name: Improper Output Neutralization for Logs
+    detection_hints:
+      - "User-controlled input written to logs without sanitization"
+      - "Log injection via newline characters or log format strings"
+    flow_patterns:
+      - "SOURCE: user input -> GUARD: log sanitization -> SINK: log output"
 tools_allowed:
   - read
   - search
@@ -100,6 +122,15 @@ prompt_template: |
   ## Available Tools
   {{.ToolDescriptions}}
 
+  {{if .CWEChecklist}}
+  {{.CWEChecklist}}
+  {{end}}
+  {{if .FlowGuidance}}
+  {{.FlowGuidance}}
+  {{end}}
+  {{if .FewShotExamples}}
+  {{.FewShotExamples}}
+  {{end}}
   ## Analysis Approach
   1. Read auth_boundaries and auth_patterns memories
   2. Find logging infrastructure/libraries

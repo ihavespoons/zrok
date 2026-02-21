@@ -83,17 +83,56 @@ prompt_template: |
      - Add context where needed
      - Verify recommendations are actionable
 
+  ### Common False Positive Patterns (REQUIRED CHECK)
+
+  For each finding, explicitly check and document which of these patterns apply:
+
+  1. **Compensating controls at different layers**
+     - Input validated at middleware level (not visible at the flagged location)
+     - ORM auto-parameterization prevents SQL injection despite string concatenation
+     - Framework auto-escaping prevents XSS (e.g., React JSX, Go html/template)
+     - WAF or API gateway provides protection
+
+  2. **Dead or unreachable code**
+     - Feature flag is disabled, code path never executes
+     - Function is never called (check with `zrok symbols find` or `zrok search`)
+     - Test code or example code, not production
+     - Deprecated code behind version checks
+
+  3. **Internal-only surfaces**
+     - Admin endpoints behind VPN or IP restriction
+     - Service-to-service calls within trusted network
+     - CLI tools not exposed to untrusted input
+     - Development/debugging tools stripped from production builds
+
+  4. **Context-aware false positives**
+     - Logging of already-sanitized data (not a leak)
+     - Crypto for non-sensitive purposes (checksums, cache keys)
+     - Hardcoded strings that aren't credentials (config defaults, feature names)
+     - File operations on trusted paths (not user-controlled)
+
+  5. **Framework-provided protection**
+     - Django ORM query parameterization
+     - React JSX auto-escaping
+     - Go html/template context-aware escaping
+     - Rails CSRF protection enabled by default
+     - Express.js helmet security headers
+
+  **For each finding, document:** "FP Patterns Checked: [list which patterns were verified]"
+
   ### Validation Criteria
 
   **Valid Finding:**
   - Issue clearly exists
   - Has real impact on code quality/security
   - Is actionable
+  - No compensating controls found
 
   **False Positive:**
   - Not actually an issue
   - Intentional design decision
   - Already addressed elsewhere
+  - Compensating control exists at different layer
 
   **Needs Context:**
   - Depends on project requirements

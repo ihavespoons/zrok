@@ -1,0 +1,72 @@
+# zrok Security Review - GitHub Actions Workflow Template
+#
+# Copy this file to .github/workflows/zrok-review.yaml in your project.
+#
+# Prerequisites:
+#   - zrok binary built and accessible
+#   - Optional: Ollama or embedding API key for semantic search
+#
+# SECURITY NOTE: PR descriptions are attacker-controlled input.
+# This workflow only passes file paths and diff content to agents,
+# never PR metadata.
+
+name: zrok Security Review
+
+on:
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  security-events: write  # Required for SARIF upload
+
+jobs:
+  security-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for diff
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build zrok
+        run: |
+          go build -o zrok .
+          echo "$(pwd)" >> $GITHUB_PATH
+
+      - name: Initialize zrok
+        run: |
+          zrok init
+          zrok onboard --static
+
+      - name: Run analysis
+        run: |
+          # Generate agent prompts for CI mode
+          # In CI, agents would be run by your LLM orchestration tool
+          # This is a template - customize based on your orchestration approach
+          zrok agent prompt security-agent > /tmp/security-prompt.txt
+          zrok agent prompt guards-agent > /tmp/guards-prompt.txt
+          zrok agent prompt injection-agent > /tmp/injection-prompt.txt
+
+          echo "Agent prompts generated. Run agents with your LLM orchestration tool."
+
+      - name: Export SARIF (diff-only)
+        if: always()
+        run: |
+          # Export only findings in changed files
+          zrok finding export \
+            --format sarif \
+            --diff origin/${{ github.base_ref }} \
+            -o results.sarif
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: zrok-security-review

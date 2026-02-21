@@ -113,6 +113,15 @@ type Evidence struct {
 	Trace       []string `yaml:"trace,omitempty" json:"trace,omitempty"`
 }
 
+// FlowTrace represents a data flow trace from source to sink
+type FlowTrace struct {
+	Source    string   `yaml:"source" json:"source"`
+	Sink      string   `yaml:"sink" json:"sink"`
+	Path      []string `yaml:"path" json:"path"`
+	Guards    []string `yaml:"guards,omitempty" json:"guards,omitempty"`
+	Unguarded bool     `yaml:"unguarded" json:"unguarded"`
+}
+
 // Finding represents a security vulnerability finding
 type Finding struct {
 	ID             string         `yaml:"id" json:"id"`
@@ -129,8 +138,10 @@ type Finding struct {
 	Impact         string         `yaml:"impact,omitempty" json:"impact,omitempty"`
 	Remediation    string         `yaml:"remediation,omitempty" json:"remediation,omitempty"`
 	Evidence       []Evidence     `yaml:"evidence,omitempty" json:"evidence,omitempty"`
+	FlowTrace      *FlowTrace     `yaml:"flow_trace,omitempty" json:"flow_trace,omitempty"`
 	References     []string       `yaml:"references,omitempty" json:"references,omitempty"`
 	Tags           []string       `yaml:"tags,omitempty" json:"tags,omitempty"`
+	ReviewedBy     []string       `yaml:"reviewed_by,omitempty" json:"reviewed_by,omitempty"`
 	CreatedAt      time.Time      `yaml:"created_at" json:"created_at"`
 	UpdatedAt      time.Time      `yaml:"updated_at" json:"updated_at"`
 	CreatedBy      string         `yaml:"created_by,omitempty" json:"created_by,omitempty"`
@@ -151,6 +162,7 @@ type FindingStats struct {
 	ByExploitability map[string]int `json:"by_exploitability"`
 	ByFixPriority    map[string]int `json:"by_fix_priority"`
 	ByCWE            map[string]int `json:"by_cwe"`
+	ByCreatedBy      map[string]int `json:"by_created_by"`
 	TopTags          []TagCount     `json:"top_tags"`
 }
 

@@ -185,11 +185,11 @@ func (e *HTMLExporter) Export(findings []finding.Finding) ([]byte, error) {
 	// Severity stats
 	for _, sev := range finding.ValidSeverities {
 		if count := severityCounts[string(sev)]; count > 0 {
-			b.WriteString(fmt.Sprintf(`            <div class="stat-card">
+			fmt.Fprintf(&b, `            <div class="stat-card">
                 <div class="stat-value" style="color: var(--%s)">%d</div>
                 <div class="stat-label">%s</div>
             </div>
-`, string(sev), count, cases.Title(language.English).String(string(sev))))
+`, string(sev), count, cases.Title(language.English).String(string(sev)))
 		}
 	}
 
@@ -213,7 +213,7 @@ func (e *HTMLExporter) Export(findings []finding.Finding) ([]byte, error) {
 func (e *HTMLExporter) renderFinding(f finding.Finding) string {
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf(`        <div class="finding">
+	fmt.Fprintf(&b, `        <div class="finding">
             <div class="finding-header">
                 <span class="severity-badge severity-%s">%s</span>
                 <span class="finding-title">%s</span>
@@ -225,25 +225,25 @@ func (e *HTMLExporter) renderFinding(f finding.Finding) string {
 		strings.ToUpper(string(f.Severity)),
 		html.EscapeString(f.Title),
 		html.EscapeString(f.ID),
-	))
+	)
 
 	// Metadata
 	b.WriteString(`                <div class="finding-section">
                     <h4>Details</h4>
                     <div class="meta-grid">
 `)
-	b.WriteString(fmt.Sprintf(`                        <div class="meta-item"><span class="meta-label">Status:</span> %s</div>
-`, html.EscapeString(string(f.Status))))
-	b.WriteString(fmt.Sprintf(`                        <div class="meta-item"><span class="meta-label">Confidence:</span> %s</div>
-`, html.EscapeString(string(f.Confidence))))
+	fmt.Fprintf(&b, `                        <div class="meta-item"><span class="meta-label">Status:</span> %s</div>
+`, html.EscapeString(string(f.Status)))
+	fmt.Fprintf(&b, `                        <div class="meta-item"><span class="meta-label">Confidence:</span> %s</div>
+`, html.EscapeString(string(f.Confidence)))
 	if f.CWE != "" {
 		cweNum := strings.TrimPrefix(f.CWE, "CWE-")
-		b.WriteString(fmt.Sprintf(`                        <div class="meta-item"><span class="meta-label">CWE:</span> <a href="https://cwe.mitre.org/data/definitions/%s.html" target="_blank">%s</a></div>
-`, html.EscapeString(cweNum), html.EscapeString(f.CWE)))
+		fmt.Fprintf(&b, `                        <div class="meta-item"><span class="meta-label">CWE:</span> <a href="https://cwe.mitre.org/data/definitions/%s.html" target="_blank">%s</a></div>
+`, html.EscapeString(cweNum), html.EscapeString(f.CWE))
 	}
 	if f.CVSS != nil {
-		b.WriteString(fmt.Sprintf(`                        <div class="meta-item"><span class="meta-label">CVSS:</span> %.1f (%s)</div>
-`, f.CVSS.Score, html.EscapeString(f.CVSS.Vector)))
+		fmt.Fprintf(&b, `                        <div class="meta-item"><span class="meta-label">CVSS:</span> %.1f (%s)</div>
+`, f.CVSS.Score, html.EscapeString(f.CVSS.Vector))
 	}
 	b.WriteString(`                    </div>
                 </div>
@@ -256,13 +256,13 @@ func (e *HTMLExporter) renderFinding(f finding.Finding) string {
 	b.WriteString(html.EscapeString(f.Location.File))
 	if f.Location.LineStart > 0 {
 		if f.Location.LineEnd > 0 && f.Location.LineEnd != f.Location.LineStart {
-			b.WriteString(fmt.Sprintf(":%d-%d", f.Location.LineStart, f.Location.LineEnd))
+			fmt.Fprintf(&b, ":%d-%d", f.Location.LineStart, f.Location.LineEnd)
 		} else {
-			b.WriteString(fmt.Sprintf(":%d", f.Location.LineStart))
+			fmt.Fprintf(&b, ":%d", f.Location.LineStart)
 		}
 	}
 	if f.Location.Function != "" {
-		b.WriteString(fmt.Sprintf(" (function: %s)", html.EscapeString(f.Location.Function)))
+		fmt.Fprintf(&b, " (function: %s)", html.EscapeString(f.Location.Function))
 	}
 	b.WriteString(`</div>
                 </div>
@@ -270,38 +270,38 @@ func (e *HTMLExporter) renderFinding(f finding.Finding) string {
 
 	// Snippet
 	if f.Location.Snippet != "" {
-		b.WriteString(fmt.Sprintf(`                <div class="finding-section">
+		fmt.Fprintf(&b, `                <div class="finding-section">
                     <h4>Code</h4>
                     <pre class="snippet">%s</pre>
                 </div>
-`, html.EscapeString(f.Location.Snippet)))
+`, html.EscapeString(f.Location.Snippet))
 	}
 
 	// Description
 	if f.Description != "" {
-		b.WriteString(fmt.Sprintf(`                <div class="finding-section">
+		fmt.Fprintf(&b, `                <div class="finding-section">
                     <h4>Description</h4>
                     <p>%s</p>
                 </div>
-`, html.EscapeString(f.Description)))
+`, html.EscapeString(f.Description))
 	}
 
 	// Impact
 	if f.Impact != "" {
-		b.WriteString(fmt.Sprintf(`                <div class="finding-section">
+		fmt.Fprintf(&b, `                <div class="finding-section">
                     <h4>Impact</h4>
                     <p>%s</p>
                 </div>
-`, html.EscapeString(f.Impact)))
+`, html.EscapeString(f.Impact))
 	}
 
 	// Remediation
 	if f.Remediation != "" {
-		b.WriteString(fmt.Sprintf(`                <div class="finding-section">
+		fmt.Fprintf(&b, `                <div class="finding-section">
                     <h4>Remediation</h4>
                     <p>%s</p>
                 </div>
-`, html.EscapeString(f.Remediation)))
+`, html.EscapeString(f.Remediation))
 	}
 
 	// Evidence
@@ -311,14 +311,50 @@ func (e *HTMLExporter) renderFinding(f finding.Finding) string {
                     <ul class="evidence-list">
 `)
 		for _, ev := range f.Evidence {
-			b.WriteString(fmt.Sprintf(`                        <li><strong>%s:</strong> %s`, html.EscapeString(ev.Type), html.EscapeString(ev.Description)))
+			fmt.Fprintf(&b, `                        <li><strong>%s:</strong> %s`, html.EscapeString(ev.Type), html.EscapeString(ev.Description))
 			if len(ev.Trace) > 0 {
-				b.WriteString(fmt.Sprintf(` (trace: %s)`, html.EscapeString(strings.Join(ev.Trace, " → "))))
+				fmt.Fprintf(&b, ` (trace: %s)`, html.EscapeString(strings.Join(ev.Trace, " → ")))
 			}
 			b.WriteString(`</li>
 `)
 		}
 		b.WriteString(`                    </ul>
+                </div>
+`)
+	}
+
+	// Flow Trace
+	if f.FlowTrace != nil {
+		b.WriteString(`                <div class="finding-section">
+                    <h4>Data Flow Trace</h4>
+                    <div class="location">
+`)
+		fmt.Fprintf(&b, `                        <strong>Source:</strong> %s<br>
+`, html.EscapeString(f.FlowTrace.Source))
+		if len(f.FlowTrace.Path) > 0 {
+			b.WriteString(`                        <strong>Path:</strong><br>
+`)
+			for i, step := range f.FlowTrace.Path {
+				fmt.Fprintf(&b, "                        %d. %s<br>\n", i+1, html.EscapeString(step))
+			}
+		}
+		if len(f.FlowTrace.Guards) > 0 {
+			b.WriteString(`                        <strong>Guards:</strong><br>
+`)
+			for _, guard := range f.FlowTrace.Guards {
+				fmt.Fprintf(&b, "                        - %s<br>\n", html.EscapeString(guard))
+			}
+		}
+		fmt.Fprintf(&b, `                        <strong>Sink:</strong> %s<br>
+`, html.EscapeString(f.FlowTrace.Sink))
+		if f.FlowTrace.Unguarded {
+			b.WriteString(`                        <strong>Verdict:</strong> <span style="color: var(--critical)">UNGUARDED</span><br>
+`)
+		} else {
+			b.WriteString(`                        <strong>Verdict:</strong> <span style="color: var(--low)">GUARDED</span><br>
+`)
+		}
+		b.WriteString(`                    </div>
                 </div>
 `)
 	}
@@ -330,8 +366,8 @@ func (e *HTMLExporter) renderFinding(f finding.Finding) string {
                     <ul>
 `)
 		for _, ref := range f.References {
-			b.WriteString(fmt.Sprintf(`                        <li><a href="%s" target="_blank">%s</a></li>
-`, html.EscapeString(ref), html.EscapeString(ref)))
+			fmt.Fprintf(&b, `                        <li><a href="%s" target="_blank">%s</a></li>
+`, html.EscapeString(ref), html.EscapeString(ref))
 		}
 		b.WriteString(`                    </ul>
                 </div>
@@ -345,8 +381,8 @@ func (e *HTMLExporter) renderFinding(f finding.Finding) string {
                     <div class="tags">
 `)
 		for _, tag := range f.Tags {
-			b.WriteString(fmt.Sprintf(`                        <span class="tag">%s</span>
-`, html.EscapeString(tag)))
+			fmt.Fprintf(&b, `                        <span class="tag">%s</span>
+`, html.EscapeString(tag))
 		}
 		b.WriteString(`                    </div>
                 </div>

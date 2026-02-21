@@ -194,6 +194,7 @@ func (s *Store) Stats() (*FindingStats, error) {
 		ByExploitability: make(map[string]int),
 		ByFixPriority:    make(map[string]int),
 		ByCWE:            make(map[string]int),
+		ByCreatedBy:      make(map[string]int),
 	}
 
 	tagCounts := make(map[string]int)
@@ -210,6 +211,9 @@ func (s *Store) Stats() (*FindingStats, error) {
 		}
 		if f.CWE != "" {
 			stats.ByCWE[f.CWE]++
+		}
+		if f.CreatedBy != "" {
+			stats.ByCreatedBy[f.CreatedBy]++
 		}
 		for _, tag := range f.Tags {
 			tagCounts[tag]++

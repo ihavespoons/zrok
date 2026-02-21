@@ -136,6 +136,9 @@ Spawn multiple analysis agents in a SINGLE message with multiple Task tool calls
 | logging-agent | Audit trails, sensitive data | Production apps |
 | dependencies-agent | Outdated deps, vulnerabilities | All projects |
 | references-agent | External URLs, hardcoded paths | Web apps |
+| injection-agent | SQL/command/template injection | Always for web apps |
+| config-agent | Debug modes, default creds, CORS, headers | Always |
+| ssrf-agent | SSRF, URL manipulation, DNS rebinding | When HTTP client libraries detected |
 
 ### Subagent Prompt Template
 
@@ -274,9 +277,34 @@ Task tool:
 
 ---
 
+## Phase 4.5: Cross-Validation (Optional but Recommended)
+
+After the validation-agent completes, perform cross-validation for HIGH and CRITICAL findings:
+
+1. **For each HIGH/CRITICAL finding**, search memories for contradicting evidence from other agents:
+   ```bash
+   zrok memory search "<keyword from finding>"
+   ```
+
+2. **Flag conflicts** — if one agent found an issue but another agent's memory suggests a compensating control exists, flag the finding for priority review.
+
+3. **Create cross_validation_summary memory**:
+   ```bash
+   zrok memory write cross_validation_summary --type context --content "
+   Findings cross-validated: N
+   Conflicts found: N
+   Findings with contradicting evidence: FIND-XXX, FIND-YYY
+   Findings confirmed by multiple agents: FIND-ZZZ
+   "
+   ```
+
+This step reduces false positives by leveraging the fact that different agents may have discovered compensating controls that the finding's original agent missed.
+
+---
+
 ## Phase 5: Spawn Review Agents (Per-Finding Deep Validation)
 
-After validation-agent completes, spawn a **dedicated review-agent for each high-severity finding** that needs deep investigation.
+After validation (and optional cross-validation) completes, spawn a **dedicated review-agent for each high-severity finding** that needs deep investigation.
 
 ### Key Distinction from Validation
 
@@ -436,6 +464,26 @@ zrok finding export --format json -o report.json       # Machine-readable
 8. **Deep review for high severity** - Always spawn review-agents for high/critical findings
 9. **Share context via memories** - Use `zrok memory write` to share discoveries between agents
 10. **Read memories first** - Agents should read context memories before starting analysis
+
+## Error Handling
+
+When agents fail or produce unexpected results:
+
+- **No findings produced** - Check if memories were created. If memories exist, the agent ran but genuinely found nothing. If no memories either, the agent likely crashed — re-run it.
+- **Excessive findings (>50)** - The agent likely lost focus or encountered prompt injection in the codebase. Re-run with narrower scope (e.g., specific directories or file patterns).
+- **Agent timeout** - Use hierarchical recovery: other agents' results remain valid. Re-run only the failed agent, optionally with a smaller scope.
+- **Contradictory findings** - Cross-validation (Phase 4.5) catches these. If two agents disagree, the validation-agent should investigate and resolve.
+
+## CI/CD Security Warning
+
+When using zrok in CI/CD pipelines (e.g., PR-triggered reviews):
+
+**PR descriptions and commit messages are attacker-controlled input.** Never include PR metadata (title, description, author comments) directly in agent prompts. An attacker could craft a PR description containing prompt injection that hijacks the review agent.
+
+Safe approach:
+- Only pass file paths and diff content to agents
+- Use `zrok onboard --static` to avoid including PR metadata
+- Filter findings to changed files using `--diff` flag
 
 ---
 

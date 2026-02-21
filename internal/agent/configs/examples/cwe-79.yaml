@@ -1,0 +1,16 @@
+cwe: CWE-79
+name: Cross-site Scripting (XSS)
+examples:
+  - language: go
+    vulnerable: |
+      fmt.Fprintf(w, "<h1>Welcome %s</h1>", r.URL.Query().Get("name"))
+    patched: |
+      name := html.EscapeString(r.URL.Query().Get("name"))
+      fmt.Fprintf(w, "<h1>Welcome %s</h1>", name)
+    explanation: "Raw user input in HTML response vs html.EscapeString encoding"
+  - language: javascript
+    vulnerable: |
+      element.innerHTML = '<span>' + userInput + '</span>';
+    patched: |
+      element.textContent = userInput;
+    explanation: "innerHTML with user input vs textContent which auto-escapes"

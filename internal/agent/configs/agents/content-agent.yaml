@@ -9,6 +9,35 @@ specialization:
     - file-operations
     - encoding
     - serialization
+cwe_checklist:
+  - id: CWE-79
+    name: Cross-site Scripting (XSS)
+    detection_hints:
+      - "User input rendered in HTML without encoding"
+      - "Dynamic content inserted into DOM without sanitization"
+    flow_patterns:
+      - "SOURCE: user input -> GUARD: output encoding -> SINK: HTML response/DOM insertion"
+  - id: CWE-116
+    name: Improper Encoding or Escaping of Output
+    detection_hints:
+      - "Output written to different context without appropriate encoding"
+      - "Mixed encoding schemes across output boundaries"
+    flow_patterns:
+      - "SOURCE: internal data -> GUARD: context-appropriate encoding -> SINK: output channel"
+  - id: CWE-434
+    name: Unrestricted Upload of File with Dangerous Type
+    detection_hints:
+      - "File upload without content-type validation"
+      - "Relying only on file extension for type checking"
+    flow_patterns:
+      - "SOURCE: file upload -> GUARD: type/content validation -> SINK: file storage/execution"
+  - id: CWE-611
+    name: Improper Restriction of XML External Entity Reference
+    detection_hints:
+      - "XML parsing with external entity resolution enabled"
+      - "User-controlled XML input parsed without disabling DTDs"
+    flow_patterns:
+      - "SOURCE: user-supplied XML -> GUARD: parser config (disable DTD) -> SINK: XML parser"
 tools_allowed:
   - read
   - search
@@ -90,6 +119,15 @@ prompt_template: |
   ## Available Tools
   {{.ToolDescriptions}}
 
+  {{if .CWEChecklist}}
+  {{.CWEChecklist}}
+  {{end}}
+  {{if .FlowGuidance}}
+  {{.FlowGuidance}}
+  {{end}}
+  {{if .FewShotExamples}}
+  {{.FewShotExamples}}
+  {{end}}
   ## Analysis Approach
   1. Read api_endpoints memory to understand entry points
   2. Map data entry points (APIs, files, user input)

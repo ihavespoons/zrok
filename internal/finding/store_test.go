@@ -401,6 +401,103 @@ func TestStoreIDGeneration(t *testing.T) {
 	}
 }
 
+func TestStoreFlowTrace(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	store := NewStore(p)
+
+	f := &Finding{
+		Title:      "SQL Injection with Flow Trace",
+		Severity:   SeverityHigh,
+		Confidence: ConfidenceHigh,
+		CWE:        "CWE-89",
+		Location: Location{
+			File:      "src/handler.go",
+			LineStart: 42,
+		},
+		Description: "User input flows to SQL query",
+		FlowTrace: &FlowTrace{
+			Source: "handler.go:30 - r.URL.Query().Get(\"name\")",
+			Sink:   "db.go:55 - db.Query(query)",
+			Path: []string{
+				"handler.go:30 - URL parameter extraction",
+				"handler.go:35 - passed to buildQuery()",
+				"db.go:50 - string concatenation into SQL",
+			},
+			Guards:    []string{},
+			Unguarded: true,
+		},
+		ReviewedBy: []string{"validation-agent", "review-agent"},
+	}
+
+	err := store.Create(f)
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Read it back
+	loaded, err := store.Read(f.ID)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+
+	if loaded.FlowTrace == nil {
+		t.Fatal("FlowTrace not persisted")
+	}
+
+	if loaded.FlowTrace.Source != f.FlowTrace.Source {
+		t.Errorf("FlowTrace.Source mismatch: got %q", loaded.FlowTrace.Source)
+	}
+
+	if loaded.FlowTrace.Sink != f.FlowTrace.Sink {
+		t.Errorf("FlowTrace.Sink mismatch: got %q", loaded.FlowTrace.Sink)
+	}
+
+	if len(loaded.FlowTrace.Path) != 3 {
+		t.Errorf("expected 3 path steps, got %d", len(loaded.FlowTrace.Path))
+	}
+
+	if !loaded.FlowTrace.Unguarded {
+		t.Error("FlowTrace.Unguarded should be true")
+	}
+
+	if len(loaded.ReviewedBy) != 2 {
+		t.Errorf("expected 2 ReviewedBy entries, got %d", len(loaded.ReviewedBy))
+	}
+}
+
+func TestStoreStatsWithCreatedBy(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	store := NewStore(p)
+
+	findings := []*Finding{
+		{Title: "F1", Severity: SeverityHigh, Location: Location{File: "a.go", LineStart: 1}, CreatedBy: "security-agent"},
+		{Title: "F2", Severity: SeverityMedium, Location: Location{File: "b.go", LineStart: 1}, CreatedBy: "security-agent"},
+		{Title: "F3", Severity: SeverityLow, Location: Location{File: "c.go", LineStart: 1}, CreatedBy: "guards-agent"},
+	}
+
+	for _, f := range findings {
+		if err := store.Create(f); err != nil {
+			t.Fatalf("Create failed: %v", err)
+		}
+	}
+
+	stats, err := store.Stats()
+	if err != nil {
+		t.Fatalf("Stats failed: %v", err)
+	}
+
+	if stats.ByCreatedBy["security-agent"] != 2 {
+		t.Errorf("expected 2 security-agent findings, got %d", stats.ByCreatedBy["security-agent"])
+	}
+	if stats.ByCreatedBy["guards-agent"] != 1 {
+		t.Errorf("expected 1 guards-agent finding, got %d", stats.ByCreatedBy["guards-agent"])
+	}
+}
+
 func TestFindingTypes(t *testing.T) {
 	// Test severity validation
 	if !IsValidSeverity(SeverityCritical) {

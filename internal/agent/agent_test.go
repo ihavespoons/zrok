@@ -62,6 +62,9 @@ func TestGetBuiltinAgents(t *testing.T) {
 		"references-agent",
 		"security-agent",
 		"validation-agent",
+		"injection-agent",
+		"config-agent",
+		"ssrf-agent",
 	}
 
 	agentNames := make(map[string]bool)
@@ -447,6 +450,214 @@ func TestAgentConfigStructure(t *testing.T) {
 
 	if len(config.ToolsAllowed) != 4 {
 		t.Errorf("expected 4 tools, got %d", len(config.ToolsAllowed))
+	}
+}
+
+func TestBuildCWEChecklist(t *testing.T) {
+	config := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseAnalysis,
+		CWEChecklist: []CWEChecklistItem{
+			{
+				ID:             "CWE-89",
+				Name:           "SQL Injection",
+				DetectionHints: []string{"String concatenation in SQL"},
+				FlowPatterns:   []string{"SOURCE: HTTP param -> SINK: db.Query"},
+			},
+		},
+	}
+
+	result := buildCWEChecklist(config)
+	if result == "" {
+		t.Fatal("expected non-empty CWE checklist")
+	}
+	if !strings.Contains(result, "CWE-89") {
+		t.Error("expected CWE ID in output")
+	}
+	if !strings.Contains(result, "SQL Injection") {
+		t.Error("expected CWE name in output")
+	}
+	if !strings.Contains(result, "String concatenation in SQL") {
+		t.Error("expected detection hint in output")
+	}
+	if !strings.Contains(result, "SOURCE: HTTP param -> SINK: db.Query") {
+		t.Error("expected flow pattern in output")
+	}
+}
+
+func TestBuildCWEChecklistEmpty(t *testing.T) {
+	config := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseAnalysis,
+	}
+
+	result := buildCWEChecklist(config)
+	if result != "" {
+		t.Error("expected empty result for no CWE checklist")
+	}
+}
+
+func TestBuildFlowGuidance(t *testing.T) {
+	analysisConfig := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseAnalysis,
+	}
+
+	result := buildFlowGuidance(analysisConfig)
+	if result == "" {
+		t.Fatal("expected non-empty flow guidance for analysis phase")
+	}
+	if !strings.Contains(result, "Flow Analysis Protocol") {
+		t.Error("expected flow analysis protocol header")
+	}
+	if !strings.Contains(result, "SOURCE") {
+		t.Error("expected SOURCE in flow guidance")
+	}
+	if !strings.Contains(result, "SINK") {
+		t.Error("expected SINK in flow guidance")
+	}
+}
+
+func TestBuildFlowGuidanceNonAnalysis(t *testing.T) {
+	reconConfig := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseRecon,
+	}
+
+	result := buildFlowGuidance(reconConfig)
+	if result != "" {
+		t.Error("expected empty flow guidance for non-analysis phase")
+	}
+}
+
+func TestCWEChecklistInPrompt(t *testing.T) {
+	// Test that a builtin security agent has CWE checklist
+	agent := GetBuiltinAgent("security-agent")
+	if agent == nil {
+		t.Fatal("security-agent not found")
+	}
+
+	if len(agent.CWEChecklist) == 0 {
+		t.Error("security-agent should have CWE checklist entries")
+	}
+
+	// Verify CWE entries have required fields
+	for _, item := range agent.CWEChecklist {
+		if item.ID == "" {
+			t.Error("CWE item missing ID")
+		}
+		if item.Name == "" {
+			t.Error("CWE item missing Name")
+		}
+	}
+}
+
+func TestTruncateMemory(t *testing.T) {
+	// Short content — no truncation
+	short := "hello world"
+	result := truncateMemory(short, 100, "test")
+	if result != short {
+		t.Errorf("expected no truncation, got %q", result)
+	}
+
+	// Exact boundary — no truncation
+	exact := strings.Repeat("a", 100)
+	result = truncateMemory(exact, 100, "test")
+	if result != exact {
+		t.Errorf("expected no truncation at exact boundary, got length %d", len(result))
+	}
+
+	// Over boundary — should truncate
+	long := strings.Repeat("x", 5000)
+	result = truncateMemory(long, 4096, "my_memory")
+	if len(result) > 4096 {
+		t.Errorf("truncated result too long: %d bytes", len(result))
+	}
+	expectedMarker := "[... truncated — full content: zrok memory read my_memory]"
+	if !strings.Contains(result, expectedMarker) {
+		t.Error("truncated result missing truncation marker")
+	}
+	if !strings.HasPrefix(result, "xxx") {
+		t.Error("truncated result should start with original content")
+	}
+}
+
+func TestBuildPromptDataMemoryTruncation(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	memStore := memory.NewStore(p)
+
+	// Create a memory larger than DefaultMaxMemoryBytes
+	largeContent := strings.Repeat("A", DefaultMaxMemoryBytes+1000)
+	mem := &memory.Memory{
+		Name:    "big_memory",
+		Type:    memory.MemoryTypeContext,
+		Content: largeContent,
+	}
+	_ = memStore.Create(mem)
+
+	generator := NewPromptGenerator(p, memStore)
+
+	config := &AgentConfig{
+		Name:            "test-agent",
+		Phase:           PhaseAnalysis,
+		ContextMemories: []string{"big_memory"},
+		PromptTemplate:  "{{range $k, $v := .Memories}}{{$v}}{{end}}",
+	}
+
+	prompt, err := generator.Generate(config)
+	if err != nil {
+		t.Fatalf("Generate failed: %v", err)
+	}
+
+	if strings.Contains(prompt, largeContent) {
+		t.Error("prompt should not contain the full large memory")
+	}
+
+	expectedMarker := "zrok memory read big_memory"
+	if !strings.Contains(prompt, expectedMarker) {
+		t.Error("prompt should contain truncation marker referencing memory name")
+	}
+}
+
+func TestBuildFewShotExamplesLimit(t *testing.T) {
+	// Build a config with many CWEs that have examples
+	config := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseAnalysis,
+		CWEChecklist: []CWEChecklistItem{
+			{ID: "CWE-89", Name: "SQL Injection"},
+			{ID: "CWE-79", Name: "XSS"},
+			{ID: "CWE-78", Name: "OS Command Injection"},
+			{ID: "CWE-287", Name: "Improper Authentication"},
+			{ID: "CWE-918", Name: "SSRF"},
+			{ID: "CWE-20", Name: "Improper Input Validation"},
+		},
+	}
+
+	result := buildFewShotExamples(config)
+	if result == "" {
+		t.Fatal("expected non-empty examples")
+	}
+
+	// Count the number of example headers (### CWE-...)
+	count := strings.Count(result, "### CWE-")
+	if count > DefaultMaxExamples {
+		t.Errorf("expected at most %d examples, got %d", DefaultMaxExamples, count)
+	}
+
+	// Verify round-robin: with 6 CWEs and limit 3, we should get examples from 3 different CWEs
+	seenCWEs := make(map[string]bool)
+	for _, line := range strings.Split(result, "\n") {
+		if strings.HasPrefix(line, "### CWE-") {
+			parts := strings.SplitN(line, ":", 2)
+			cweID := strings.TrimPrefix(parts[0], "### ")
+			seenCWEs[cweID] = true
+		}
+	}
+	if len(seenCWEs) < DefaultMaxExamples {
+		t.Errorf("expected examples from %d different CWEs (round-robin), got %d", DefaultMaxExamples, len(seenCWEs))
 	}
 }
 

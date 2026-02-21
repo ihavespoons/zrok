@@ -309,18 +309,18 @@ func (o *Onboarder) generateInitialMemories(config *ProjectConfig) []MemoryToCre
 
 	// Project overview memory
 	var overview strings.Builder
-	overview.WriteString(fmt.Sprintf("# Project: %s\n\n", config.Name))
+	fmt.Fprintf(&overview, "# Project: %s\n\n", config.Name)
 	if config.Description != "" {
-		overview.WriteString(fmt.Sprintf("## Description\n%s\n\n", config.Description))
+		fmt.Fprintf(&overview, "## Description\n%s\n\n", config.Description)
 	}
 	overview.WriteString("## Tech Stack\n")
 	for _, lang := range config.TechStack.Languages {
-		overview.WriteString(fmt.Sprintf("- %s", lang.Name))
+		fmt.Fprintf(&overview, "- %s", lang.Name)
 		if lang.Version != "" {
-			overview.WriteString(fmt.Sprintf(" (%s)", lang.Version))
+			fmt.Fprintf(&overview, " (%s)", lang.Version)
 		}
 		if len(lang.Frameworks) > 0 {
-			overview.WriteString(fmt.Sprintf(": %s", strings.Join(lang.Frameworks, ", ")))
+			fmt.Fprintf(&overview, ": %s", strings.Join(lang.Frameworks, ", "))
 		}
 		overview.WriteString("\n")
 	}
