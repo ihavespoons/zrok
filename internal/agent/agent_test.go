@@ -552,6 +552,115 @@ func TestCWEChecklistInPrompt(t *testing.T) {
 	}
 }
 
+func TestTruncateMemory(t *testing.T) {
+	// Short content — no truncation
+	short := "hello world"
+	result := truncateMemory(short, 100, "test")
+	if result != short {
+		t.Errorf("expected no truncation, got %q", result)
+	}
+
+	// Exact boundary — no truncation
+	exact := strings.Repeat("a", 100)
+	result = truncateMemory(exact, 100, "test")
+	if result != exact {
+		t.Errorf("expected no truncation at exact boundary, got length %d", len(result))
+	}
+
+	// Over boundary — should truncate
+	long := strings.Repeat("x", 5000)
+	result = truncateMemory(long, 4096, "my_memory")
+	if len(result) > 4096 {
+		t.Errorf("truncated result too long: %d bytes", len(result))
+	}
+	expectedMarker := "[... truncated — full content: zrok memory read my_memory]"
+	if !strings.Contains(result, expectedMarker) {
+		t.Error("truncated result missing truncation marker")
+	}
+	if !strings.HasPrefix(result, "xxx") {
+		t.Error("truncated result should start with original content")
+	}
+}
+
+func TestBuildPromptDataMemoryTruncation(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	memStore := memory.NewStore(p)
+
+	// Create a memory larger than DefaultMaxMemoryBytes
+	largeContent := strings.Repeat("A", DefaultMaxMemoryBytes+1000)
+	mem := &memory.Memory{
+		Name:    "big_memory",
+		Type:    memory.MemoryTypeContext,
+		Content: largeContent,
+	}
+	_ = memStore.Create(mem)
+
+	generator := NewPromptGenerator(p, memStore)
+
+	config := &AgentConfig{
+		Name:            "test-agent",
+		Phase:           PhaseAnalysis,
+		ContextMemories: []string{"big_memory"},
+		PromptTemplate:  "{{range $k, $v := .Memories}}{{$v}}{{end}}",
+	}
+
+	prompt, err := generator.Generate(config)
+	if err != nil {
+		t.Fatalf("Generate failed: %v", err)
+	}
+
+	if strings.Contains(prompt, largeContent) {
+		t.Error("prompt should not contain the full large memory")
+	}
+
+	expectedMarker := "zrok memory read big_memory"
+	if !strings.Contains(prompt, expectedMarker) {
+		t.Error("prompt should contain truncation marker referencing memory name")
+	}
+}
+
+func TestBuildFewShotExamplesLimit(t *testing.T) {
+	// Build a config with many CWEs that have examples
+	config := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseAnalysis,
+		CWEChecklist: []CWEChecklistItem{
+			{ID: "CWE-89", Name: "SQL Injection"},
+			{ID: "CWE-79", Name: "XSS"},
+			{ID: "CWE-78", Name: "OS Command Injection"},
+			{ID: "CWE-287", Name: "Improper Authentication"},
+			{ID: "CWE-918", Name: "SSRF"},
+			{ID: "CWE-20", Name: "Improper Input Validation"},
+		},
+	}
+
+	result := buildFewShotExamples(config)
+	if result == "" {
+		t.Fatal("expected non-empty examples")
+	}
+
+	// Count the number of example headers (### CWE-...)
+	count := strings.Count(result, "### CWE-")
+	if count > DefaultMaxExamples {
+		t.Errorf("expected at most %d examples, got %d", DefaultMaxExamples, count)
+	}
+
+	// Verify round-robin: with 6 CWEs and limit 3, we should get examples from 3 different CWEs
+	seenCWEs := make(map[string]bool)
+	for _, line := range strings.Split(result, "\n") {
+		if strings.HasPrefix(line, "### CWE-") {
+			parts := strings.SplitN(line, ":", 2)
+			cweID := strings.TrimPrefix(parts[0], "### ")
+			seenCWEs[cweID] = true
+		}
+	}
+	if len(seenCWEs) < DefaultMaxExamples {
+		t.Errorf("expected examples from %d different CWEs (round-robin), got %d", DefaultMaxExamples, len(seenCWEs))
+	}
+}
+
 func TestPhaseConstants(t *testing.T) {
 	phases := []Phase{PhaseRecon, PhaseAnalysis, PhaseValidation, PhaseReporting}
 

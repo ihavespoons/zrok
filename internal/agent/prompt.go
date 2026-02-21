@@ -10,6 +10,31 @@ import (
 	"github.com/ihavespoons/zrok/internal/project"
 )
 
+const (
+	// DefaultMaxMemoryBytes is the maximum size of a single memory injection in bytes.
+	DefaultMaxMemoryBytes = 4096
+
+	// DefaultMaxExamples is the maximum number of few-shot examples per agent prompt.
+	DefaultMaxExamples = 3
+)
+
+// memoryTruncationMarker is appended when a memory is truncated.
+const memoryTruncationMarker = "\n\n[... truncated — full content: zrok memory read %s]"
+
+// truncateMemory truncates memory content to maxBytes, appending a truncation marker if needed.
+func truncateMemory(content string, maxBytes int, name string) string {
+	if len(content) <= maxBytes {
+		return content
+	}
+	marker := fmt.Sprintf(memoryTruncationMarker, name)
+	// Leave room for the marker
+	cutoff := maxBytes - len(marker)
+	if cutoff < 0 {
+		cutoff = 0
+	}
+	return content[:cutoff] + marker
+}
+
 // PromptData contains data for template rendering
 type PromptData struct {
 	AgentName        string
@@ -99,7 +124,7 @@ func (g *PromptGenerator) buildPromptData(config *AgentConfig) *PromptData {
 		for _, memName := range config.ContextMemories {
 			mem, err := g.memoryStore.ReadByName(memName)
 			if err == nil {
-				data.Memories[memName] = mem.Content
+				data.Memories[memName] = truncateMemory(mem.Content, DefaultMaxMemoryBytes, memName)
 			}
 		}
 	}
@@ -330,7 +355,10 @@ Only report UNGUARDED or PARTIALLY-GUARDED paths as findings.
 `
 }
 
-// buildFewShotExamples returns few-shot examples for the agent's CWEs
+// buildFewShotExamples returns few-shot examples for the agent's CWEs.
+// Examples are capped at DefaultMaxExamples using round-robin selection across
+// CWEs so that agents with many CWEs still get coverage across different
+// vulnerability types.
 func buildFewShotExamples(config *AgentConfig) string {
 	if len(config.CWEChecklist) == 0 {
 		return ""
@@ -341,16 +369,43 @@ func buildFewShotExamples(config *AgentConfig) string {
 		cweIDs = append(cweIDs, item.ID)
 	}
 
-	examples := GetExamplesForCWEs(cweIDs)
-	if len(examples) == 0 {
+	// Collect examples grouped by CWE for round-robin selection
+	examplesByCWE := make([][]Example, 0, len(cweIDs))
+	for _, id := range cweIDs {
+		if exs := GetExamplesForCWEs([]string{id}); len(exs) > 0 {
+			examplesByCWE = append(examplesByCWE, exs)
+		}
+	}
+
+	if len(examplesByCWE) == 0 {
 		return ""
+	}
+
+	// Round-robin: pick one example from each CWE in turn until we hit the cap
+	var selected []Example
+	indices := make([]int, len(examplesByCWE))
+	for len(selected) < DefaultMaxExamples {
+		added := false
+		for bucket := range examplesByCWE {
+			if len(selected) >= DefaultMaxExamples {
+				break
+			}
+			if indices[bucket] < len(examplesByCWE[bucket]) {
+				selected = append(selected, examplesByCWE[bucket][indices[bucket]])
+				indices[bucket]++
+				added = true
+			}
+		}
+		if !added {
+			break // all buckets exhausted
+		}
 	}
 
 	var b strings.Builder
 	b.WriteString("## Contrastive Examples\n\n")
 	b.WriteString("Study these vulnerable vs. patched code pairs to calibrate your analysis:\n\n")
 
-	for _, ex := range examples {
+	for _, ex := range selected {
 		b.WriteString(fmt.Sprintf("### %s: %s (%s)\n", ex.CWE, ex.Name, ex.Language))
 		b.WriteString("**Vulnerable:**\n```\n")
 		b.WriteString(ex.Vulnerable)
