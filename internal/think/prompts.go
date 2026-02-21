@@ -350,19 +350,19 @@ For each hypothesis, consider:
 // Validate generates a prompt to validate a finding
 func (t *Thinker) Validate(f *finding.Finding) *ThinkingResult {
 	var findingDesc strings.Builder
-	findingDesc.WriteString(fmt.Sprintf("**ID:** %s\n", f.ID))
-	findingDesc.WriteString(fmt.Sprintf("**Title:** %s\n", f.Title))
-	findingDesc.WriteString(fmt.Sprintf("**Severity:** %s\n", f.Severity))
-	findingDesc.WriteString(fmt.Sprintf("**CWE:** %s\n", f.CWE))
-	findingDesc.WriteString(fmt.Sprintf("**Location:** %s:%d\n", f.Location.File, f.Location.LineStart))
-	findingDesc.WriteString(fmt.Sprintf("**Description:** %s\n", f.Description))
+	fmt.Fprintf(&findingDesc, "**ID:** %s\n", f.ID)
+	fmt.Fprintf(&findingDesc, "**Title:** %s\n", f.Title)
+	fmt.Fprintf(&findingDesc, "**Severity:** %s\n", f.Severity)
+	fmt.Fprintf(&findingDesc, "**CWE:** %s\n", f.CWE)
+	fmt.Fprintf(&findingDesc, "**Location:** %s:%d\n", f.Location.File, f.Location.LineStart)
+	fmt.Fprintf(&findingDesc, "**Description:** %s\n", f.Description)
 	if f.Location.Snippet != "" {
-		findingDesc.WriteString(fmt.Sprintf("\n**Code:**\n```\n%s\n```\n", f.Location.Snippet))
+		fmt.Fprintf(&findingDesc, "\n**Code:**\n```\n%s\n```\n", f.Location.Snippet)
 	}
 	if len(f.Evidence) > 0 {
 		findingDesc.WriteString("\n**Evidence:**\n")
 		for _, ev := range f.Evidence {
-			findingDesc.WriteString(fmt.Sprintf("- %s: %s\n", ev.Type, ev.Description))
+			fmt.Fprintf(&findingDesc, "- %s: %s\n", ev.Type, ev.Description)
 		}
 	}
 
