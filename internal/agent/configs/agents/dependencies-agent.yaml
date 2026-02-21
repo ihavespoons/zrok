@@ -9,6 +9,21 @@ specialization:
     - patching
     - version-pinning
     - transitive-dependencies
+cwe_checklist:
+  - id: CWE-1104
+    name: Use of Unmaintained Third Party Components
+    detection_hints:
+      - "Dependencies with no updates in 2+ years"
+      - "Dependencies with known unpatched vulnerabilities"
+    flow_patterns:
+      - "SOURCE: dependency manifest -> GUARD: version/maintenance check -> SINK: application runtime"
+  - id: CWE-829
+    name: Inclusion of Functionality from Untrusted Control Sphere
+    detection_hints:
+      - "Dependencies loaded from untrusted or unverified sources"
+      - "Missing integrity checks (checksums, signatures) on dependencies"
+    flow_patterns:
+      - "SOURCE: package registry -> GUARD: integrity verification -> SINK: build/runtime"
 tools_allowed:
   - read
   - search
@@ -90,6 +105,15 @@ prompt_template: |
   ## Available Tools
   {{.ToolDescriptions}}
 
+  {{if .CWEChecklist}}
+  {{.CWEChecklist}}
+  {{end}}
+  {{if .FlowGuidance}}
+  {{.FlowGuidance}}
+  {{end}}
+  {{if .FewShotExamples}}
+  {{.FewShotExamples}}
+  {{end}}
   ## Files to Review
   - go.mod, go.sum (Go)
   - package.json, package-lock.json, yarn.lock (Node.js)

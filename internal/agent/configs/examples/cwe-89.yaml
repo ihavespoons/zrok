@@ -1,0 +1,22 @@
+cwe: CWE-89
+name: SQL Injection
+examples:
+  - language: go
+    vulnerable: |
+      query := fmt.Sprintf("SELECT * FROM users WHERE name = '%s'", userInput)
+      rows, err := db.Query(query)
+    patched: |
+      rows, err := db.Query("SELECT * FROM users WHERE name = $1", userInput)
+    explanation: "User input concatenated into SQL vs parameterized query"
+  - language: python
+    vulnerable: |
+      cursor.execute("SELECT * FROM users WHERE name = '%s'" % user_input)
+    patched: |
+      cursor.execute("SELECT * FROM users WHERE name = %s", (user_input,))
+    explanation: "String formatting in SQL vs parameterized query"
+  - language: javascript
+    vulnerable: |
+      const result = await db.query(`SELECT * FROM users WHERE name = '${userInput}'`);
+    patched: |
+      const result = await db.query('SELECT * FROM users WHERE name = $1', [userInput]);
+    explanation: "Template literal interpolation in SQL vs parameterized query"

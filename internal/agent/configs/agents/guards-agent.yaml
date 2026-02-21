@@ -9,6 +9,42 @@ specialization:
     - declarations
     - early-returns
     - error-handling
+cwe_checklist:
+  - id: CWE-20
+    name: Improper Input Validation
+    detection_hints:
+      - "Missing validation on user-supplied data before processing"
+      - "Incomplete validation that misses edge cases (empty, negative, overflow)"
+    flow_patterns:
+      - "SOURCE: user input -> GUARD: validation check -> SINK: business logic"
+  - id: CWE-252
+    name: Unchecked Return Value
+    detection_hints:
+      - "Ignored error returns from system calls or library functions"
+      - "Missing nil/null checks on function return values"
+    flow_patterns:
+      - "SOURCE: function call -> GUARD: return value check -> SINK: subsequent use"
+  - id: CWE-754
+    name: Improper Check for Exceptional Conditions
+    detection_hints:
+      - "Missing checks for unusual or exceptional input conditions"
+      - "Incomplete error handling in critical code paths"
+    flow_patterns:
+      - "SOURCE: external input -> GUARD: exceptional condition check -> SINK: error handler"
+  - id: CWE-476
+    name: NULL Pointer Dereference
+    detection_hints:
+      - "Pointer or reference used without nil/null check"
+      - "Dereference after conditional that may not guarantee non-null"
+    flow_patterns:
+      - "SOURCE: nullable value -> GUARD: nil check -> SINK: dereference/method call"
+  - id: CWE-1284
+    name: Improper Validation of Specified Quantity in Input
+    detection_hints:
+      - "Missing bounds checking on numeric input (array index, size, count)"
+      - "Integer overflow or underflow in calculations from user input"
+    flow_patterns:
+      - "SOURCE: numeric input -> GUARD: range/bounds check -> SINK: array access or allocation"
 tools_allowed:
   - read
   - search
@@ -88,6 +124,15 @@ prompt_template: |
   ## Available Tools
   {{.ToolDescriptions}}
 
+  {{if .CWEChecklist}}
+  {{.CWEChecklist}}
+  {{end}}
+  {{if .FlowGuidance}}
+  {{.FlowGuidance}}
+  {{end}}
+  {{if .FewShotExamples}}
+  {{.FewShotExamples}}
+  {{end}}
   ## Analysis Patterns
 
   ### Good Guard Pattern (Go):

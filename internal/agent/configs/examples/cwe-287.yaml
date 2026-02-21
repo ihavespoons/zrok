@@ -1,0 +1,31 @@
+cwe: CWE-287
+name: Improper Authentication
+examples:
+  - language: go
+    vulnerable: |
+      func handleAdmin(w http.ResponseWriter, r *http.Request) {
+          // No authentication check
+          adminDashboard(w, r)
+      }
+    patched: |
+      func handleAdmin(w http.ResponseWriter, r *http.Request) {
+          user, err := authenticateRequest(r)
+          if err != nil || !user.IsAdmin {
+              http.Error(w, "Forbidden", http.StatusForbidden)
+              return
+          }
+          adminDashboard(w, r)
+      }
+    explanation: "Missing authentication check on sensitive endpoint vs explicit auth verification"
+  - language: python
+    vulnerable: |
+      @app.route('/admin')
+      def admin_panel():
+          return render_template('admin.html')
+    patched: |
+      @app.route('/admin')
+      @login_required
+      @admin_required
+      def admin_panel():
+          return render_template('admin.html')
+    explanation: "Unprotected admin route vs decorator-based auth and role checks"

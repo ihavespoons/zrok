@@ -28,15 +28,24 @@ type Specialization struct {
 	TechStack            []string `yaml:"tech_stack,omitempty" json:"tech_stack,omitempty"`
 }
 
+// CWEChecklistItem represents a CWE entry with detection guidance
+type CWEChecklistItem struct {
+	ID             string   `yaml:"id" json:"id"`
+	Name           string   `yaml:"name" json:"name"`
+	DetectionHints []string `yaml:"detection_hints,omitempty" json:"detection_hints,omitempty"`
+	FlowPatterns   []string `yaml:"flow_patterns,omitempty" json:"flow_patterns,omitempty"`
+}
+
 // AgentConfig represents an agent configuration
 type AgentConfig struct {
-	Name            string         `yaml:"name" json:"name"`
-	Description     string         `yaml:"description" json:"description"`
-	Phase           Phase          `yaml:"phase" json:"phase"`
-	Specialization  Specialization `yaml:"specialization,omitempty" json:"specialization,omitempty"`
-	ToolsAllowed    []string       `yaml:"tools_allowed" json:"tools_allowed"`
-	PromptTemplate  string         `yaml:"prompt_template" json:"prompt_template"`
-	ContextMemories []string       `yaml:"context_memories,omitempty" json:"context_memories,omitempty"`
+	Name            string             `yaml:"name" json:"name"`
+	Description     string             `yaml:"description" json:"description"`
+	Phase           Phase              `yaml:"phase" json:"phase"`
+	Specialization  Specialization     `yaml:"specialization,omitempty" json:"specialization,omitempty"`
+	CWEChecklist    []CWEChecklistItem `yaml:"cwe_checklist,omitempty" json:"cwe_checklist,omitempty"`
+	ToolsAllowed    []string           `yaml:"tools_allowed" json:"tools_allowed"`
+	PromptTemplate  string             `yaml:"prompt_template" json:"prompt_template"`
+	ContextMemories []string           `yaml:"context_memories,omitempty" json:"context_memories,omitempty"`
 }
 
 // AgentList contains a list of agents

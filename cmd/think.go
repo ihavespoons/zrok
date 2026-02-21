@@ -22,7 +22,8 @@ Available verbs:
   done       - Assess if task is complete
   next       - Suggest next steps
   hypothesis - Generate security hypotheses
-  validate   - Validate a specific finding`,
+  validate   - Validate a specific finding
+  dataflow   - Trace data flow from source to sink`,
 }
 
 // thinkCollectedCmd represents the think collected command
@@ -170,6 +171,31 @@ var thinkValidateCmd = &cobra.Command{
 	},
 }
 
+// thinkDataflowCmd represents the think dataflow command
+var thinkDataflowCmd = &cobra.Command{
+	Use:   "dataflow",
+	Short: "Trace data flow from source to sink",
+	Long:  `Generate a structured prompt for tracing data flow from an untrusted source to a security-sensitive sink.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		p, err := project.EnsureActive()
+		if err != nil {
+			exitError("%v", err)
+		}
+
+		source, _ := cmd.Flags().GetString("source")
+		sink, _ := cmd.Flags().GetString("sink")
+		context := ""
+		if len(args) > 0 {
+			context = strings.Join(args, " ")
+		}
+
+		thinker := think.NewThinker(p)
+		result := thinker.Dataflow(source, sink, context)
+
+		outputThinkResult(result)
+	},
+}
+
 func outputThinkResult(result *think.ThinkingResult) {
 	if jsonOutput {
 		if err := outputJSON(result); err != nil {
@@ -188,4 +214,8 @@ func init() {
 	thinkCmd.AddCommand(thinkNextCmd)
 	thinkCmd.AddCommand(thinkHypothesisCmd)
 	thinkCmd.AddCommand(thinkValidateCmd)
+	thinkCmd.AddCommand(thinkDataflowCmd)
+
+	thinkDataflowCmd.Flags().String("source", "", "Source of untrusted data (e.g., 'HTTP request body')")
+	thinkDataflowCmd.Flags().String("sink", "", "Security-sensitive sink (e.g., 'db.Query()')")
 }

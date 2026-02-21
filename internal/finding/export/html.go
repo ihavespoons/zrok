@@ -323,6 +323,42 @@ func (e *HTMLExporter) renderFinding(f finding.Finding) string {
 `)
 	}
 
+	// Flow Trace
+	if f.FlowTrace != nil {
+		b.WriteString(`                <div class="finding-section">
+                    <h4>Data Flow Trace</h4>
+                    <div class="location">
+`)
+		b.WriteString(fmt.Sprintf(`                        <strong>Source:</strong> %s<br>
+`, html.EscapeString(f.FlowTrace.Source)))
+		if len(f.FlowTrace.Path) > 0 {
+			b.WriteString(`                        <strong>Path:</strong><br>
+`)
+			for i, step := range f.FlowTrace.Path {
+				b.WriteString(fmt.Sprintf("                        %d. %s<br>\n", i+1, html.EscapeString(step)))
+			}
+		}
+		if len(f.FlowTrace.Guards) > 0 {
+			b.WriteString(`                        <strong>Guards:</strong><br>
+`)
+			for _, guard := range f.FlowTrace.Guards {
+				b.WriteString(fmt.Sprintf("                        - %s<br>\n", html.EscapeString(guard)))
+			}
+		}
+		b.WriteString(fmt.Sprintf(`                        <strong>Sink:</strong> %s<br>
+`, html.EscapeString(f.FlowTrace.Sink)))
+		if f.FlowTrace.Unguarded {
+			b.WriteString(`                        <strong>Verdict:</strong> <span style="color: var(--critical)">UNGUARDED</span><br>
+`)
+		} else {
+			b.WriteString(`                        <strong>Verdict:</strong> <span style="color: var(--low)">GUARDED</span><br>
+`)
+		}
+		b.WriteString(`                    </div>
+                </div>
+`)
+	}
+
 	// References
 	if len(f.References) > 0 {
 		b.WriteString(`                <div class="finding-section">

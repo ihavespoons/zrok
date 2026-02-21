@@ -49,12 +49,13 @@ type SarifReportingConfiguration struct {
 }
 
 type SarifResult struct {
-	RuleID    string           `json:"ruleId"`
-	RuleIndex int              `json:"ruleIndex,omitempty"`
-	Level     string           `json:"level"`
-	Message   SarifMessage     `json:"message"`
-	Locations []SarifLocation  `json:"locations,omitempty"`
-	Fixes     []SarifFix       `json:"fixes,omitempty"`
+	RuleID     string                 `json:"ruleId"`
+	RuleIndex  int                    `json:"ruleIndex,omitempty"`
+	Level      string                 `json:"level"`
+	Message    SarifMessage           `json:"message"`
+	Locations  []SarifLocation        `json:"locations,omitempty"`
+	CodeFlows  []SarifCodeFlow        `json:"codeFlows,omitempty"`
+	Fixes      []SarifFix             `json:"fixes,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
@@ -94,8 +95,21 @@ type SarifFix struct {
 }
 
 type SarifInvocation struct {
-	ExecutionSuccessful bool      `json:"executionSuccessful"`
-	EndTimeUtc          string    `json:"endTimeUtc,omitempty"`
+	ExecutionSuccessful bool   `json:"executionSuccessful"`
+	EndTimeUtc          string `json:"endTimeUtc,omitempty"`
+}
+
+type SarifCodeFlow struct {
+	ThreadFlows []SarifThreadFlow `json:"threadFlows"`
+}
+
+type SarifThreadFlow struct {
+	Locations []SarifThreadFlowLocation `json:"locations"`
+}
+
+type SarifThreadFlowLocation struct {
+	Location SarifLocation `json:"location"`
+	Message  *SarifMessage `json:"message,omitempty"`
 }
 
 // SARIFExporter exports findings to SARIF format
@@ -249,6 +263,60 @@ func (e *SARIFExporter) buildResult(f finding.Finding, ruleMap map[string]int) S
 			{
 				Description: SarifMessage{
 					Text: f.Remediation,
+				},
+			},
+		}
+	}
+
+	// Add code flow from FlowTrace
+	if f.FlowTrace != nil {
+		var flowLocs []SarifThreadFlowLocation
+
+		// Source
+		flowLocs = append(flowLocs, SarifThreadFlowLocation{
+			Location: SarifLocation{
+				PhysicalLocation: SarifPhysicalLocation{
+					ArtifactLocation: SarifArtifactLocation{
+						URI:       f.Location.File,
+						URIBaseID: "%SRCROOT%",
+					},
+				},
+			},
+			Message: &SarifMessage{Text: "Source: " + f.FlowTrace.Source},
+		})
+
+		// Path steps
+		for _, step := range f.FlowTrace.Path {
+			flowLocs = append(flowLocs, SarifThreadFlowLocation{
+				Location: SarifLocation{
+					PhysicalLocation: SarifPhysicalLocation{
+						ArtifactLocation: SarifArtifactLocation{
+							URI:       f.Location.File,
+							URIBaseID: "%SRCROOT%",
+						},
+					},
+				},
+				Message: &SarifMessage{Text: step},
+			})
+		}
+
+		// Sink
+		flowLocs = append(flowLocs, SarifThreadFlowLocation{
+			Location: SarifLocation{
+				PhysicalLocation: SarifPhysicalLocation{
+					ArtifactLocation: SarifArtifactLocation{
+						URI:       f.Location.File,
+						URIBaseID: "%SRCROOT%",
+					},
+				},
+			},
+			Message: &SarifMessage{Text: "Sink: " + f.FlowTrace.Sink},
+		})
+
+		result.CodeFlows = []SarifCodeFlow{
+			{
+				ThreadFlows: []SarifThreadFlow{
+					{Locations: flowLocs},
 				},
 			},
 		}

@@ -166,6 +166,31 @@ func (e *MarkdownExporter) renderFinding(f finding.Finding) string {
 		b.WriteString("\n")
 	}
 
+	// Flow Trace
+	if f.FlowTrace != nil {
+		b.WriteString("#### Data Flow Trace\n\n")
+		b.WriteString(fmt.Sprintf("**Source:** %s\n", f.FlowTrace.Source))
+		if len(f.FlowTrace.Path) > 0 {
+			b.WriteString("**Path:**\n")
+			for i, step := range f.FlowTrace.Path {
+				b.WriteString(fmt.Sprintf("%d. %s\n", i+1, step))
+			}
+		}
+		if len(f.FlowTrace.Guards) > 0 {
+			b.WriteString("**Guards:**\n")
+			for _, guard := range f.FlowTrace.Guards {
+				b.WriteString(fmt.Sprintf("- %s\n", guard))
+			}
+		}
+		b.WriteString(fmt.Sprintf("**Sink:** %s\n", f.FlowTrace.Sink))
+		if f.FlowTrace.Unguarded {
+			b.WriteString("**Verdict:** UNGUARDED\n")
+		} else {
+			b.WriteString("**Verdict:** GUARDED\n")
+		}
+		b.WriteString("\n")
+	}
+
 	// References
 	if len(f.References) > 0 {
 		b.WriteString("#### References\n\n")

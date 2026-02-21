@@ -25,6 +25,7 @@ const (
 	VerbNext       ThinkingVerb = "next"
 	VerbHypothesis ThinkingVerb = "hypothesis"
 	VerbValidate   ThinkingVerb = "validate"
+	VerbDataflow   ThinkingVerb = "dataflow"
 )
 
 // ThinkingResult contains the output of a thinking operation
@@ -418,6 +419,82 @@ Critically evaluate this security finding for accuracy and completeness.
 - **Recommended Status**: [open/confirmed/false_positive]`, findingDesc)
 }
 
+// Dataflow generates a structured source-to-sink data flow tracing prompt
+func (t *Thinker) Dataflow(source, sink, context string) *ThinkingResult {
+	data := map[string]string{
+		"Source":  source,
+		"Sink":    sink,
+		"Context": context,
+	}
+
+	prompt, err := executeTemplate("thinking-dataflow.tmpl", data)
+	if err != nil {
+		prompt = t.dataflowFallback(source, sink, context)
+	}
+
+	return &ThinkingResult{
+		Verb:   VerbDataflow,
+		Prompt: prompt,
+	}
+}
+
+func (t *Thinker) dataflowFallback(source, sink, context string) string {
+	contextSection := ""
+	if context != "" {
+		contextSection = fmt.Sprintf("\n### Additional Context:\n%s\n", context)
+	}
+
+	return fmt.Sprintf(`## Data Flow Analysis: Source to Sink
+
+Trace the data flow from source to sink and identify all guards along the path.
+
+### Source (untrusted data entry):
+%s
+
+### Sink (security-sensitive operation):
+%s
+%s
+### Tracing Protocol:
+
+**Step 1: Identify the Source**
+- Where does the untrusted data originate?
+- What is the data type and format?
+- Can the attacker fully control this input?
+
+**Step 2: Trace the Path**
+For each step along the path, document:
+- File and line number
+- What transformation occurs
+- Does the data type change?
+- Is the data stored and retrieved later? (second-order flows)
+
+**Step 3: Identify Guards**
+At each step, check for:
+- Input validation (type, format, length, range)
+- Sanitization (encoding, escaping, filtering)
+- Authorization checks (who can trigger this flow?)
+- Framework protections (auto-escaping, parameterization)
+
+**Step 4: Evaluate the Sink**
+- What security-sensitive operation does the data reach?
+- Does the sink have its own protections?
+- What is the impact if unguarded data reaches the sink?
+
+### Output Format:
+
+` + "```" + `
+SOURCE: [file:line] [description]
+  -> STEP: [file:line] [transformation]
+  -> GUARD: [file:line] [validation type] [effective: yes/no]
+  -> STEP: [file:line] [transformation]
+  -> SINK: [file:line] [operation]
+
+VERDICT: [unguarded | partially-guarded | fully-guarded]
+CONFIDENCE: [high | medium | low]
+REASONING: [why this verdict]
+` + "```", source, sink, contextSection)
+}
+
 // GetPrompt returns a thinking prompt for the given verb
 func (t *Thinker) GetPrompt(verb ThinkingVerb, args ...string) (*ThinkingResult, error) {
 	switch verb {
@@ -468,6 +545,21 @@ func (t *Thinker) GetPrompt(verb ThinkingVerb, args ...string) (*ThinkingResult,
 		}
 		return t.Hypothesis(context), nil
 
+	case VerbDataflow:
+		source := ""
+		sink := ""
+		context := ""
+		if len(args) > 0 {
+			source = args[0]
+		}
+		if len(args) > 1 {
+			sink = args[1]
+		}
+		if len(args) > 2 {
+			context = args[2]
+		}
+		return t.Dataflow(source, sink, context), nil
+
 	default:
 		return nil, fmt.Errorf("unknown thinking verb: %s", verb)
 	}
@@ -482,5 +574,6 @@ func ValidVerbs() []ThinkingVerb {
 		VerbNext,
 		VerbHypothesis,
 		VerbValidate,
+		VerbDataflow,
 	}
 }

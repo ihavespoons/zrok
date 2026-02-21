@@ -1,0 +1,17 @@
+cwe: CWE-78
+name: OS Command Injection
+examples:
+  - language: go
+    vulnerable: |
+      cmd := exec.Command("sh", "-c", "ping " + userInput)
+      output, err := cmd.Output()
+    patched: |
+      cmd := exec.Command("ping", "-c", "1", userInput)
+      output, err := cmd.Output()
+    explanation: "Shell interpolation of user input vs direct argument passing without shell"
+  - language: python
+    vulnerable: |
+      os.system("ping " + user_input)
+    patched: |
+      subprocess.run(["ping", "-c", "1", user_input], shell=False)
+    explanation: "os.system with string concatenation vs subprocess with argument list"

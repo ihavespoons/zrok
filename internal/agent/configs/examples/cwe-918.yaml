@@ -1,0 +1,40 @@
+cwe: CWE-918
+name: Server-Side Request Forgery (SSRF)
+examples:
+  - language: go
+    vulnerable: |
+      func fetchURL(w http.ResponseWriter, r *http.Request) {
+          url := r.URL.Query().Get("url")
+          resp, err := http.Get(url)
+          // ... forward response
+      }
+    patched: |
+      var allowedHosts = map[string]bool{"api.example.com": true}
+
+      func fetchURL(w http.ResponseWriter, r *http.Request) {
+          u, err := url.Parse(r.URL.Query().Get("url"))
+          if err != nil || !allowedHosts[u.Hostname()] {
+              http.Error(w, "Forbidden", http.StatusForbidden)
+              return
+          }
+          resp, err := http.Get(u.String())
+          // ... forward response
+      }
+    explanation: "Unrestricted URL fetch vs hostname allowlist validation"
+  - language: python
+    vulnerable: |
+      @app.route('/proxy')
+      def proxy():
+          url = request.args.get('url')
+          return requests.get(url).content
+    patched: |
+      ALLOWED_HOSTS = {'api.example.com', 'cdn.example.com'}
+
+      @app.route('/proxy')
+      def proxy():
+          url = request.args.get('url')
+          parsed = urllib.parse.urlparse(url)
+          if parsed.hostname not in ALLOWED_HOSTS:
+              abort(403)
+          return requests.get(url).content
+    explanation: "Open proxy vs hostname allowlist check"

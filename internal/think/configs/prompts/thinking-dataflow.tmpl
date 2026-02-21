@@ -1,0 +1,52 @@
+## Data Flow Analysis: Source to Sink
+
+Trace the data flow from source to sink and identify all guards along the path.
+
+### Source (untrusted data entry):
+{{.Source}}
+
+### Sink (security-sensitive operation):
+{{.Sink}}
+{{if .Context}}
+### Additional Context:
+{{.Context}}
+{{end}}
+### Tracing Protocol:
+
+**Step 1: Identify the Source**
+- Where does the untrusted data originate?
+- What is the data type and format?
+- Can the attacker fully control this input?
+
+**Step 2: Trace the Path**
+For each step along the path, document:
+- File and line number
+- What transformation occurs
+- Does the data type change?
+- Is the data stored and retrieved later? (second-order flows)
+
+**Step 3: Identify Guards**
+At each step, check for:
+- Input validation (type, format, length, range)
+- Sanitization (encoding, escaping, filtering)
+- Authorization checks (who can trigger this flow?)
+- Framework protections (auto-escaping, parameterization)
+
+**Step 4: Evaluate the Sink**
+- What security-sensitive operation does the data reach?
+- Does the sink have its own protections?
+- What is the impact if unguarded data reaches the sink?
+
+### Output Format:
+
+```
+SOURCE: [file:line] [description]
+  -> STEP: [file:line] [transformation]
+  -> GUARD: [file:line] [validation type] [effective: yes/no]
+  -> STEP: [file:line] [transformation]
+  -> SINK: [file:line] [operation]
+
+VERDICT: [unguarded | partially-guarded | fully-guarded]
+CONFIDENCE: [high | medium | low]
+REASONING: [why this verdict]
+```

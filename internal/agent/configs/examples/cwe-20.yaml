@@ -1,0 +1,34 @@
+cwe: CWE-20
+name: Improper Input Validation
+examples:
+  - language: go
+    vulnerable: |
+      func setAge(w http.ResponseWriter, r *http.Request) {
+          age, _ := strconv.Atoi(r.FormValue("age"))
+          user.Age = age
+      }
+    patched: |
+      func setAge(w http.ResponseWriter, r *http.Request) {
+          age, err := strconv.Atoi(r.FormValue("age"))
+          if err != nil || age < 0 || age > 150 {
+              http.Error(w, "Invalid age", http.StatusBadRequest)
+              return
+          }
+          user.Age = age
+      }
+    explanation: "Ignoring parse error and missing range validation vs complete validation"
+  - language: javascript
+    vulnerable: |
+      app.post('/transfer', (req, res) => {
+        const amount = req.body.amount;
+        transfer(req.user, req.body.to, amount);
+      });
+    patched: |
+      app.post('/transfer', (req, res) => {
+        const amount = Number(req.body.amount);
+        if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_TRANSFER) {
+          return res.status(400).json({ error: 'Invalid amount' });
+        }
+        transfer(req.user, req.body.to, amount);
+      });
+    explanation: "No validation on financial amount vs type, range, and bounds checking"

@@ -13,6 +13,49 @@ specialization:
     - "A01:2021"
     - "A02:2021"
     - "A07:2021"
+cwe_checklist:
+  - id: CWE-287
+    name: Improper Authentication
+    detection_hints:
+      - "Authentication bypass through missing checks on alternative paths"
+      - "Default credentials or weak password policies"
+    flow_patterns:
+      - "SOURCE: login request -> GUARD: auth check -> SINK: session creation"
+  - id: CWE-862
+    name: Missing Authorization
+    detection_hints:
+      - "Direct object reference without ownership verification"
+      - "Missing permission checks on API endpoints"
+    flow_patterns:
+      - "SOURCE: user request with resource ID -> GUARD: authz check -> SINK: data access"
+  - id: CWE-327
+    name: Use of Broken Crypto Algorithm
+    detection_hints:
+      - "Use of MD5, SHA1, DES, or RC4 for security purposes"
+      - "Custom cryptographic implementations"
+    flow_patterns:
+      - "SOURCE: sensitive data -> GUARD: algorithm choice -> SINK: encrypted storage/transmission"
+  - id: CWE-798
+    name: Use of Hard-coded Credentials
+    detection_hints:
+      - "Passwords, tokens, or API keys in source code"
+      - "Connection strings with embedded credentials"
+    flow_patterns:
+      - "SOURCE: hardcoded string -> SINK: authentication call or config"
+  - id: CWE-613
+    name: Insufficient Session Expiration
+    detection_hints:
+      - "Sessions that never expire or have excessively long timeouts"
+      - "Missing session invalidation on logout or password change"
+    flow_patterns:
+      - "SOURCE: session creation -> GUARD: expiry check -> SINK: session validation"
+  - id: CWE-916
+    name: Use of Password Hash With Insufficient Effort
+    detection_hints:
+      - "Use of fast hashes (MD5, SHA) for password storage"
+      - "Missing salt or insufficient iteration count"
+    flow_patterns:
+      - "SOURCE: user password -> GUARD: hashing algorithm -> SINK: password storage"
 tools_allowed:
   - read
   - search
@@ -105,6 +148,15 @@ prompt_template: |
   ## Available Tools
   {{.ToolDescriptions}}
 
+  {{if .CWEChecklist}}
+  {{.CWEChecklist}}
+  {{end}}
+  {{if .FlowGuidance}}
+  {{.FlowGuidance}}
+  {{end}}
+  {{if .FewShotExamples}}
+  {{.FewShotExamples}}
+  {{end}}
   ## Analysis Approach
   1. Read auth_patterns and api_endpoints memories first
   2. Map authentication boundaries

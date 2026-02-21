@@ -62,6 +62,9 @@ func TestGetBuiltinAgents(t *testing.T) {
 		"references-agent",
 		"security-agent",
 		"validation-agent",
+		"injection-agent",
+		"config-agent",
+		"ssrf-agent",
 	}
 
 	agentNames := make(map[string]bool)
@@ -447,6 +450,105 @@ func TestAgentConfigStructure(t *testing.T) {
 
 	if len(config.ToolsAllowed) != 4 {
 		t.Errorf("expected 4 tools, got %d", len(config.ToolsAllowed))
+	}
+}
+
+func TestBuildCWEChecklist(t *testing.T) {
+	config := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseAnalysis,
+		CWEChecklist: []CWEChecklistItem{
+			{
+				ID:             "CWE-89",
+				Name:           "SQL Injection",
+				DetectionHints: []string{"String concatenation in SQL"},
+				FlowPatterns:   []string{"SOURCE: HTTP param -> SINK: db.Query"},
+			},
+		},
+	}
+
+	result := buildCWEChecklist(config)
+	if result == "" {
+		t.Fatal("expected non-empty CWE checklist")
+	}
+	if !strings.Contains(result, "CWE-89") {
+		t.Error("expected CWE ID in output")
+	}
+	if !strings.Contains(result, "SQL Injection") {
+		t.Error("expected CWE name in output")
+	}
+	if !strings.Contains(result, "String concatenation in SQL") {
+		t.Error("expected detection hint in output")
+	}
+	if !strings.Contains(result, "SOURCE: HTTP param -> SINK: db.Query") {
+		t.Error("expected flow pattern in output")
+	}
+}
+
+func TestBuildCWEChecklistEmpty(t *testing.T) {
+	config := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseAnalysis,
+	}
+
+	result := buildCWEChecklist(config)
+	if result != "" {
+		t.Error("expected empty result for no CWE checklist")
+	}
+}
+
+func TestBuildFlowGuidance(t *testing.T) {
+	analysisConfig := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseAnalysis,
+	}
+
+	result := buildFlowGuidance(analysisConfig)
+	if result == "" {
+		t.Fatal("expected non-empty flow guidance for analysis phase")
+	}
+	if !strings.Contains(result, "Flow Analysis Protocol") {
+		t.Error("expected flow analysis protocol header")
+	}
+	if !strings.Contains(result, "SOURCE") {
+		t.Error("expected SOURCE in flow guidance")
+	}
+	if !strings.Contains(result, "SINK") {
+		t.Error("expected SINK in flow guidance")
+	}
+}
+
+func TestBuildFlowGuidanceNonAnalysis(t *testing.T) {
+	reconConfig := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseRecon,
+	}
+
+	result := buildFlowGuidance(reconConfig)
+	if result != "" {
+		t.Error("expected empty flow guidance for non-analysis phase")
+	}
+}
+
+func TestCWEChecklistInPrompt(t *testing.T) {
+	// Test that a builtin security agent has CWE checklist
+	agent := GetBuiltinAgent("security-agent")
+	if agent == nil {
+		t.Fatal("security-agent not found")
+	}
+
+	if len(agent.CWEChecklist) == 0 {
+		t.Error("security-agent should have CWE checklist entries")
+	}
+
+	// Verify CWE entries have required fields
+	for _, item := range agent.CWEChecklist {
+		if item.ID == "" {
+			t.Error("CWE item missing ID")
+		}
+		if item.Name == "" {
+			t.Error("CWE item missing Name")
+		}
 	}
 }
 

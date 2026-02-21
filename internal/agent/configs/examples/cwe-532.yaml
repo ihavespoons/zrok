@@ -1,0 +1,15 @@
+cwe: CWE-532
+name: Insertion of Sensitive Information into Log File
+examples:
+  - language: go
+    vulnerable: |
+      log.Printf("Login attempt: user=%s password=%s", username, password)
+    patched: |
+      log.Printf("Login attempt: user=%s", username)
+    explanation: "Password logged in plaintext vs only logging non-sensitive identifiers"
+  - language: python
+    vulnerable: |
+      logger.info(f"API call with token: {api_token}")
+    patched: |
+      logger.info(f"API call with token: {api_token[:4]}***")
+    explanation: "Full token logged vs truncated/masked token"
