@@ -158,7 +158,8 @@ zrok Binary: <path-to-zrok>
 - zrok search "<pattern>" --regex  # Search file contents (grep-like)
 - zrok read <file> [--lines N:M]   # Read file contents
 - zrok symbols <file>              # Extract code symbols
-- zrok symbols --method lsp <file> # LSP-based symbol extraction (more accurate)
+- zrok symbols --method treesitter <file> # Tree-sitter symbol extraction (fast, in-process)
+- zrok symbols --method lsp <file>        # LSP symbol extraction (accurate, needs server)
 
 ### Semantic Search (if available)
 Check availability: zrok index status
@@ -372,7 +373,7 @@ Task tool:
 
     ### Step 2: Verify the Issue Exists
     - Read the code: zrok read <file> --lines <start>:<end+10>
-    - Check symbols: zrok symbols --method lsp <file>
+    - Check symbols: zrok symbols <file>
     - Search for related code: zrok search "<pattern>" --regex
 
     ### Step 3: Trace Data Flow (if semantic search available)
@@ -458,7 +459,7 @@ zrok finding export --format json -o report.json       # Machine-readable
 2. **Agent onboarding by default** - Use `zrok onboard` (agent mode) for richer context
 3. **Parallel analysis** - Spawn security, guards, architecture agents together in one message
 4. **Parallel review** - Spawn all review-agents together in one message
-5. **Use LSP when available** - `zrok symbols --method lsp` for accurate symbol extraction
+5. **Use best available method** - `zrok symbols` auto-selects tree-sitter → LSP → regex; use `--method lsp` when tree-sitter fails
 6. **Use semantic search when available** - Check `zrok index status` first, use for natural language queries
 7. **Validate findings** - Always run validation-agent before review-agents
 8. **Deep review for high severity** - Always spawn review-agents for high/critical findings
@@ -527,6 +528,7 @@ zrok find "<pattern>"
 zrok read <file> [--lines N:M]
 zrok search "<pattern>" [--regex]
 zrok symbols <file>
+zrok symbols --method treesitter <file>
 zrok symbols --method lsp <file>
 zrok symbols find "<name>"
 ```

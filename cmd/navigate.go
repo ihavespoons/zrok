@@ -246,9 +246,10 @@ Use 'symbols find <name>' to search for symbols globally.
 Use 'symbols refs <symbol>' to find references to a symbol.
 
 Use --method to specify extraction method:
-  auto  - Try LSP first, fall back to regex (default)
-  lsp   - Use only LSP (requires language server installed)
-  regex - Use only regex patterns`,
+  auto       - Try tree-sitter first, fall back to LSP, then regex (default)
+  treesitter - Use only tree-sitter
+  lsp        - Use only LSP (requires language server installed)
+  regex      - Use only regex patterns`,
 	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		p, err := project.EnsureActive()
@@ -354,5 +355,5 @@ func init() {
 	searchCmd.Flags().IntP("max", "m", 100, "Maximum results")
 	searchCmd.Flags().StringP("file", "f", "", "File pattern to search")
 
-	symbolsCmd.Flags().StringP("method", "m", "auto", "Extraction method: auto, lsp, regex")
+	symbolsCmd.Flags().StringP("method", "m", "auto", "Extraction method: auto, treesitter, lsp, regex")
 }

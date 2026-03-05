@@ -69,7 +69,7 @@ type EmbeddingConfig struct {
 type IndexConfig struct {
 	// Enabled indicates if semantic indexing is enabled
 	Enabled bool `yaml:"enabled" json:"enabled"`
-	// ChunkStrategy is the chunking strategy: "lsp" (default), "regex"
+	// ChunkStrategy is the chunking strategy: "treesitter" (default), "regex"
 	ChunkStrategy string `yaml:"chunk_strategy,omitempty" json:"chunk_strategy,omitempty"`
 	// MaxChunkLines is the maximum lines per chunk (default: 100)
 	MaxChunkLines int `yaml:"max_chunk_lines,omitempty" json:"max_chunk_lines,omitempty"`
@@ -83,7 +83,7 @@ type IndexConfig struct {
 func DefaultIndexConfig() IndexConfig {
 	return IndexConfig{
 		Enabled:       false,
-		ChunkStrategy: "lsp",
+		ChunkStrategy: "treesitter",
 		MaxChunkLines: 100,
 		Embedding: EmbeddingConfig{
 			Provider:  "ollama",

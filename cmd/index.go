@@ -79,7 +79,7 @@ Available providers:
 		// Update project config
 		p.Config.Index = project.IndexConfig{
 			Enabled:       true,
-			ChunkStrategy: "lsp",
+			ChunkStrategy: "treesitter",
 			MaxChunkLines: 100,
 			Embedding:     embConfig,
 			ExcludePatterns: []string{

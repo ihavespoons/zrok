@@ -61,7 +61,7 @@ type IndexerConfig struct {
 	StorePath string
 	// Provider is the embedding provider configuration
 	ProviderConfig *embedding.Config
-	// ChunkStrategy is "lsp" or "regex"
+	// ChunkStrategy is "treesitter" or "regex"
 	ChunkStrategy string
 	// MaxChunkLines is the maximum lines per chunk
 	MaxChunkLines int
@@ -90,6 +90,8 @@ func NewIndexer(p *project.Project, config *IndexerConfig) (*Indexer, error) {
 	switch config.ChunkStrategy {
 	case "regex":
 		extractor.SetMethod(chunk.MethodRegex)
+	case "treesitter":
+		extractor.SetMethod(chunk.MethodTreeSitter)
 	case "lsp":
 		extractor.SetMethod(chunk.MethodLSP)
 	default:
@@ -392,9 +394,6 @@ const defaultMaxChunksPerFile = 500
 // Can be overridden via ZROK_EMBEDDING_CONCURRENCY env var
 const defaultEmbeddingConcurrency = 4
 
-// Estimated memory per worker (LSP server + buffers)
-// Solargraph: ~400MB, TypeScript: ~200MB, conservative estimate
-const estimatedMemoryPerWorkerMB = 500
 
 func getEmbeddingBatchSize() int {
 	if envVal := os.Getenv("ZROK_EMBEDDING_BATCH_SIZE"); envVal != "" {
@@ -440,18 +439,9 @@ func getFileWorkers() int {
 		}
 	}
 
-	// Auto-detect based on available RAM
-	// Use ~50% of available RAM for LSP workers, reserve rest for system/embeddings
-	availableMB := getAvailableMemoryMB()
-	if availableMB == 0 {
-		// Fallback if we can't detect memory
-		return 2
-	}
-
-	// Calculate workers: (available_ram * 0.5) / memory_per_worker
-	workers := int(float64(availableMB) * 0.5 / float64(estimatedMemoryPerWorkerMB))
-
-	// Clamp to reasonable range: 1-8 workers
+	// Tree-sitter is lightweight (~10MB per worker), so base on CPU count
+	numCPU := runtime.NumCPU()
+	workers := numCPU / 2
 	if workers < 1 {
 		workers = 1
 	}
@@ -459,50 +449,11 @@ func getFileWorkers() int {
 		workers = 8
 	}
 
-	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
-	if debugVerbose {
-		fmt.Printf("[AUTO] Detected %d MB available RAM, using %d file workers\n", availableMB, workers)
-	}
-
 	return workers
-}
-
-// getAvailableMemoryMB returns available system memory in MB
-// Returns 0 if detection fails
-func getAvailableMemoryMB() int {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-
-	// runtime.MemStats doesn't give us system RAM, but we can estimate
-	// based on Sys (memory obtained from OS) and typical system behavior
-	// For a more accurate approach, we'd need platform-specific code
-
-	// Use a heuristic: assume 8GB minimum, scale based on Go's Sys allocation
-	// This is imperfect but provides reasonable defaults
-	sysMB := int(m.Sys / 1024 / 1024)
-
-	// If Go has allocated >100MB, we're likely on a system with decent RAM
-	// Estimate total based on typical Go memory usage patterns
-	if sysMB > 100 {
-		// Assume we have at least 4GB available
-		return 4096
-	}
-
-	// For systems where Go hasn't allocated much yet, be conservative
-	// Check number of CPUs as a proxy for system capability
-	numCPU := runtime.NumCPU()
-	if numCPU >= 8 {
-		return 8192 // Likely a decent workstation
-	} else if numCPU >= 4 {
-		return 4096 // Moderate system
-	}
-
-	return 2048 // Conservative default
 }
 
 // defaultLSPResetInterval is the number of files to process before restarting LSP clients
 // LSP servers like solargraph accumulate ~25MB per file; restarting releases it
-// At 25 files: peak ~1GB (350MB base + 25*25MB growth), at 50 files: ~1.6GB
 // Set to 0 to disable. Can be overridden via ZROK_LSP_RESET_INTERVAL env var
 const defaultLSPResetInterval = 25
 
@@ -706,7 +657,7 @@ type chunkEmbedding struct {
 }
 
 // extractAndEmbed extracts chunks from a file and generates embeddings
-// Uses the provided extractor (for parallel processing with separate LSP clients)
+// Uses the provided extractor (for parallel processing with separate parsers)
 func (idx *Indexer) extractAndEmbed(ctx context.Context, file string, extractor *chunk.Extractor, debugVerbose bool) ([]chunkEmbedding, error) {
 	if debugVerbose {
 		fmt.Printf("[DEBUG] Extracting chunks from: %s\n", file)
