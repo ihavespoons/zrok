@@ -1,0 +1,3 @@
+[submodule "eval/fixtures/owasp-benchmark-python"]
+	path = eval/fixtures/owasp-benchmark-python
+	url = https://github.com/OWASP-Benchmark/BenchmarkPython.git
