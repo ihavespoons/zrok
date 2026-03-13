@@ -1,0 +1,514 @@
+# Ground truth for OWASP Benchmark Python subset.
+# Auto-generated from expectedresults CSV - do not edit manually.
+# Source: https://github.com/OWASP-Benchmark/BenchmarkPython
+#
+# This uses a real-world, non-LLM-generated test suite with documented
+# true vulnerabilities and false positives across 14 CWE categories.
+
+vulnerabilities:
+  - id: "OWASP-001"
+    title: "Path Traversal in BenchmarkTest00001"
+    severity: high
+    cwe: "CWE-22"
+    file: "testcode/BenchmarkTest00001.py"
+    line_start: 0
+    tags: [path-traversal]
+    description: "OWASP Benchmark test case: true pathtraver vulnerability"
+
+  - id: "OWASP-002"
+    title: "Path Traversal in BenchmarkTest00002"
+    severity: high
+    cwe: "CWE-22"
+    file: "testcode/BenchmarkTest00002.py"
+    line_start: 0
+    tags: [path-traversal]
+    description: "OWASP Benchmark test case: true pathtraver vulnerability"
+
+  - id: "OWASP-003"
+    title: "Path Traversal in BenchmarkTest00003"
+    severity: high
+    cwe: "CWE-22"
+    file: "testcode/BenchmarkTest00003.py"
+    line_start: 0
+    tags: [path-traversal]
+    description: "OWASP Benchmark test case: true pathtraver vulnerability"
+
+  - id: "OWASP-004"
+    title: "SQL Injection in BenchmarkTest00099"
+    severity: critical
+    cwe: "CWE-89"
+    file: "testcode/BenchmarkTest00099.py"
+    line_start: 0
+    tags: [injection, sql]
+    description: "OWASP Benchmark test case: true sqli vulnerability"
+
+  - id: "OWASP-005"
+    title: "SQL Injection in BenchmarkTest00283"
+    severity: critical
+    cwe: "CWE-89"
+    file: "testcode/BenchmarkTest00283.py"
+    line_start: 0
+    tags: [injection, sql]
+    description: "OWASP Benchmark test case: true sqli vulnerability"
+
+  - id: "OWASP-006"
+    title: "SQL Injection in BenchmarkTest00284"
+    severity: critical
+    cwe: "CWE-89"
+    file: "testcode/BenchmarkTest00284.py"
+    line_start: 0
+    tags: [injection, sql]
+    description: "OWASP Benchmark test case: true sqli vulnerability"
+
+  - id: "OWASP-007"
+    title: "Cross-site Scripting in BenchmarkTest00096"
+    severity: high
+    cwe: "CWE-79"
+    file: "testcode/BenchmarkTest00096.py"
+    line_start: 0
+    tags: [xss]
+    description: "OWASP Benchmark test case: true xss vulnerability"
+
+  - id: "OWASP-008"
+    title: "Cross-site Scripting in BenchmarkTest00097"
+    severity: high
+    cwe: "CWE-79"
+    file: "testcode/BenchmarkTest00097.py"
+    line_start: 0
+    tags: [xss]
+    description: "OWASP Benchmark test case: true xss vulnerability"
+
+  - id: "OWASP-009"
+    title: "Cross-site Scripting in BenchmarkTest00098"
+    severity: high
+    cwe: "CWE-79"
+    file: "testcode/BenchmarkTest00098.py"
+    line_start: 0
+    tags: [xss]
+    description: "OWASP Benchmark test case: true xss vulnerability"
+
+  - id: "OWASP-010"
+    title: "OS Command Injection in BenchmarkTest00165"
+    severity: critical
+    cwe: "CWE-78"
+    file: "testcode/BenchmarkTest00165.py"
+    line_start: 0
+    tags: [injection, command]
+    description: "OWASP Benchmark test case: true cmdi vulnerability"
+
+  - id: "OWASP-011"
+    title: "OS Command Injection in BenchmarkTest00166"
+    severity: critical
+    cwe: "CWE-78"
+    file: "testcode/BenchmarkTest00166.py"
+    line_start: 0
+    tags: [injection, command]
+    description: "OWASP Benchmark test case: true cmdi vulnerability"
+
+  - id: "OWASP-012"
+    title: "OS Command Injection in BenchmarkTest00167"
+    severity: critical
+    cwe: "CWE-78"
+    file: "testcode/BenchmarkTest00167.py"
+    line_start: 0
+    tags: [injection, command]
+    description: "OWASP Benchmark test case: true cmdi vulnerability"
+
+  - id: "OWASP-013"
+    title: "Code Injection in BenchmarkTest00074"
+    severity: critical
+    cwe: "CWE-94"
+    file: "testcode/BenchmarkTest00074.py"
+    line_start: 0
+    tags: [injection, code]
+    description: "OWASP Benchmark test case: true codeinj vulnerability"
+
+  - id: "OWASP-014"
+    title: "Code Injection in BenchmarkTest00159"
+    severity: critical
+    cwe: "CWE-94"
+    file: "testcode/BenchmarkTest00159.py"
+    line_start: 0
+    tags: [injection, code]
+    description: "OWASP Benchmark test case: true codeinj vulnerability"
+
+  - id: "OWASP-015"
+    title: "Code Injection in BenchmarkTest00160"
+    severity: critical
+    cwe: "CWE-94"
+    file: "testcode/BenchmarkTest00160.py"
+    line_start: 0
+    tags: [injection, code]
+    description: "OWASP Benchmark test case: true codeinj vulnerability"
+
+  - id: "OWASP-016"
+    title: "Deserialization in BenchmarkTest00078"
+    severity: critical
+    cwe: "CWE-502"
+    file: "testcode/BenchmarkTest00078.py"
+    line_start: 0
+    tags: [deserialization]
+    description: "OWASP Benchmark test case: true deserialization vulnerability"
+
+  - id: "OWASP-017"
+    title: "Deserialization in BenchmarkTest00164"
+    severity: critical
+    cwe: "CWE-502"
+    file: "testcode/BenchmarkTest00164.py"
+    line_start: 0
+    tags: [deserialization]
+    description: "OWASP Benchmark test case: true deserialization vulnerability"
+
+  - id: "OWASP-018"
+    title: "Deserialization in BenchmarkTest00269"
+    severity: critical
+    cwe: "CWE-502"
+    file: "testcode/BenchmarkTest00269.py"
+    line_start: 0
+    tags: [deserialization]
+    description: "OWASP Benchmark test case: true deserialization vulnerability"
+
+  - id: "OWASP-019"
+    title: "XPath Injection in BenchmarkTest00018"
+    severity: high
+    cwe: "CWE-643"
+    file: "testcode/BenchmarkTest00018.py"
+    line_start: 0
+    tags: [injection, xpath]
+    description: "OWASP Benchmark test case: true xpathi vulnerability"
+
+  - id: "OWASP-020"
+    title: "XPath Injection in BenchmarkTest00019"
+    severity: high
+    cwe: "CWE-643"
+    file: "testcode/BenchmarkTest00019.py"
+    line_start: 0
+    tags: [injection, xpath]
+    description: "OWASP Benchmark test case: true xpathi vulnerability"
+
+  - id: "OWASP-021"
+    title: "XPath Injection in BenchmarkTest00101"
+    severity: high
+    cwe: "CWE-643"
+    file: "testcode/BenchmarkTest00101.py"
+    line_start: 0
+    tags: [injection, xpath]
+    description: "OWASP Benchmark test case: true xpathi vulnerability"
+
+  - id: "OWASP-022"
+    title: "XXE in BenchmarkTest00205"
+    severity: high
+    cwe: "CWE-611"
+    file: "testcode/BenchmarkTest00205.py"
+    line_start: 0
+    tags: [xxe]
+    description: "OWASP Benchmark test case: true xxe vulnerability"
+
+  - id: "OWASP-023"
+    title: "XXE in BenchmarkTest00294"
+    severity: high
+    cwe: "CWE-611"
+    file: "testcode/BenchmarkTest00294.py"
+    line_start: 0
+    tags: [xxe]
+    description: "OWASP Benchmark test case: true xxe vulnerability"
+
+  - id: "OWASP-024"
+    title: "XXE in BenchmarkTest00460"
+    severity: high
+    cwe: "CWE-611"
+    file: "testcode/BenchmarkTest00460.py"
+    line_start: 0
+    tags: [xxe]
+    description: "OWASP Benchmark test case: true xxe vulnerability"
+
+  - id: "OWASP-025"
+    title: "Open Redirect in BenchmarkTest00067"
+    severity: medium
+    cwe: "CWE-601"
+    file: "testcode/BenchmarkTest00067.py"
+    line_start: 0
+    tags: [redirect]
+    description: "OWASP Benchmark test case: true redirect vulnerability"
+
+  - id: "OWASP-026"
+    title: "Open Redirect in BenchmarkTest00068"
+    severity: medium
+    cwe: "CWE-601"
+    file: "testcode/BenchmarkTest00068.py"
+    line_start: 0
+    tags: [redirect]
+    description: "OWASP Benchmark test case: true redirect vulnerability"
+
+  - id: "OWASP-027"
+    title: "Open Redirect in BenchmarkTest00258"
+    severity: medium
+    cwe: "CWE-601"
+    file: "testcode/BenchmarkTest00258.py"
+    line_start: 0
+    tags: [redirect]
+    description: "OWASP Benchmark test case: true redirect vulnerability"
+
+  - id: "OWASP-028"
+    title: "Weak Hash in BenchmarkTest00054"
+    severity: medium
+    cwe: "CWE-328"
+    file: "testcode/BenchmarkTest00054.py"
+    line_start: 0
+    tags: [crypto, hash]
+    description: "OWASP Benchmark test case: true hash vulnerability"
+
+  - id: "OWASP-029"
+    title: "Weak Hash in BenchmarkTest00057"
+    severity: medium
+    cwe: "CWE-328"
+    file: "testcode/BenchmarkTest00057.py"
+    line_start: 0
+    tags: [crypto, hash]
+    description: "OWASP Benchmark test case: true hash vulnerability"
+
+  - id: "OWASP-030"
+    title: "Weak Hash in BenchmarkTest00058"
+    severity: medium
+    cwe: "CWE-328"
+    file: "testcode/BenchmarkTest00058.py"
+    line_start: 0
+    tags: [crypto, hash]
+    description: "OWASP Benchmark test case: true hash vulnerability"
+
+  - id: "OWASP-031"
+    title: "Weak Random in BenchmarkTest00025"
+    severity: medium
+    cwe: "CWE-330"
+    file: "testcode/BenchmarkTest00025.py"
+    line_start: 0
+    tags: [crypto, random]
+    description: "OWASP Benchmark test case: true weakrand vulnerability"
+
+  - id: "OWASP-032"
+    title: "Weak Random in BenchmarkTest00026"
+    severity: medium
+    cwe: "CWE-330"
+    file: "testcode/BenchmarkTest00026.py"
+    line_start: 0
+    tags: [crypto, random]
+    description: "OWASP Benchmark test case: true weakrand vulnerability"
+
+  - id: "OWASP-033"
+    title: "Weak Random in BenchmarkTest00027"
+    severity: medium
+    cwe: "CWE-330"
+    file: "testcode/BenchmarkTest00027.py"
+    line_start: 0
+    tags: [crypto, random]
+    description: "OWASP Benchmark test case: true weakrand vulnerability"
+
+  - id: "OWASP-034"
+    title: "Insecure Cookie in BenchmarkTest00064"
+    severity: medium
+    cwe: "CWE-614"
+    file: "testcode/BenchmarkTest00064.py"
+    line_start: 0
+    tags: [session, cookie]
+    description: "OWASP Benchmark test case: true securecookie vulnerability"
+
+  - id: "OWASP-035"
+    title: "Insecure Cookie in BenchmarkTest00065"
+    severity: medium
+    cwe: "CWE-614"
+    file: "testcode/BenchmarkTest00065.py"
+    line_start: 0
+    tags: [session, cookie]
+    description: "OWASP Benchmark test case: true securecookie vulnerability"
+
+  - id: "OWASP-036"
+    title: "Insecure Cookie in BenchmarkTest00066"
+    severity: medium
+    cwe: "CWE-614"
+    file: "testcode/BenchmarkTest00066.py"
+    line_start: 0
+    tags: [session, cookie]
+    description: "OWASP Benchmark test case: true securecookie vulnerability"
+
+  - id: "OWASP-037"
+    title: "Trust Boundary Violation in BenchmarkTest00072"
+    severity: medium
+    cwe: "CWE-501"
+    file: "testcode/BenchmarkTest00072.py"
+    line_start: 0
+    tags: [trust-boundary]
+    description: "OWASP Benchmark test case: true trustbound vulnerability"
+
+  - id: "OWASP-038"
+    title: "Trust Boundary Violation in BenchmarkTest00153"
+    severity: medium
+    cwe: "CWE-501"
+    file: "testcode/BenchmarkTest00153.py"
+    line_start: 0
+    tags: [trust-boundary]
+    description: "OWASP Benchmark test case: true trustbound vulnerability"
+
+  - id: "OWASP-039"
+    title: "Trust Boundary Violation in BenchmarkTest00260"
+    severity: medium
+    cwe: "CWE-501"
+    file: "testcode/BenchmarkTest00260.py"
+    line_start: 0
+    tags: [trust-boundary]
+    description: "OWASP Benchmark test case: true trustbound vulnerability"
+
+  - id: "OWASP-040"
+    title: "LDAP Injection in BenchmarkTest00265"
+    severity: high
+    cwe: "CWE-90"
+    file: "testcode/BenchmarkTest00265.py"
+    line_start: 0
+    tags: [injection, ldap]
+    description: "OWASP Benchmark test case: true ldapi vulnerability"
+
+  - id: "OWASP-041"
+    title: "LDAP Injection in BenchmarkTest00266"
+    severity: high
+    cwe: "CWE-90"
+    file: "testcode/BenchmarkTest00266.py"
+    line_start: 0
+    tags: [injection, ldap]
+    description: "OWASP Benchmark test case: true ldapi vulnerability"
+
+  - id: "OWASP-042"
+    title: "LDAP Injection in BenchmarkTest00427"
+    severity: high
+    cwe: "CWE-90"
+    file: "testcode/BenchmarkTest00427.py"
+    line_start: 0
+    tags: [injection, ldap]
+    description: "OWASP Benchmark test case: true ldapi vulnerability"
+
+# False positives in this test set (findings against these should NOT match):
+# These are test cases with the same CWE category but where the vulnerability
+# is NOT actually exploitable. Tools that flag these are producing false positives.
+false_positives:
+  - test_name: "BenchmarkTest00004"
+    category: "pathtraver"
+    cwe: "CWE-22"
+    file: "testcode/BenchmarkTest00004.py"
+  - test_name: "BenchmarkTest00005"
+    category: "pathtraver"
+    cwe: "CWE-22"
+    file: "testcode/BenchmarkTest00005.py"
+  - test_name: "BenchmarkTest00011"
+    category: "sqli"
+    cwe: "CWE-89"
+    file: "testcode/BenchmarkTest00011.py"
+  - test_name: "BenchmarkTest00012"
+    category: "sqli"
+    cwe: "CWE-89"
+    file: "testcode/BenchmarkTest00012.py"
+  - test_name: "BenchmarkTest00082"
+    category: "xss"
+    cwe: "CWE-79"
+    file: "testcode/BenchmarkTest00082.py"
+  - test_name: "BenchmarkTest00083"
+    category: "xss"
+    cwe: "CWE-79"
+    file: "testcode/BenchmarkTest00083.py"
+  - test_name: "BenchmarkTest00350"
+    category: "cmdi"
+    cwe: "CWE-78"
+    file: "testcode/BenchmarkTest00350.py"
+  - test_name: "BenchmarkTest00512"
+    category: "cmdi"
+    cwe: "CWE-78"
+    file: "testcode/BenchmarkTest00512.py"
+  - test_name: "BenchmarkTest00073"
+    category: "codeinj"
+    cwe: "CWE-94"
+    file: "testcode/BenchmarkTest00073.py"
+  - test_name: "BenchmarkTest00075"
+    category: "codeinj"
+    cwe: "CWE-94"
+    file: "testcode/BenchmarkTest00075.py"
+  - test_name: "BenchmarkTest00079"
+    category: "deserialization"
+    cwe: "CWE-502"
+    file: "testcode/BenchmarkTest00079.py"
+  - test_name: "BenchmarkTest00080"
+    category: "deserialization"
+    cwe: "CWE-502"
+    file: "testcode/BenchmarkTest00080.py"
+  - test_name: "BenchmarkTest00013"
+    category: "xpathi"
+    cwe: "CWE-643"
+    file: "testcode/BenchmarkTest00013.py"
+  - test_name: "BenchmarkTest00014"
+    category: "xpathi"
+    cwe: "CWE-643"
+    file: "testcode/BenchmarkTest00014.py"
+  - test_name: "BenchmarkTest00017"
+    category: "xxe"
+    cwe: "CWE-611"
+    file: "testcode/BenchmarkTest00017.py"
+  - test_name: "BenchmarkTest00204"
+    category: "xxe"
+    cwe: "CWE-611"
+    file: "testcode/BenchmarkTest00204.py"
+  - test_name: "BenchmarkTest00069"
+    category: "redirect"
+    cwe: "CWE-601"
+    file: "testcode/BenchmarkTest00069.py"
+  - test_name: "BenchmarkTest00151"
+    category: "redirect"
+    cwe: "CWE-601"
+    file: "testcode/BenchmarkTest00151.py"
+  - test_name: "BenchmarkTest00055"
+    category: "hash"
+    cwe: "CWE-328"
+    file: "testcode/BenchmarkTest00055.py"
+  - test_name: "BenchmarkTest00056"
+    category: "hash"
+    cwe: "CWE-328"
+    file: "testcode/BenchmarkTest00056.py"
+  - test_name: "BenchmarkTest00032"
+    category: "weakrand"
+    cwe: "CWE-330"
+    file: "testcode/BenchmarkTest00032.py"
+  - test_name: "BenchmarkTest00033"
+    category: "weakrand"
+    cwe: "CWE-330"
+    file: "testcode/BenchmarkTest00033.py"
+  - test_name: "BenchmarkTest00337"
+    category: "securecookie"
+    cwe: "CWE-614"
+    file: "testcode/BenchmarkTest00337.py"
+  - test_name: "BenchmarkTest00415"
+    category: "securecookie"
+    cwe: "CWE-614"
+    file: "testcode/BenchmarkTest00415.py"
+  - test_name: "BenchmarkTest00070"
+    category: "trustbound"
+    cwe: "CWE-501"
+    file: "testcode/BenchmarkTest00070.py"
+  - test_name: "BenchmarkTest00071"
+    category: "trustbound"
+    cwe: "CWE-501"
+    file: "testcode/BenchmarkTest00071.py"
+  - test_name: "BenchmarkTest00076"
+    category: "ldapi"
+    cwe: "CWE-90"
+    file: "testcode/BenchmarkTest00076.py"
+  - test_name: "BenchmarkTest00077"
+    category: "ldapi"
+    cwe: "CWE-90"
+    file: "testcode/BenchmarkTest00077.py"
+
+severity_weights:
+  critical: 5
+  high: 3
+  medium: 2
+  low: 1
+  info: 0
+
+matching:
+  line_tolerance: 30
+  cwe_exact_match: true
+  title_similarity_threshold: 0.2
