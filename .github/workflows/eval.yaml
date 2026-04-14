@@ -114,10 +114,13 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'baseline'
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-go@v5
         with:
