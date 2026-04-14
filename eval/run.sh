@@ -123,11 +123,22 @@ run_single_eval() {
     # Run static onboarding (fast, no LLM needed for setup)
     (cd "$run_dir" && "$ZROK_BIN" onboard --static)
 
-    # Restore pre-built semantic index if committed alongside fixture
-    if [[ -d "${FIXTURE_DIR}/.zrok-index" ]]; then
+    # Set up semantic search index
+    # ZROK_EMBED_PROVIDER env var selects the provider (default: ollama)
+    local embed_provider="${ZROK_EMBED_PROVIDER:-ollama}"
+    if [[ -n "${HF_API_KEY:-}" && "$embed_provider" == "ollama" ]]; then
+        embed_provider="huggingface"
+    fi
+
+    if [[ "$embed_provider" != "ollama" ]] || ! command -v ollama &>/dev/null; then
+        # Build index at runtime with the available provider
+        echo "  Building semantic index (provider: $embed_provider)..."
+        (cd "$run_dir" && "$ZROK_BIN" index enable --provider "$embed_provider") 2>/dev/null || true
+        (cd "$run_dir" && "$ZROK_BIN" index build) 2>/dev/null || true
+    elif [[ -d "${FIXTURE_DIR}/.zrok-index" ]]; then
+        # Restore pre-built Ollama index
         echo "  Restoring pre-built semantic index..."
         cp -r "${FIXTURE_DIR}/.zrok-index/"* "$run_dir/.zrok/index/"
-        # Enable index config in project.yaml (points to pre-built data, no build needed)
         (cd "$run_dir" && "$ZROK_BIN" index enable --provider ollama) 2>/dev/null || true
     fi
 

@@ -76,10 +76,9 @@ jobs:
       - name: Run evaluation (compare mode)
         id: eval
         env:
-          # Uses Claude Max subscription via OAuth token (run `claude setup-token` locally)
-          # Falls back to API key if OAuth token not set
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HF_API_KEY: ${{ secrets.HF_API_KEY }}
         run: |
           set +e
           ./eval/run.sh --fixture ${{ steps.fixture.outputs.name }} --compare
@@ -139,6 +138,7 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HF_API_KEY: ${{ secrets.HF_API_KEY }}
         run: |
           set +e
           ./eval/run.sh -n ${{ github.event.inputs.num_runs }} --fixture ${{ github.event.inputs.fixture }} --baseline
