@@ -125,17 +125,31 @@ zrok memory list
 
 Spawn multiple analysis agents in a SINGLE message with multiple Task tool calls.
 
-### Available Agents
+**CRITICAL: You MUST spawn all agents listed by `zrok onboard` in the "Suggested agents" output.** The onboarding step detects the tech stack and recommends agents accordingly. Do not skip agents or select a subset — spawn them ALL in parallel. Skipping specialized agents (especially `injection-agent` and `security-agent`) dramatically reduces review quality.
 
-| Agent | Focus | When to Use |
-|-------|-------|-------------|
-| security-agent | Auth, authz, crypto, secrets | Always for security reviews |
-| guards-agent | Validation, CSRF, error handling | Always |
-| architecture-agent | Code patterns, dead code, tech debt | Always |
-| content-agent | XSS, file uploads, logging | Web apps |
-| logging-agent | Audit trails, sensitive data | Production apps |
-| dependencies-agent | Outdated deps, vulnerabilities | All projects |
-| references-agent | External URLs, hardcoded paths | Web apps |
+### Mandatory Agents
+
+These agents MUST always be spawned for any security review:
+
+| Agent | Focus |
+|-------|-------|
+| security-agent | Auth, authz, crypto, secrets |
+| guards-agent | Validation, CSRF, error handling |
+| architecture-agent | Code patterns, dead code, tech debt |
+| injection-agent | SQL/command/XPath/template injection (**always for web apps or projects with databases**) |
+| config-agent | Debug modes, default creds, CORS, headers |
+
+### Additional Agents (spawn when suggested by onboarding)
+
+Onboarding classifies the project into types (`web-app`, `api-service`, `cli-tool`, `library`, `worker`) and traits (`has-datastore`, `has-auth`, `has-infrastructure`, `has-sensitive-data`). Agents are suggested based on these classifications.
+
+| Agent | Focus | Project Types / Traits |
+|-------|-------|------------------------|
+| content-agent | XSS, file uploads, logging | `web-app` |
+| ssrf-agent | SSRF, URL manipulation, DNS rebinding | `web-app`, `api-service` |
+| logging-agent | Audit trails, sensitive data | `has-infrastructure` |
+| dependencies-agent | Outdated deps, vulnerabilities | Always |
+| references-agent | External URLs, hardcoded paths | `web-app`, `api-service`, `has-infrastructure` |
 
 ### Subagent Prompt Template
 

@@ -51,6 +51,64 @@ type TechStack struct {
 	Auth           []string   `yaml:"auth,omitempty" json:"auth,omitempty"`
 }
 
+// ProjectType represents what the project IS (can have multiple)
+type ProjectType string
+
+const (
+	TypeWebApp     ProjectType = "web-app"
+	TypeAPIService ProjectType = "api-service"
+	TypeCLITool    ProjectType = "cli-tool"
+	TypeLibrary    ProjectType = "library"
+	TypeWorker     ProjectType = "worker"
+)
+
+// ProjectTrait represents what the project HAS (can have multiple)
+type ProjectTrait string
+
+const (
+	TraitHasDatastore      ProjectTrait = "has-datastore"
+	TraitHasAuth           ProjectTrait = "has-auth"
+	TraitHasInfrastructure ProjectTrait = "has-infrastructure"
+	TraitHasSensitiveData  ProjectTrait = "has-sensitive-data"
+	TraitHasExternalAPIs   ProjectTrait = "has-external-apis"
+)
+
+// ProjectClassification is the inferred classification of a project
+type ProjectClassification struct {
+	Types  []ProjectType  `yaml:"types,omitempty" json:"types,omitempty"`
+	Traits []ProjectTrait `yaml:"traits,omitempty" json:"traits,omitempty"`
+}
+
+// ApplicabilityRule defines when an agent should be suggested for a project
+type ApplicabilityRule struct {
+	ProjectTypes  []string `yaml:"project_types,omitempty" json:"project_types,omitempty"`
+	ProjectTraits []string `yaml:"project_traits,omitempty" json:"project_traits,omitempty"`
+	AlwaysInclude bool     `yaml:"always_include,omitempty" json:"always_include,omitempty"`
+}
+
+// ApplicabilityMatches returns true if the rule matches the classification.
+// Matching is OR-based: always_include, or any type matches, or any trait matches.
+func ApplicabilityMatches(rule ApplicabilityRule, classification ProjectClassification) bool {
+	if rule.AlwaysInclude {
+		return true
+	}
+	for _, ruleType := range rule.ProjectTypes {
+		for _, projType := range classification.Types {
+			if ruleType == string(projType) {
+				return true
+			}
+		}
+	}
+	for _, ruleTrait := range rule.ProjectTraits {
+		for _, projTrait := range classification.Traits {
+			if ruleTrait == string(projTrait) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // EmbeddingConfig contains configuration for the embedding provider
 type EmbeddingConfig struct {
 	// Provider is the embedding provider: "ollama", "openai", "huggingface"
@@ -102,13 +160,14 @@ func DefaultIndexConfig() IndexConfig {
 
 // ProjectConfig represents the .zrok/project.yaml configuration
 type ProjectConfig struct {
-	Name          string        `yaml:"name" json:"name"`
-	Version       string        `yaml:"version" json:"version"`
-	Description   string        `yaml:"description,omitempty" json:"description,omitempty"`
-	DetectedAt    time.Time     `yaml:"detected_at" json:"detected_at"`
-	TechStack     TechStack     `yaml:"tech_stack" json:"tech_stack"`
-	SecurityScope SecurityScope `yaml:"security_scope,omitempty" json:"security_scope,omitempty"`
-	Index         IndexConfig   `yaml:"index,omitempty" json:"index,omitempty"`
+	Name           string                 `yaml:"name" json:"name"`
+	Version        string                 `yaml:"version" json:"version"`
+	Description    string                 `yaml:"description,omitempty" json:"description,omitempty"`
+	DetectedAt     time.Time              `yaml:"detected_at" json:"detected_at"`
+	TechStack      TechStack              `yaml:"tech_stack" json:"tech_stack"`
+	Classification ProjectClassification  `yaml:"classification,omitempty" json:"classification,omitempty"`
+	SecurityScope  SecurityScope          `yaml:"security_scope,omitempty" json:"security_scope,omitempty"`
+	Index          IndexConfig            `yaml:"index,omitempty" json:"index,omitempty"`
 }
 
 // Project represents an active zrok project

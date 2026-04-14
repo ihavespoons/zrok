@@ -38,14 +38,15 @@ type CWEChecklistItem struct {
 
 // AgentConfig represents an agent configuration
 type AgentConfig struct {
-	Name            string             `yaml:"name" json:"name"`
-	Description     string             `yaml:"description" json:"description"`
-	Phase           Phase              `yaml:"phase" json:"phase"`
-	Specialization  Specialization     `yaml:"specialization,omitempty" json:"specialization,omitempty"`
-	CWEChecklist    []CWEChecklistItem `yaml:"cwe_checklist,omitempty" json:"cwe_checklist,omitempty"`
-	ToolsAllowed    []string           `yaml:"tools_allowed" json:"tools_allowed"`
-	PromptTemplate  string             `yaml:"prompt_template" json:"prompt_template"`
-	ContextMemories []string           `yaml:"context_memories,omitempty" json:"context_memories,omitempty"`
+	Name            string                    `yaml:"name" json:"name"`
+	Description     string                    `yaml:"description" json:"description"`
+	Phase           Phase                     `yaml:"phase" json:"phase"`
+	Applicability   project.ApplicabilityRule `yaml:"applicability,omitempty" json:"applicability,omitempty"`
+	Specialization  Specialization            `yaml:"specialization,omitempty" json:"specialization,omitempty"`
+	CWEChecklist    []CWEChecklistItem        `yaml:"cwe_checklist,omitempty" json:"cwe_checklist,omitempty"`
+	ToolsAllowed    []string                  `yaml:"tools_allowed" json:"tools_allowed"`
+	PromptTemplate  string                    `yaml:"prompt_template" json:"prompt_template"`
+	ContextMemories []string                  `yaml:"context_memories,omitempty" json:"context_memories,omitempty"`
 }
 
 // AgentList contains a list of agents

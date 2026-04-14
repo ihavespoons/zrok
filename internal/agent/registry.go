@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ihavespoons/zrok/internal/project"
 	"gopkg.in/yaml.v3"
 )
 
@@ -97,6 +98,19 @@ func GetAgentsByVulnClass(vulnClass string) []AgentConfig {
 		}
 	}
 	return agents
+}
+
+// SuggestAgents returns agent names that are applicable to the given project classification.
+func SuggestAgents(classification project.ProjectClassification) []string {
+	loadBuiltinAgents()
+
+	var names []string
+	for _, agent := range builtinAgents {
+		if project.ApplicabilityMatches(agent.Applicability, classification) {
+			names = append(names, agent.Name)
+		}
+	}
+	return names
 }
 
 // GetAgentsByReviewCategory returns agents that cover a specific review category

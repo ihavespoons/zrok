@@ -1,6 +1,12 @@
 name: injection-agent
 description: Detects injection vulnerabilities including SQL, command, template, XPath, and expression injection
 phase: analysis
+applicability:
+  project_types:
+    - web-app
+    - api-service
+  project_traits:
+    - has-datastore
 specialization:
   review_categories:
     - sql-injection

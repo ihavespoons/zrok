@@ -108,6 +108,9 @@ func (d *Detector) detectGo() *Language {
 		"github.com/jmoiron/sqlx":        "sqlx",
 		"github.com/graphql-go/graphql":  "graphql",
 		"google.golang.org/grpc":         "grpc",
+		"github.com/spf13/cobra":         "cobra",
+		"github.com/urfave/cli":          "urfave/cli",
+		"github.com/hibiken/asynq":       "asynq",
 	}
 
 	for pkg, name := range frameworks {

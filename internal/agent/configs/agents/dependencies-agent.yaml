@@ -1,6 +1,8 @@
 name: dependencies-agent
 description: Reviews dependency management, necessity, vendoring, and patching practices
 phase: analysis
+applicability:
+  always_include: true
 specialization:
   review_categories:
     - dependency-necessity

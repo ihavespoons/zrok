@@ -1,6 +1,10 @@
 name: ssrf-agent
 description: Detects server-side request forgery (SSRF) and related URL manipulation vulnerabilities
 phase: analysis
+applicability:
+  project_types:
+    - web-app
+    - api-service
 specialization:
   review_categories:
     - ssrf

@@ -1,6 +1,13 @@
 name: config-agent
 description: Reviews security configuration including debug modes, default credentials, CORS, headers, and exposed interfaces
 phase: analysis
+applicability:
+  project_types:
+    - web-app
+    - api-service
+  project_traits:
+    - has-sensitive-data
+    - has-datastore
 specialization:
   review_categories:
     - debug-modes

@@ -385,6 +385,9 @@ Modes:
 			exitError("onboarding failed: %v", err)
 		}
 
+		// Suggest agents based on project classification
+		result.Agents = agent.SuggestAgents(result.Config.Classification)
+
 		// Create initial memories
 		memStore := memory.NewStore(p)
 		for _, mem := range result.Memories {
@@ -401,6 +404,7 @@ Modes:
 			if err := outputJSON(map[string]interface{}{
 				"success":          true,
 				"config":           result.Config,
+				"classification":   result.Config.Classification,
 				"memories_created": len(result.Memories),
 				"suggested_agents": result.Agents,
 				"warnings":         result.Warnings,

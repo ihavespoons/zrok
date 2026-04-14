@@ -1,6 +1,10 @@
 name: security-agent
 description: Reviews common security concerns - authentication, authorization, cryptography, and secrets
 phase: analysis
+applicability:
+  project_traits:
+    - has-auth
+    - has-datastore
 specialization:
   review_categories:
     - authentication
