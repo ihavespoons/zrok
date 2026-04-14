@@ -11,7 +11,7 @@ import (
 )
 
 // Parser wraps gotreesitter for symbol extraction.
-// Each instance is cheap and stateless; create one per goroutine.
+// Uses pooled parsing for thread-safety and efficiency.
 type Parser struct{}
 
 // NewParser creates a new tree-sitter parser.
@@ -25,7 +25,11 @@ func (p *Parser) CanHandle(path string) bool {
 	if entry == nil {
 		return false
 	}
-	return GetQuery(DetectLanguageName(path)) != ""
+	// Accept if we have a custom query or the library can infer one
+	if GetQuery(DetectLanguageName(path)) != "" {
+		return true
+	}
+	return grammars.ResolveTagsQuery(*entry) != ""
 }
 
 // ExtractSymbols extracts symbols from a file on disk.
@@ -40,33 +44,37 @@ func (p *Parser) ExtractSymbols(filePath, relPath string) ([]Symbol, error) {
 
 // ExtractSymbolsFromSource extracts symbols from source bytes.
 func (p *Parser) ExtractSymbolsFromSource(source []byte, relPath string) ([]Symbol, error) {
-	langName := DetectLanguageName(relPath)
-	query := GetQuery(langName)
-	if query == "" {
-		return nil, fmt.Errorf("no tree-sitter query for language: %s", langName)
-	}
-
 	entry := grammars.DetectLanguage(filepath.Base(relPath))
 	if entry == nil {
 		return nil, fmt.Errorf("tree-sitter does not support: %s", relPath)
 	}
 
-	lang := entry.Language()
-	tsParser := gotreesitter.NewParser(lang)
-	tree, err := tsParser.Parse(source)
+	// Use pooled parsing — thread-safe, reuses parsers, and automatically
+	// uses hand-written token sources for languages that have them (e.g. Go).
+	bt, err := grammars.ParseFilePooled(relPath, source)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse: %w", err)
 	}
-	defer tree.Release()
+	defer bt.Release()
 
-	root := tree.RootNode()
-	rootType := root.Type(lang)
+	root := bt.RootNode()
+	lang := bt.Language()
+
+	rootType := bt.NodeType(root)
 	if rootType == "" || root.ChildCount() == 0 {
 		return nil, fmt.Errorf("tree-sitter failed to parse %s", relPath)
 	}
-	// Internal node types (prefixed with "_") as root indicate a garbled parse
 	if strings.HasPrefix(rootType, "_") {
 		return nil, fmt.Errorf("tree-sitter produced invalid AST for %s (root: %s)", relPath, rootType)
+	}
+
+	// Prefer our custom query, fall back to library-inferred tags query
+	query := GetQuery(DetectLanguageName(relPath))
+	if query == "" {
+		query = grammars.ResolveTagsQuery(*entry)
+	}
+	if query == "" {
+		return nil, fmt.Errorf("no tree-sitter query for: %s", relPath)
 	}
 
 	q, err := gotreesitter.NewQuery(query, lang)
@@ -99,7 +107,6 @@ func (p *Parser) ExtractSymbolsFromSource(source []byte, relPath string) ([]Symb
 					kind = k
 					line = int(cap.Node.StartPoint().Row) + 1
 					endLine = int(cap.Node.EndPoint().Row) + 1
-					// First line as signature
 					startByte := cap.Node.StartByte()
 					endByte := cap.Node.EndByte()
 					text := string(source[startByte:endByte])
@@ -116,9 +123,7 @@ func (p *Parser) ExtractSymbolsFromSource(source []byte, relPath string) ([]Symb
 			continue
 		}
 
-		parent := findParentSymbol(match, source, lang)
-
-		// Extract content
+		parent := findParentSymbol(match, bt)
 		content := extractContent(lines, line, endLine)
 
 		symbols = append(symbols, Symbol{
@@ -137,7 +142,7 @@ func (p *Parser) ExtractSymbolsFromSource(source []byte, relPath string) ([]Symb
 
 // findParentSymbol walks the AST parent chain of the outer capture node
 // to find an enclosing named symbol (class, struct, impl, etc.).
-func findParentSymbol(match gotreesitter.QueryMatch, source []byte, lang *gotreesitter.Language) string {
+func findParentSymbol(match gotreesitter.QueryMatch, bt *gotreesitter.BoundTree) string {
 	var outerNode *gotreesitter.Node
 	for _, cap := range match.Captures {
 		if cap.Name != "name" {
@@ -163,11 +168,11 @@ func findParentSymbol(match gotreesitter.QueryMatch, source []byte, lang *gotree
 
 	node := outerNode.Parent()
 	for node != nil {
-		nodeType := node.Type(lang)
+		nodeType := bt.NodeType(node)
 		if parentTypes[nodeType] {
-			nameChild := node.ChildByFieldName("name", lang)
+			nameChild := bt.ChildByField(node, "name")
 			if nameChild != nil {
-				return nameChild.Text(source)
+				return bt.NodeText(nameChild)
 			}
 		}
 		node = node.Parent()

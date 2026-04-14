@@ -1,5 +1,7 @@
 package treesitter
 
+import "strings"
+
 // SymbolKind represents a kind of code symbol extracted by tree-sitter.
 type SymbolKind string
 
@@ -27,9 +29,18 @@ type Symbol struct {
 }
 
 // mapCaptureToKind maps a tree-sitter capture name to a SymbolKind.
+// Handles both our custom captures (e.g. "function") and the standard
+// tags query convention (e.g. "definition.function") used by inferred queries.
 func mapCaptureToKind(capture string) SymbolKind {
+	// Skip reference captures from inferred tags queries
+	if strings.HasPrefix(capture, "reference.") {
+		return ""
+	}
+	// Strip "definition." prefix from inferred tags queries
+	capture = strings.TrimPrefix(capture, "definition.")
+
 	switch capture {
-	case "function":
+	case "function", "constructor":
 		return KindFunction
 	case "method":
 		return KindMethod

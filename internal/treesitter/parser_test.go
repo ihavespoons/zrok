@@ -102,6 +102,62 @@ def main():
 	}
 }
 
+func TestCanHandleInferredLanguage(t *testing.T) {
+	p := NewParser()
+
+	// C# has no custom query but the library can infer one
+	if !p.CanHandle("test.cs") {
+		t.Error("expected CanHandle to return true for .cs files via inferred query")
+	}
+	// Swift should also be inferred
+	if !p.CanHandle("test.swift") {
+		t.Error("expected CanHandle to return true for .swift files via inferred query")
+	}
+}
+
+func TestExtractRustSymbols(t *testing.T) {
+	source := []byte(`fn main() {
+    println!("hello");
+}
+
+struct Point {
+    x: f64,
+    y: f64,
+}
+
+impl Point {
+    fn distance(&self) -> f64 {
+        (self.x * self.x + self.y * self.y).sqrt()
+    }
+}
+
+trait Shape {
+    fn area(&self) -> f64;
+}
+
+const MAX_SIZE: usize = 100;
+`)
+
+	p := NewParser()
+	symbols, err := p.ExtractSymbolsFromSource(source, "test.rs")
+	if err != nil {
+		t.Fatalf("failed to extract symbols: %v", err)
+	}
+
+	found := make(map[string]bool)
+	for _, s := range symbols {
+		found[string(s.Kind)+":"+s.Name] = true
+		t.Logf("Symbol: %s %s (line %d, parent=%s)", s.Kind, s.Name, s.Line, s.Parent)
+	}
+
+	expected := []string{"function:main", "struct:Point", "interface:Shape", "constant:MAX_SIZE"}
+	for _, e := range expected {
+		if !found[e] {
+			t.Errorf("expected to find symbol %s", e)
+		}
+	}
+}
+
 func TestExtractJavaScriptSymbols(t *testing.T) {
 	source := []byte(`class UserService {
   constructor(db) {
