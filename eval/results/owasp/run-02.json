@@ -2,182 +2,46 @@
   "metadata": {
     "tool": "zrok",
     "version": "1.0.0",
-    "generated_at": "2026-03-05T16:18:56.904192+10:00",
-    "project_name": "tmp.cmisC2h3fD"
+    "generated_at": "2026-04-14T13:38:23.879769+10:00",
+    "project_name": "tmp.bX09KChMt1"
   },
   "summary": {
-    "total": 46,
+    "total": 10,
     "by_severity": {
-      "critical": 7,
-      "high": 16,
-      "low": 11,
-      "medium": 12
+      "high": 2,
+      "low": 2,
+      "medium": 6
     },
     "by_status": {
-      "open": 46
+      "open": 10
     }
   },
   "findings": [
     {
-      "id": "FIND-019",
-      "title": "Insecure Deserialization via pickle.loads() with User Input",
-      "severity": "critical",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-502",
-      "location": {
-        "file": "testcode/BenchmarkTest00164.py",
-        "line_start": 47,
-        "line_end": 47
-      },
-      "description": "Two test cases deserialize user-controlled input using pickle.loads(), which can execute\narbitrary code during deserialization.\n\n1. BenchmarkTest00164.py (line 47): Direct form input to pickle.\n   SOURCE: request.form.get(\"BenchmarkTest00164\")\n   GUARD: String concatenation/slicing (extracts param exactly)\n   SINK: pickle.loads(base64.urlsafe_b64decode(bar))\n\n2. BenchmarkTest00078.py (line 53): Cookie input to pickle.\n   SOURCE: request.cookies.get(\"BenchmarkTest00078\") -\u003e unquote_plus\n   GUARD: String concatenation/slicing (extracts param exactly)\n   SINK: pickle.loads(base64.urlsafe_b64decode(bar))\n",
-      "impact": "Python pickle deserialization can execute arbitrary code via __reduce__ methods in crafted\npayloads. An attacker can craft a base64-encoded pickle payload that executes system commands,\nestablishes reverse shells, or exfiltrates data.\n",
-      "remediation": "Never use pickle to deserialize untrusted data. Use safe serialization formats like JSON.\nIf pickle is required, implement a RestrictedUnpickler that only allows specific safe classes.\n",
-      "tags": [
-        "security:deserialization",
-        "security:injection"
-      ],
-      "created_at": "2026-03-05T16:18:28.964376+10:00",
-      "updated_at": "2026-03-05T16:18:28.964376+10:00",
-      "created_by": "security-agent"
-    },
-    {
-      "id": "FIND-018",
-      "title": "Code Injection via exec() and eval() with User Input",
-      "severity": "critical",
+      "id": "FIND-006",
+      "title": "Server-Side Template Injection via unsanitized f-string in render_template path",
+      "severity": "high",
       "confidence": "high",
       "status": "open",
       "cwe": "CWE-94",
       "location": {
-        "file": "testcode/BenchmarkTest00160.py",
-        "line_start": 49,
-        "line_end": 49
+        "file": "app.py",
+        "line_start": 36,
+        "line_end": 41
       },
-      "description": "Multiple test cases pass user-controlled input to exec() or eval(), enabling arbitrary\ncode execution. Affected files:\n\n1. BenchmarkTest00160.py (line 49): Direct exec() with user input.\n   SOURCE: request.form.get(\"BenchmarkTest00160\")\n   GUARD: match/case always takes case A, bar = param\n   SINK: exec(bar)\n\n2. BenchmarkTest00159.py (line 45): exec() with user input via list manipulation.\n   SOURCE: request.form.get(\"BenchmarkTest00159\")\n   GUARD: list append/pop leaves param at index 0\n   SINK: exec(bar)\n\n3. BenchmarkTest00074.py (line 51): exec() with cookie input via configparser.\n   SOURCE: request.cookies -\u003e urllib.parse.unquote_plus\n   GUARD: configparser passthrough (no sanitization)\n   SINK: exec(bar)\n\n4. BenchmarkTest00073.py (line 54): eval() with cookie input.\n   SOURCE: request.cookies -\u003e urllib.parse.unquote_plus\n   GUARD: String slicing plus quote validation (bypassable)\n   SINK: eval(bar)\n",
-      "impact": "An attacker can execute arbitrary Python code on the server, leading to complete system\ncompromise including data exfiltration, lateral movement, and denial of service.\n",
-      "remediation": "Never use exec() or eval() with user-controlled input. Use ast.literal_eval() for safe\nliteral parsing if needed. Redesign the logic to avoid dynamic code execution.\n",
+      "description": "The show_page route handler at /benchmark/\u003cpath:mypath\u003e passes user-controlled path input directly into render_template() using an f-string: render_template(f\"web/{mypath}\"). The Flask \u003cpath:mypath\u003e converter accepts arbitrary path segments including directory traversal sequences. While Jinja2's template loader has some path validation, the combination of user-controlled template paths with Jinja2's template rendering could allow Server-Side Template Injection (SSTI) if an attacker can control or place template files. The else branch uses send_from_directory() which serves arbitrary files from the templates directory, potentially exposing template source code or other sensitive files.\n",
+      "impact": "An attacker could potentially render arbitrary Jinja2 templates from the templates directory tree, or use path traversal in the send_from_directory branch to access files outside the intended web/ subdirectory but within the templates/ root. If combined with a file-write vulnerability (which exists in this benchmark via path traversal test cases), an attacker could write a malicious Jinja2 template and then trigger its rendering for remote code execution.\n",
+      "remediation": "Validate and sanitize the mypath parameter against an allowlist of known template paths. Use werkzeug.utils.safe_join() to prevent directory traversal. Separate static file serving from template rendering - static assets should be served via Flask's static file handling, not render_template(). Add path validation: reject paths containing '..', null bytes, or other traversal sequences.\n",
       "tags": [
-        "security:code-injection",
-        "security:injection"
+        "architecture:framework",
+        "architecture:input-validation"
       ],
-      "created_at": "2026-03-05T16:18:28.565552+10:00",
-      "updated_at": "2026-03-05T16:18:28.565552+10:00",
-      "created_by": "security-agent"
+      "created_at": "2026-04-14T13:37:47.24061+10:00",
+      "updated_at": "2026-04-14T13:37:47.24061+10:00",
+      "created_by": "architecture-agent"
     },
     {
-      "id": "FIND-017",
-      "title": "OS Command Injection via subprocess.run with shell=True",
-      "severity": "critical",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-78",
-      "location": {
-        "file": "testcode/BenchmarkTest00167.py",
-        "line_start": 50,
-        "line_end": 53
-      },
-      "description": "Multiple test cases pass user-controlled input into shell commands via subprocess.run\nwith shell=True. Affected files:\n\n1. BenchmarkTest00167.py (lines 50-53): User input flows to shell command.\n   SOURCE: request.form.get(\"BenchmarkTest00167\")\n   GUARD: Conditional always routes to param (should is in the test string)\n   SINK: subprocess.run(\"sh -c echo {bar}\", shell=True)\n\n2. BenchmarkTest00166.py (lines 39, 50-53): User input flows via dict passthrough.\n   SOURCE: request.form.get(\"BenchmarkTest00166\")\n   GUARD: dict set/get (no sanitization)\n   SINK: subprocess.run(\"sh -c echo {bar}\", shell=True)\n\n3. BenchmarkTest00165.py (lines 42, 55-57): User input flows via list manipulation.\n   SOURCE: request.form.get(\"BenchmarkTest00165\")\n   GUARD: list append/pop leaves param at index 0\n   SINK: subprocess.run([\"sh\", \"-c\", \"echo {bar}\"])\n\nFalse positives: BenchmarkTest00512.py and BenchmarkTest00350.py use safe constant values.\n",
-      "impact": "An attacker can execute arbitrary OS commands on the server by injecting shell metacharacters\ninto the form parameter.\n",
-      "remediation": "Never use shell=True with user-controlled input. Use subprocess.run with a list of arguments\nand avoid string interpolation into shell commands. Apply strict input validation.\n",
-      "tags": [
-        "security:command-injection",
-        "security:injection"
-      ],
-      "created_at": "2026-03-05T16:18:27.676278+10:00",
-      "updated_at": "2026-03-05T16:18:27.676278+10:00",
-      "created_by": "security-agent"
-    },
-    {
-      "id": "FIND-016",
-      "title": "SQL Injection via String Interpolation in Multiple Endpoints",
-      "severity": "critical",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-89",
-      "location": {
-        "file": "testcode/BenchmarkTest00099.py",
-        "line_start": 46,
-        "line_end": 49
-      },
-      "description": "Multiple test cases construct SQL queries using f-string interpolation with user input,\nenabling SQL injection. Affected files:\n\n1. BenchmarkTest00099.py (line 46): request.form -\u003e configparser passthrough -\u003e f-string SQL\n   SOURCE: request.form.get(\"BenchmarkTest00099\")\n   GUARD: configparser set/get (no sanitization)\n   SINK: cur.execute(f\"SELECT username from USERS where password = '{bar}'\")\n\n2. BenchmarkTest00283.py (line 46): request.form via request_wrapper -\u003e dict passthrough\n   SOURCE: wrapped.get_form_parameter(\"BenchmarkTest00283\")\n   GUARD: dict set/get (no sanitization)\n   SINK: cur.execute(f\"SELECT username from USERS where password = '{bar}'\")\n\n3. BenchmarkTest00284.py (line 44): request.form -\u003e conditional always assigns param\n   SOURCE: wrapped.get_form_parameter(\"BenchmarkTest00284\")\n   GUARD: 'should' in bar always True, so param assigned to bar\n   SINK: cur.execute(f\"SELECT username from USERS where password = '{bar}'\")\n\nBenchmarkTest00011.py and BenchmarkTest00012.py use parameterized queries and are safe.\n",
-      "impact": "An attacker can inject arbitrary SQL via the form parameter, allowing them to extract\nall database contents, modify data, or potentially achieve code execution depending on\nSQLite extensions.\n",
-      "remediation": "Use parameterized queries: cur.execute(\"SELECT username from USERS where password = ?\", (bar,))\n",
-      "tags": [
-        "security:sql-injection",
-        "security:injection"
-      ],
-      "created_at": "2026-03-05T16:18:26.777549+10:00",
-      "updated_at": "2026-03-05T16:18:26.777549+10:00",
-      "created_by": "security-agent"
-    },
-    {
-      "id": "FIND-006",
-      "title": "Insecure YAML deserialization via yaml.Loader in BenchmarkTest00269",
-      "severity": "critical",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-502",
-      "location": {
-        "file": "testcode/BenchmarkTest00269.py",
-        "line_start": 44,
-        "line_end": 44
-      },
-      "description": "User input from a form parameter flows through ThingFactory.doSomething()\n(which returns the input unchanged when using Thing1) and is then passed\nto yaml.load() with the unsafe yaml.Loader. The yaml.Loader class supports\narbitrary Python object instantiation via YAML tags (e.g., !!python/object/apply).\n\nSOURCE: request.form.getlist(\"BenchmarkTest00269\")[0] (line 31-34)\nGUARD: ThingFactory.doSomething() - identity function, does not sanitize\nSINK: yaml.load(bar, Loader=yaml.Loader) (line 44)\n",
-      "impact": "An attacker can achieve arbitrary code execution by submitting a YAML payload\ncontaining Python object construction tags. For example:\n!!python/object/apply:os.system ['id'] would execute the 'id' command on the\nserver. yaml.Loader permits deserialization of arbitrary Python objects.\n",
-      "remediation": "Replace yaml.Loader with yaml.SafeLoader or use yaml.safe_load() instead:\n  yobj = yaml.safe_load(bar)\n",
-      "tags": [
-        "content:deserialization"
-      ],
-      "created_at": "2026-03-05T16:17:53.189472+10:00",
-      "updated_at": "2026-03-05T16:17:53.189472+10:00",
-      "created_by": "content-agent"
-    },
-    {
-      "id": "FIND-005",
-      "title": "Insecure deserialization via pickle.loads in BenchmarkTest00164",
-      "severity": "critical",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-502",
-      "location": {
-        "file": "testcode/BenchmarkTest00164.py",
-        "line_start": 47,
-        "line_end": 47
-      },
-      "description": "User input from a form parameter is base64-decoded and passed directly to\npickle.loads(). The string concatenation/slicing transformation (prepend \"help\",\nappend \"snapes on a plane\", slice [4:-17]) exactly recovers the original\nuser-supplied value.\n\nSOURCE: request.form.get(\"BenchmarkTest00164\") (line 31)\nGUARD: None - string operations preserve original tainted data\nSINK: pickle.loads(base64.urlsafe_b64decode(bar)) (line 47)\n",
-      "impact": "An attacker can achieve arbitrary code execution on the server by submitting a\nmalicious pickle payload (base64-encoded) as the form parameter. This is the\nmost severe class of vulnerability as it grants full control of the server.\n",
-      "remediation": "Never use pickle.loads() on untrusted input. Use JSON or another safe\nserialization format. If pickle is required, use a RestrictedUnpickler\nwith a strict whitelist of allowed classes.\n",
-      "tags": [
-        "content:deserialization"
-      ],
-      "created_at": "2026-03-05T16:17:52.341299+10:00",
-      "updated_at": "2026-03-05T16:17:52.341299+10:00",
-      "created_by": "content-agent"
-    },
-    {
-      "id": "FIND-004",
-      "title": "Insecure deserialization via pickle.loads in BenchmarkTest00078",
-      "severity": "critical",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-502",
-      "location": {
-        "file": "testcode/BenchmarkTest00078.py",
-        "line_start": 53,
-        "line_end": 53
-      },
-      "description": "A cookie value controlled by the user is base64-decoded and passed directly to\npickle.loads(). The cookie is URL-decoded, then string slicing extracts the\noriginal user-supplied portion, which is then base64-decoded and deserialized.\n\nSOURCE: request.cookies.get(\"BenchmarkTest00078\") (line 39)\nGUARD: None - string concatenation/slicing does not sanitize; it merely\n       prepends \"help\" and appends \"snapes on a plane\", then slices [4:-17]\n       which exactly recovers the original param value\nSINK: pickle.loads(base64.urlsafe_b64decode(bar)) (line 53)\n",
-      "impact": "An attacker can achieve arbitrary code execution on the server by crafting a\nmalicious pickle payload, base64-encoding it, and setting it as the cookie value.\npickle.loads() can instantiate arbitrary Python objects and execute code during\ndeserialization.\n",
-      "remediation": "Never use pickle.loads() on untrusted input. Use a safe serialization format\nsuch as JSON. If pickle must be used, implement a RestrictedUnpickler that\nonly allows a whitelist of safe classes.\n",
-      "tags": [
-        "content:deserialization"
-      ],
-      "created_at": "2026-03-05T16:17:51.866252+10:00",
-      "updated_at": "2026-03-05T16:17:51.866252+10:00",
-      "created_by": "content-agent"
-    },
-    {
-      "id": "FIND-039",
+      "id": "FIND-001",
       "title": "Hardcoded Flask secret_key enables session forgery",
       "severity": "high",
       "confidence": "high",
@@ -188,113 +52,21 @@
         "line_start": 25,
         "line_end": 25
       },
-      "description": "The Flask application uses a hardcoded secret key:\n  app.secret_key = b'if you need this you are doing something wrong'\n\nSOURCE: Hardcoded bytes literal in source code (line 25)\nGUARD: None - the key is static and publicly visible in the repository\nSINK: Flask session signing mechanism (used by Flask internally for cookie signing)\n\nWhile the comment suggests awareness of the issue, the key is still set and active.\nAny attacker with access to the source code (or who guesses the key) can forge\nsession cookies and tamper with signed data.\n",
-      "impact": "An attacker can craft arbitrary Flask session cookies, potentially impersonating\nother users, bypassing any session-based access controls, or injecting malicious\nsession data. Since this is a benchmark application, the risk is contextual, but\nthe pattern is a clear anti-pattern that should not be replicated.\n",
-      "remediation": "Generate the secret key from a cryptographically secure source and load it from\nan environment variable or secure configuration file:\n\n  import os\n  app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(32))\n",
+      "description": "The Flask secret_key is hardcoded as a static byte string: b'if you need this you are doing something wrong'. This key is used by Flask to cryptographically sign session cookies. Any attacker who reads the source code (which is open source under GPLv3) can forge arbitrary session cookies, enabling session hijacking and trust boundary violations. Multiple test cases (e.g., BenchmarkTest00260, BenchmarkTest00153, BenchmarkTest00072) store user-controlled data in flask.session, making this directly exploitable.\n",
+      "impact": "An attacker can forge Flask session cookies to impersonate any user or inject arbitrary data into server-side session state. This undermines all trust boundary test cases that rely on flask.session for state management. Combined with the trust boundary vulnerabilities in the benchmark, this provides a trivial bypass of any session-based controls.\n",
+      "remediation": "Generate the secret_key from a cryptographically secure random source at deployment time (e.g., os.urandom(32)) and store it in an environment variable or secrets manager. Do not commit secret keys to source control. Example: app.secret_key = os.environ.get('FLASK_SECRET_KEY') or os.urandom(32).\n",
       "tags": [
-        "guards:hardcoded-secret",
-        "guards:configuration"
+        "architecture:secrets",
+        "architecture:configuration"
       ],
-      "created_at": "2026-03-05T16:18:52.33906+10:00",
-      "updated_at": "2026-03-05T16:18:52.33906+10:00",
-      "created_by": "guards-agent"
+      "created_at": "2026-04-14T13:37:41.426071+10:00",
+      "updated_at": "2026-04-14T13:37:41.426071+10:00",
+      "created_by": "architecture-agent"
     },
     {
-      "id": "FIND-035",
-      "title": "Path traversal in app.py show_page via unvalidated path parameter",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-22",
-      "location": {
-        "file": "app.py",
-        "line_start": 36,
-        "line_end": 41
-      },
-      "description": "The show_page route handler accepts a user-controlled path parameter (mypath) and passes it\ndirectly to render_template() and send_from_directory() without validating that the path\ndoes not contain directory traversal sequences (e.g., \"../\").\n\nSOURCE: Flask route parameter \u003cpath:mypath\u003e (line 37)\nGUARD: Only checks if path ends with \".html\" or \"404.html\" - no traversal validation\nSINK: render_template(f\"web/{mypath}\") (line 39) and send_from_directory(..., mypath) (line 41)\n\nWhile send_from_directory has some built-in protections, render_template with an\nf-string path does not prevent traversal. An attacker could request\n/benchmark/../../secret.html to attempt to render templates outside the intended directory.\n",
-      "impact": "An attacker could read arbitrary template files from the filesystem by crafting paths with\ndirectory traversal sequences. This could expose configuration files, source code, or\nother sensitive data accessible to the application process.\n",
-      "remediation": "Validate the mypath parameter to ensure it does not contain \"..\" sequences or absolute\npath components. Use werkzeug.utils.safe_join() to construct the path safely, or apply\nan allowlist of valid path prefixes.\n",
-      "tags": [
-        "guards:missing-input-validation",
-        "guards:path-traversal"
-      ],
-      "created_at": "2026-03-05T16:18:49.662671+10:00",
-      "updated_at": "2026-03-05T16:18:49.662671+10:00",
-      "created_by": "guards-agent"
-    },
-    {
-      "id": "FIND-034",
-      "title": "No Authentication or Authorization on Any Endpoint",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-306",
-      "location": {
-        "file": "app.py",
-        "line_start": 36,
-        "line_end": 52
-      },
-      "description": "The Flask application registers approximately 70+ routes across app.py and all testcode/\nmodules without any authentication or authorization checks. Every endpoint is publicly\naccessible including those that execute SQL queries, OS commands, Python code,\ndeserialize untrusted data, and query LDAP directories.\nNo middleware, decorators, or session checks are applied to any route.\n",
-      "impact": "Any user on the network can access all application functionality without authentication.\nCombined with the injection vulnerabilities, an anonymous attacker can achieve arbitrary\ncode execution, data exfiltration, and full system compromise.\n",
-      "remediation": "Implement authentication middleware (e.g., Flask-Login) that requires valid credentials\nbefore accessing any application endpoint. Apply role-based authorization to restrict\naccess to sensitive functionality.\n",
-      "tags": [
-        "security:missing-authentication",
-        "security:access-control"
-      ],
-      "created_at": "2026-03-05T16:18:32.29233+10:00",
-      "updated_at": "2026-03-05T16:18:32.29233+10:00",
-      "created_by": "security-agent"
-    },
-    {
-      "id": "FIND-030",
-      "title": "LDAP Injection via Unsanitized User Input in Filter Construction",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-90",
-      "location": {
-        "file": "testcode/BenchmarkTest00265.py",
-        "line_start": 42,
-        "line_end": 45
-      },
-      "description": "Multiple test cases construct LDAP search filters using f-string interpolation with\nuser-controlled input, enabling LDAP injection attacks.\n\n1. BenchmarkTest00265.py (line 42): Direct form input to LDAP filter.\n   SOURCE: request.form.getlist(\"BenchmarkTest00265\")[0]\n   GUARD: None (bar = param directly)\n   SINK: conn.search(base, \"(\u0026(objectclass=person)(|(uid={bar})(street=...)))\")\n\n2. BenchmarkTest00266.py (line 53): Form input via match/case routes to param.\n   SOURCE: request.form.getlist(\"BenchmarkTest00266\")[0]\n   GUARD: match/case (guess=A, so bar=param)\n   SINK: conn.search(base, \"(\u0026(objectclass=person)(|(uid={bar})(street=...)))\")\n\n3. BenchmarkTest00427.py (line 47): Form key name used as LDAP filter input.\n   SOURCE: request.form key matching\n   GUARD: dict passthrough (no sanitization)\n   SINK: conn.search(base, \"(\u0026(objectclass=person)(uid={bar}))\")\n\nFalse positives: BenchmarkTest00077.py (bar=bob), BenchmarkTest00076.py (bar=keyA value).\n",
-      "impact": "An attacker can manipulate LDAP queries to bypass authentication, extract unauthorized\ndata, or modify directory entries by injecting LDAP metacharacters.\n",
-      "remediation": "Escape special LDAP characters using ldap3.utils.conv.escape_filter_chars() or equivalent.\n",
-      "tags": [
-        "security:ldap-injection",
-        "security:injection"
-      ],
-      "created_at": "2026-03-05T16:18:29.844118+10:00",
-      "updated_at": "2026-03-05T16:18:29.844118+10:00",
-      "created_by": "security-agent"
-    },
-    {
-      "id": "FIND-015",
-      "title": "Plaintext Passwords Stored in SQLite Database Initialization",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-256",
-      "location": {
-        "file": "helpers/db_sqlite.py",
-        "line_start": 20,
-        "line_end": 23
-      },
-      "description": "User credentials are stored in plaintext in the database via hardcoded INSERT statements:\nUser01/P455w0rd, User02/B3nchM3rk, User03/a$c11, foo/bar.\nSOURCE: Hardcoded plaintext passwords in SQL statements.\nGUARD: None - no hashing or encryption applied.\nSINK: SQLite database USERS table password column.\n",
-      "impact": "Database compromise exposes all user passwords in cleartext. Attackers can use these\ncredentials for credential stuffing attacks against other systems. The passwords are also\nvisible in the source code.\n",
-      "remediation": "Hash passwords using bcrypt, scrypt, or Argon2 before storage. Never store plaintext\npasswords. Remove hardcoded credentials from source code.\n",
-      "tags": [
-        "security:plaintext-passwords",
-        "security:credential-storage"
-      ],
-      "created_at": "2026-03-05T16:18:26.349214+10:00",
-      "updated_at": "2026-03-05T16:18:26.349214+10:00",
-      "created_by": "security-agent"
-    },
-    {
-      "id": "FIND-014",
-      "title": "Hardcoded LDAP Admin Credentials in helpers/ldap.py",
-      "severity": "high",
+      "id": "FIND-009",
+      "title": "Hardcoded LDAP admin credentials in helper module",
+      "severity": "medium",
       "confidence": "high",
       "status": "open",
       "cwe": "CWE-798",
@@ -303,241 +75,43 @@
         "line_start": 5,
         "line_end": 19
       },
-      "description": "LDAP connections use hardcoded admin credentials in two locations:\nLine 5 and Line 19 both use password='secret' with user='uid=admin,ou=system'.\nAdditionally, test user passwords are hardcoded on line 6 (MrFooPa$$word, barM$B4dPass, YouwontGue$$).\nSOURCE: Hardcoded string literals.\nGUARD: None.\nSINK: ldap3.Connection() authentication parameters and add_entry() userpassword attributes.\n",
-      "impact": "Anyone with access to the source code can obtain the LDAP admin credentials and all user passwords.\nAn attacker could use these credentials to authenticate to the LDAP server, read/modify all entries,\nand potentially escalate privileges across connected systems.\n",
-      "remediation": "Store LDAP credentials in environment variables or a secrets manager. Use a dedicated\nservice account with least-privilege access rather than an admin account.\nHash user passwords before storing in LDAP.\n",
+      "description": "The LDAP helper module contains hardcoded admin credentials used in two places: the module-level connection initialization (line 5: user='uid=admin,ou=system', password='secret') and the get_connection() function (line 19: same credentials). While this is a mock LDAP server (using ldap3.MOCK_SYNC strategy), the pattern of embedding credentials directly in source code sets a poor example and would be a critical vulnerability if the mock were replaced with a real LDAP server. The user passwords for test entries are also hardcoded in plaintext (line 6: 'MrFooPa$$word', 'barM$B4dPass', 'YouwontGue$$').\n",
+      "impact": "If this code pattern is replicated in a production environment or the mock is replaced with a real LDAP server, the hardcoded credentials would grant administrative access to anyone with source code access. The plaintext test user passwords could also be used in credential-stuffing attacks if they match real user passwords.\n",
+      "remediation": "Even for mock/test configurations, credentials should be externalized to environment variables or a configuration file excluded from version control. Use a .env file pattern with a .env.example template showing the required variables without actual values.\n",
       "tags": [
-        "security:hardcoded-secret",
-        "security:ldap"
+        "architecture:secrets",
+        "architecture:configuration"
       ],
-      "created_at": "2026-03-05T16:18:25.440076+10:00",
-      "updated_at": "2026-03-05T16:18:25.440076+10:00",
-      "created_by": "security-agent"
-    },
-    {
-      "id": "FIND-013",
-      "title": "Hardcoded Flask Secret Key in app.py",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-798",
-      "location": {
-        "file": "app.py",
-        "line_start": 25,
-        "line_end": 25
-      },
-      "description": "The Flask application uses a hardcoded secret key: app.secret_key = b'if you need this you are doing something wrong'.\nThis key is used by Flask to sign session cookies and other security-sensitive tokens.\nSOURCE: Hardcoded byte string in source code.\nGUARD: None.\nSINK: Flask session management (app.secret_key).\n",
-      "impact": "An attacker who knows the secret key can forge Flask session cookies, potentially impersonating\nany user. Since the key is committed to source code, anyone with repository access can extract it.\nThis enables session hijacking and privilege escalation attacks.\n",
-      "remediation": "Load the secret key from an environment variable or a secrets manager.\nEnsure the key is generated with a cryptographically secure random generator and is at least 32 bytes.\n",
-      "tags": [
-        "security:hardcoded-secret",
-        "security:session-management"
-      ],
-      "created_at": "2026-03-05T16:18:24.538514+10:00",
-      "updated_at": "2026-03-05T16:18:24.538514+10:00",
-      "created_by": "security-agent"
-    },
-    {
-      "id": "FIND-012",
-      "title": "Path traversal via ThingFactory pass-through in BenchmarkTest00003",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-22",
-      "location": {
-        "file": "testcode/BenchmarkTest00003.py",
-        "line_start": 50,
-        "line_end": 50
-      },
-      "description": "A cookie value controlled by the user is URL-decoded and passed through\nThingFactory.doSomething(), which (for Thing1) returns the input unchanged.\nThe tainted value is then used as a filename component in a codecs.open() call\nwithout any path validation.\n\nSOURCE: request.cookies.get(\"BenchmarkTest00003\") (line 39)\nGUARD: ThingFactory.doSomething() - identity function, does not sanitize\nSINK: codecs.open(f'{helpers.utils.TESTFILES_DIR}/{bar}', 'r', 'utf-8') (line 50)\n",
-      "impact": "An attacker can read arbitrary files on the server by setting the cookie to\na path traversal payload such as \"../../../../etc/passwd\".\n",
-      "remediation": "Validate that the resolved path stays within TESTFILES_DIR:\n  real = os.path.realpath(os.path.join(TESTFILES_DIR, bar))\n  if not real.startswith(os.path.realpath(TESTFILES_DIR)):\n      abort(403)\n",
-      "tags": [
-        "content:pathtraversal"
-      ],
-      "created_at": "2026-03-05T16:17:57.020608+10:00",
-      "updated_at": "2026-03-05T16:17:57.020608+10:00",
-      "created_by": "content-agent"
-    },
-    {
-      "id": "FIND-011",
-      "title": "Path traversal via unsanitized cookie in BenchmarkTest00002",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-22",
-      "location": {
-        "file": "testcode/BenchmarkTest00002.py",
-        "line_start": 49,
-        "line_end": 49
-      },
-      "description": "A cookie value controlled by the user is URL-decoded and assigned to bar via\na conditional that always evaluates to the tainted path. The string \"This\nshould never happen\" contains 'should', so the condition on line 42 is True,\nand bar = param. The tainted value is then used in a file open call.\n\nSOURCE: request.cookies.get(\"BenchmarkTest00002\") (line 39)\nGUARD: None - conditional on line 42-43 always assigns bar = param\nSINK: codecs.open(f'{helpers.utils.TESTFILES_DIR}/{bar}', 'r', 'utf-8') (line 49)\n",
-      "impact": "An attacker can read arbitrary files on the server by setting the cookie to\na path traversal payload such as \"../../../../etc/passwd\".\n",
-      "remediation": "Validate that the resolved path stays within TESTFILES_DIR:\n  real = os.path.realpath(os.path.join(TESTFILES_DIR, bar))\n  if not real.startswith(os.path.realpath(TESTFILES_DIR)):\n      abort(403)\n",
-      "tags": [
-        "content:pathtraversal"
-      ],
-      "created_at": "2026-03-05T16:17:56.751245+10:00",
-      "updated_at": "2026-03-05T16:17:56.751245+10:00",
-      "created_by": "content-agent"
-    },
-    {
-      "id": "FIND-010",
-      "title": "Path traversal via unsanitized cookie in BenchmarkTest00001",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-22",
-      "location": {
-        "file": "testcode/BenchmarkTest00001.py",
-        "line_start": 47,
-        "line_end": 47
-      },
-      "description": "A cookie value controlled by the user is URL-decoded and used directly as a\nfilename component in a codecs.open() call. No path validation or sanitization\nis performed. The file path is constructed by concatenating the TESTFILES_DIR\nconstant with the user-supplied value.\n\nSOURCE: request.cookies.get(\"BenchmarkTest00001\") (line 39)\nGUARD: None - direct assignment bar = param\nSINK: codecs.open(f'{helpers.utils.TESTFILES_DIR}/{bar}', 'r', 'utf-8') (line 47)\n",
-      "impact": "An attacker can read arbitrary files on the server by setting the cookie to a\npath traversal payload such as \"../../../../etc/passwd\". This can expose\nsensitive configuration files, credentials, source code, and other data.\n",
-      "remediation": "Validate that the resolved path stays within TESTFILES_DIR using\nos.path.realpath() and os.path.commonpath(), or use a whitelist of\nallowed filenames.\n",
-      "tags": [
-        "content:pathtraversal"
-      ],
-      "created_at": "2026-03-05T16:17:55.838754+10:00",
-      "updated_at": "2026-03-05T16:17:55.838754+10:00",
-      "created_by": "content-agent"
-    },
-    {
-      "id": "FIND-009",
-      "title": "XXE via external entity processing in BenchmarkTest00460",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-611",
-      "location": {
-        "file": "testcode/BenchmarkTest00460.py",
-        "line_start": 41,
-        "line_end": 45
-      },
-      "description": "User input from a custom HTTP header (BenchmarkTest00460) is assigned directly\nto bar and then parsed as XML with external entity processing explicitly\nenabled via feature_external_ges=True.\n\nSOURCE: request.headers.get(\"BenchmarkTest00460\") (line 31)\nGUARD: None - direct assignment bar = param\nSINK: xml.dom.minidom.parseString(bar, parser) with feature_external_ges=True (line 45)\n",
-      "impact": "An attacker can read arbitrary files from the server, perform SSRF, or cause\ndenial of service by including XML with external entity declarations in the\nrequest header.\n",
-      "remediation": "Remove the line enabling external entity processing:\n  parser.setFeature(xml.sax.handler.feature_external_ges, True)\n",
-      "tags": [
-        "content:xxe"
-      ],
-      "created_at": "2026-03-05T16:17:55.38478+10:00",
-      "updated_at": "2026-03-05T16:17:55.38478+10:00",
-      "created_by": "content-agent"
+      "created_at": "2026-04-14T13:37:50.406692+10:00",
+      "updated_at": "2026-04-14T13:37:50.406692+10:00",
+      "created_by": "architecture-agent"
     },
     {
       "id": "FIND-008",
-      "title": "XXE via external entity processing in BenchmarkTest00294",
-      "severity": "high",
+      "title": "SQL query result display function reflects query text without encoding",
+      "severity": "medium",
       "confidence": "high",
       "status": "open",
-      "cwe": "CWE-611",
+      "cwe": "CWE-79",
       "location": {
-        "file": "testcode/BenchmarkTest00294.py",
-        "line_start": 48,
-        "line_end": 52
+        "file": "helpers/db_sqlite.py",
+        "line_start": 33,
+        "line_end": 49
       },
-      "description": "User input from a form parameter is assigned to bar via a conditional check.\nThe condition tests whether 'should' is NOT in \"This should never happen\" -\nsince 'should' IS in that string, the else branch executes and bar = param.\nThe tainted XML is then parsed with feature_external_ges explicitly enabled.\n\nSOURCE: wrapped.get_form_parameter(\"BenchmarkTest00294\") (line 34)\nGUARD: None - the conditional on lines 39-42 always takes the else branch,\n       passing user input through unchanged\nSINK: xml.dom.minidom.parseString(bar, parser) with feature_external_ges=True (line 52)\n",
-      "impact": "An attacker can read arbitrary files from the server, perform SSRF, or cause\ndenial of service by submitting XML with external entity declarations.\n",
-      "remediation": "Remove the line enabling external entity processing:\n  parser.setFeature(xml.sax.handler.feature_external_ges, True)\n",
+      "description": "The db_sqlite.results() function generates HTML output that includes the raw SQL query string in the empty-result case (line 43: f'Results set is empty for query: {sql}') and includes database row values without HTML encoding (lines 46-48). While the SQL query string itself is typically not user-controlled, in cases where SQL injection test cases use string formatting to build queries (e.g., BenchmarkTest00283: f\"SELECT username from USERS where password = '{bar}'\"), the user-controlled portion of the SQL string is reflected back in the HTML response without encoding, creating a secondary XSS vector through the database helper layer.\n",
+      "impact": "User input that flows through SQL injection vulnerable test cases gets reflected back in HTML responses without encoding via the results() helper. This creates a stored/reflected XSS vulnerability chained through the database layer. An attacker exploiting SQL injection could also inject JavaScript via the query reflection.\n",
+      "remediation": "Apply escape_for_html() to the sql parameter in the empty-result message. Apply escape_for_html() to each row value before including it in the HTML response. Import and use helpers.utils.escape_for_html consistently in the results() function.\n",
       "tags": [
-        "content:xxe"
+        "architecture:output-encoding",
+        "architecture:framework"
       ],
-      "created_at": "2026-03-05T16:17:54.523889+10:00",
-      "updated_at": "2026-03-05T16:17:54.523889+10:00",
-      "created_by": "content-agent"
+      "created_at": "2026-04-14T13:37:49.452488+10:00",
+      "updated_at": "2026-04-14T13:37:49.452488+10:00",
+      "created_by": "architecture-agent"
     },
     {
       "id": "FIND-007",
-      "title": "XXE via external entity processing in BenchmarkTest00205",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-611",
-      "location": {
-        "file": "testcode/BenchmarkTest00205.py",
-        "line_start": 49,
-        "line_end": 53
-      },
-      "description": "User input from a form parameter flows through a configparser round-trip\n(which preserves the value) and is then parsed as XML with external entity\nprocessing explicitly enabled. The SAX parser has feature_external_ges set\nto True on line 51, which enables resolution of external general entities.\n\nSOURCE: request.form.getlist(\"BenchmarkTest00205\")[0] (line 31-34)\nGUARD: None - configparser round-trip preserves tainted data\nSINK: xml.dom.minidom.parseString(bar, parser) with feature_external_ges=True (line 53)\n",
-      "impact": "An attacker can read arbitrary files from the server filesystem, perform SSRF\nattacks against internal services, or cause denial of service via entity\nexpansion (billion laughs attack).\n",
-      "remediation": "Remove the line enabling external entity processing:\n  parser.setFeature(xml.sax.handler.feature_external_ges, True)\nBy default, external entities are disabled in Python's SAX parser.\n",
-      "tags": [
-        "content:xxe"
-      ],
-      "created_at": "2026-03-05T16:17:53.615854+10:00",
-      "updated_at": "2026-03-05T16:17:53.615854+10:00",
-      "created_by": "content-agent"
-    },
-    {
-      "id": "FIND-003",
-      "title": "Reflected XSS via configparser round-trip in BenchmarkTest00098",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-79",
-      "location": {
-        "file": "testcode/BenchmarkTest00098.py",
-        "line_start": 46,
-        "line_end": 52
-      },
-      "description": "User input from request.form[\"BenchmarkTest00098\"] is stored into a\nconfigparser section and then immediately retrieved. The configparser\nround-trip preserves the tainted value. The value is then placed into the\nHTTP response via str.format() without any HTML encoding.\n\nSOURCE: request.form.get(\"BenchmarkTest00098\") (line 31)\nGUARD: None - configparser set/get round-trip does not sanitize\nSINK: RESPONSE += 'bar is \\'{0[bar]}\\'...'.format(dict) returned as HTTP response (line 49)\n",
-      "impact": "An attacker can inject arbitrary HTML/JavaScript into the response by submitting\na crafted value in the form parameter. This enables session hijacking, credential\ntheft, and other client-side attacks.\n",
-      "remediation": "Apply escape_for_html() to bar before including it in the response:\n  dict['bar'] = escape_for_html(bar)\n",
-      "tags": [
-        "content:xss"
-      ],
-      "created_at": "2026-03-05T16:17:50.94878+10:00",
-      "updated_at": "2026-03-05T16:17:50.94878+10:00",
-      "created_by": "content-agent"
-    },
-    {
-      "id": "FIND-002",
-      "title": "Reflected XSS via unsanitized form input in BenchmarkTest00097",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-79",
-      "location": {
-        "file": "testcode/BenchmarkTest00097.py",
-        "line_start": 40,
-        "line_end": 45
-      },
-      "description": "User input from request.form[\"BenchmarkTest00097\"] is split on spaces and the\nfirst token is assigned to bar. This value is then placed directly into the\nHTTP response without HTML encoding. Splitting on spaces does not prevent XSS\nsince payloads like \u003cscript\u003ealert(1)\u003c/script\u003e contain no spaces.\n\nSOURCE: request.form.get(\"BenchmarkTest00097\") (line 31)\nGUARD: param.split(' ')[0] - splits on space but does not sanitize HTML characters\nSINK: RESPONSE += f'bar is \\'{bar}\\' ...' returned as HTTP response (line 42-43)\n",
-      "impact": "An attacker can inject arbitrary HTML/JavaScript via the form parameter. Since\nthe only transformation is splitting on spaces, any XSS payload without spaces\n(e.g., \u003cimg/src=x/onerror=alert(1)\u003e) passes through unmodified.\n",
-      "remediation": "Apply escape_for_html() to bar before including it in the response:\n  RESPONSE += f'bar is \\'{escape_for_html(bar)}\\' and otherarg is \\'{otherarg}\\''\n",
-      "tags": [
-        "content:xss"
-      ],
-      "created_at": "2026-03-05T16:17:50.106824+10:00",
-      "updated_at": "2026-03-05T16:17:50.106824+10:00",
-      "created_by": "content-agent"
-    },
-    {
-      "id": "FIND-001",
-      "title": "Reflected XSS via unsanitized form input in BenchmarkTest00096",
-      "severity": "high",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-79",
-      "location": {
-        "file": "testcode/BenchmarkTest00096.py",
-        "line_start": 50,
-        "line_end": 54
-      },
-      "description": "User input from request.form[\"BenchmarkTest00096\"] flows into the HTTP response\nwithout any HTML encoding or sanitization. The match/case statement on line 39\nalways takes the 'A' branch (since possible=\"ABC\" and guess=possible[0]='A'),\nassigning bar=param directly. The tainted value is then interpolated into\nthe response via f-string on line 51.\n\nSOURCE: request.form.get(\"BenchmarkTest00096\") (line 31)\nGUARD: None - escape_for_html is imported but never called\nSINK: RESPONSE += f'bar is \\'{bar}\\' ...' returned as HTTP response (line 51-54)\n",
-      "impact": "An attacker can inject arbitrary HTML/JavaScript into the response by submitting\na crafted value in the BenchmarkTest00096 form parameter. This enables session\nhijacking, credential theft, defacement, and phishing attacks against other users.\n",
-      "remediation": "Apply escape_for_html() to the bar variable before including it in the response:\n  RESPONSE += f'bar is \\'{escape_for_html(bar)}\\' and otherarg is \\'{otherarg}\\''\n",
-      "tags": [
-        "content:xss"
-      ],
-      "created_at": "2026-03-05T16:17:49.637092+10:00",
-      "updated_at": "2026-03-05T16:17:49.637092+10:00",
-      "created_by": "content-agent"
-    },
-    {
-      "id": "FIND-045",
-      "title": "ThingFactory uses getattr without validation, enabling arbitrary class instantiation",
+      "title": "ThingFactory uses getattr for class instantiation from config file input",
       "severity": "medium",
       "confidence": "medium",
       "status": "open",
@@ -547,112 +121,20 @@
         "line_start": 4,
         "line_end": 10
       },
-      "description": "The createThing() function reads a class name from a configuration file and uses\ngetattr() to dynamically resolve it against the ThingFactory module. There is no\nvalidation that the resolved name is an allowed class.\n\nSOURCE: config.get('DEFAULT', 'thing', fallback='Thing1') from ThingFactory.ini (line 7)\nGUARD: None - any class/function name in the module can be resolved\nSINK: getattr(helpers.ThingFactory, cname) followed by cobj() instantiation (lines 8-9)\n\nThe code:\n  cname = config.get('DEFAULT', 'thing', fallback='Thing1')\n  cobj = getattr(helpers.ThingFactory, cname)\n  obj = cobj()\n\nIf the configuration file is tampered with, any callable in the ThingFactory module\n(or imported into it) could be invoked. Since configparser is used, and other test\ncases write to configparser sections with user input, configuration injection is\na realistic attack vector.\n",
-      "impact": "An attacker who can modify ThingFactory.ini could cause arbitrary class\ninstantiation from the ThingFactory module namespace. This could be escalated\nif additional imports are added to the module in the future.\n",
-      "remediation": "Add an allowlist check before calling getattr:\n\n  ALLOWED_THINGS = {'Thing1', 'Thing2'}\n  cname = config.get('DEFAULT', 'thing', fallback='Thing1')\n  if cname not in ALLOWED_THINGS:\n      raise ValueError(f\"Unknown thing type: {cname}\")\n  cobj = getattr(helpers.ThingFactory, cname)\n",
+      "description": "The ThingFactory.createThing() function reads a class name from an INI configuration file (helpers/resources/ThingFactory.ini) and uses getattr(helpers.ThingFactory, cname) to resolve it to a class object, which is then instantiated. While the current INI file contains only 'Thing2' and the getattr scope is limited to the ThingFactory module itself, this pattern is fragile: if the configuration file is user-modifiable (or if a path traversal vulnerability allows overwriting it), an attacker could specify any attribute of the ThingFactory module for instantiation. The configparser fallback value 'Thing1' provides some safety, but the getattr call has no validation that cname refers to an expected class.\n",
+      "impact": "If the ThingFactory.ini file is modified (directly or via another vulnerability), arbitrary attributes of the helpers.ThingFactory module could be instantiated. While the blast radius is currently limited to the module's own namespace, this anti-pattern could lead to unexpected behavior if new classes or imports are added to the module in the future.\n",
+      "remediation": "Add an explicit allowlist check before the getattr call: validate that cname is in a set of known-safe class names (e.g., {'Thing1', 'Thing2'}). Alternatively, use a dictionary mapping config values to classes rather than dynamic attribute lookup.\n",
       "tags": [
-        "guards:missing-allowlist",
-        "guards:dynamic-dispatch"
+        "architecture:code-loading",
+        "architecture:input-validation"
       ],
-      "created_at": "2026-03-05T16:18:54.593956+10:00",
-      "updated_at": "2026-03-05T16:18:54.593956+10:00",
-      "created_by": "guards-agent"
+      "created_at": "2026-04-14T13:37:48.064392+10:00",
+      "updated_at": "2026-04-14T13:37:48.064392+10:00",
+      "created_by": "architecture-agent"
     },
     {
-      "id": "FIND-044",
-      "title": "LDAP hardcoded admin credentials in helpers/ldap.py",
-      "severity": "medium",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-798",
-      "location": {
-        "file": "helpers/ldap.py",
-        "line_start": 5,
-        "line_end": 5
-      },
-      "description": "The LDAP helper module contains hardcoded administrator credentials used for\nboth the initial connection setup and the get_connection() function:\n\n  conn = ldap3.Connection(server, user='uid=admin,ou=system', password='secret', ...)\n  ...\n  def get_connection():\n      conn = ldap3.Connection(server, user='uid=admin,ou=system', password='secret', ...)\n\nSOURCE: Hardcoded string literals 'uid=admin,ou=system' and 'secret' (lines 5, 19)\nGUARD: None - credentials are static and visible in source code\nSINK: LDAP connection authentication (lines 5, 19)\n\nWhile this uses MOCK_SYNC strategy for testing purposes, the pattern of hardcoding\ncredentials in source code establishes a dangerous precedent.\n",
-      "impact": "Hardcoded credentials in source code are visible to anyone with repository access.\nIf this pattern is copied to a production context, it would allow unauthorized\nLDAP access. The admin-level binding also means all LDAP queries run with full\nprivileges rather than least-privilege access.\n",
-      "remediation": "Load LDAP credentials from environment variables or a secure configuration store:\n\n  import os\n  LDAP_USER = os.environ.get('LDAP_BIND_USER', 'uid=admin,ou=system')\n  LDAP_PASS = os.environ.get('LDAP_BIND_PASS')\n  if not LDAP_PASS:\n      raise EnvironmentError(\"LDAP_BIND_PASS must be set\")\n",
-      "tags": [
-        "guards:hardcoded-credentials",
-        "guards:configuration"
-      ],
-      "created_at": "2026-03-05T16:18:54.170566+10:00",
-      "updated_at": "2026-03-05T16:18:54.170566+10:00",
-      "created_by": "guards-agent"
-    },
-    {
-      "id": "FIND-043",
-      "title": "Dynamic module loading from filesystem without validation in app.py",
-      "severity": "medium",
-      "confidence": "medium",
-      "status": "open",
-      "cwe": "CWE-502",
-      "location": {
-        "file": "app.py",
-        "line_start": 27,
-        "line_end": 32
-      },
-      "description": "The application dynamically imports all Python files from the testcode/ directory\nwhose filenames start with \"Benchmark\" using importlib.import_module(). There is\nno validation that the files are legitimate test modules, no integrity check, and\nno allowlist of expected modules.\n\nSOURCE: os.listdir('testcode') - filesystem directory listing (line 27)\nGUARD: Only checks filename starts with \"Benchmark\" and ends with \".py\" (line 30)\nSINK: importlib.import_module() and testmod.init(app) (lines 31-32)\n\nIf an attacker can write a file named BenchmarkTestEvil.py to the testcode/\ndirectory, it will be automatically loaded and its init() function called with\nthe Flask app object.\n",
-      "impact": "An attacker who gains write access to the testcode/ directory can achieve\narbitrary code execution by placing a malicious Python file that matches the\nnaming convention. The malicious code would execute with the full privileges\nof the Flask application.\n",
-      "remediation": "Use an explicit allowlist of expected test module names, or verify file\nintegrity (e.g., checksums) before importing. Consider importing from a\nconfiguration manifest rather than scanning the filesystem:\n\n  ALLOWED_MODULES = ['BenchmarkTest00001', 'BenchmarkTest00002', ...]\n  for name in ALLOWED_MODULES:\n      testmod = importlib.import_module(f'testcode.{name}')\n      testmod.init(app)\n",
-      "tags": [
-        "guards:dynamic-loading",
-        "guards:missing-validation"
-      ],
-      "created_at": "2026-03-05T16:18:53.724184+10:00",
-      "updated_at": "2026-03-05T16:18:53.724184+10:00",
-      "created_by": "guards-agent"
-    },
-    {
-      "id": "FIND-042",
-      "title": "No CSRF protection on POST endpoints across all test case routes",
-      "severity": "medium",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-352",
-      "location": {
-        "file": "app.py",
-        "line_start": 23,
-        "line_end": 52
-      },
-      "description": "The Flask application does not configure any CSRF protection mechanism. There is no\nFlask-WTF CSRFProtect extension, no custom CSRF token validation, and no\nSameSite cookie attribute on the session cookie. All ~70 POST endpoints accept\nform submissions without any origin or token verification.\n\nSOURCE: Any cross-origin form submission targeting /benchmark/*/BenchmarkTest* POST routes\nGUARD: None - no CSRF tokens, no Referer/Origin header validation, no SameSite cookies\nSINK: All POST handlers process form data and execute sensitive operations (SQL queries,\n      file access, command execution, deserialization, LDAP queries, redirects)\n\nWhile this is a benchmark application, the complete absence of CSRF protection\nmeans any malicious website can trigger actions on behalf of an authenticated user\nwho has the benchmark application open in their browser.\n",
-      "impact": "An attacker can craft a malicious webpage that submits forms to any of the benchmark\nPOST endpoints, triggering SQL queries, command injection, file access, or other\nsensitive operations using the victim's browser session and cookies.\n",
-      "remediation": "Enable Flask-WTF CSRF protection:\n\n  from flask_wtf.csrf import CSRFProtect\n  csrf = CSRFProtect(app)\n\nAlternatively, set SameSite=Strict on cookies and validate the Origin header\non all state-changing requests.\n",
-      "tags": [
-        "guards:missing-csrf",
-        "guards:session-management"
-      ],
-      "created_at": "2026-03-05T16:18:53.334874+10:00",
-      "updated_at": "2026-03-05T16:18:53.334874+10:00",
-      "created_by": "guards-agent"
-    },
-    {
-      "id": "FIND-041",
-      "title": "Database connection opened at module import time without error handling",
-      "severity": "medium",
-      "confidence": "medium",
-      "status": "open",
-      "cwe": "CWE-755",
-      "location": {
-        "file": "helpers/db_sqlite.py",
-        "line_start": 6,
-        "line_end": 28
-      },
-      "description": "The db_sqlite.py module executes database initialization (connect, DROP TABLE,\nCREATE TABLE, INSERT) at module import time with no try/except guard. Since app.py\ndynamically imports test modules, and those modules import helpers.db_sqlite, any\nfailure in database initialization will crash the entire application startup.\n\nSOURCE: sqlite3.connect(DB_PATH) at module scope (line 6)\nGUARD: None - no exception handling around the connection or executescript\nSINK: Application fails to start if DB_PATH is inaccessible or disk is full\n\nThe module also does not close the cursor explicitly (only the connection),\nand sets con.autocommit = True at the module level which affects the initial\nconnection only.\n",
-      "impact": "If the testfiles directory is missing, read-only, or the disk is full, the\napplication will fail to start with an unhandled sqlite3.OperationalError.\nThe DROP TABLE IF EXISTS / CREATE TABLE pattern also means every application\nrestart destroys all existing data without warning.\n",
-      "remediation": "Wrap the database initialization in a function with proper error handling:\n\n  def init_db():\n      try:\n          con = sqlite3.connect(DB_PATH)\n          ...\n          con.close()\n      except sqlite3.Error as e:\n          logging.error(f\"Database initialization failed: {e}\")\n          raise\n\nCall init_db() explicitly from app.py startup rather than at import time.\n",
-      "tags": [
-        "guards:missing-error-handling",
-        "guards:initialization"
-      ],
-      "created_at": "2026-03-05T16:18:53.045029+10:00",
-      "updated_at": "2026-03-05T16:18:53.045029+10:00",
-      "created_by": "guards-agent"
-    },
-    {
-      "id": "FIND-040",
-      "title": "Global mutable state in helpers/utils.py shared across all requests",
+      "id": "FIND-004",
+      "title": "Global mutable state for session management is not thread-safe",
       "severity": "medium",
       "confidence": "high",
       "status": "open",
@@ -662,388 +144,89 @@
         "line_start": 6,
         "line_end": 8
       },
-      "description": "The helpers/utils.py module defines global mutable state that is shared across all\nFlask requests without any synchronization:\n\n  mysession = {}          (line 6)\n  sharedstr = 'default shared string'  (line 8)\n\nSOURCE: Module-level mutable dict and string (lines 6, 8)\nGUARD: None - no locking, no per-request isolation\nSINK: Multiple test cases read/write mysession (BenchmarkTest00025-00033) and\n      sharedstr (BenchmarkTest00078, BenchmarkTest00164)\n\nIn a multi-threaded or multi-worker Flask deployment, concurrent requests can\nrace on these shared variables. The mysession dict is used as a pseudo-session\nstore for \"remember me\" cookies, and sharedstr is used as a cross-request\ncommunication channel in deserialization tests.\n",
-      "impact": "Race conditions on mysession could cause session data corruption, allowing one\nuser's session to leak into another user's response. The sharedstr variable\nallows one request's deserialization side-effect to be observed by another,\nwhich is an intentional benchmark behavior but represents a trust boundary\nviolation in any real application.\n",
-      "remediation": "Replace the global mysession dict with Flask's built-in session mechanism or\na proper server-side session store (e.g., flask-session with Redis). If global\nstate is truly needed, use threading.Lock for synchronization:\n\n  import threading\n  _session_lock = threading.Lock()\n  mysession = {}\n\n  def set_session(key, value):\n      with _session_lock:\n          mysession[key] = value\n",
+      "description": "Two global mutable variables are used as shared state across requests: mysession (dict, line 6) and sharedstr (string, line 8). The mysession dict is used by weak-random test cases (BenchmarkTest00025, 00026, 00027, 00032, 00033) as a server-side session store, and sharedstr is used by deserialization test cases (BenchmarkTest00078, 00164) as a shared state marker. Flask's default development server is single-threaded, but any production deployment with threading or multiple workers would cause data races on these globals. The mysession dict could have entries overwritten by concurrent requests, and sharedstr modifications in one request could leak into another.\n",
+      "impact": "Under concurrent load, session data stored in mysession could be corrupted or leaked between different users' requests. The sharedstr variable modified during deserialization tests could interfere with other concurrent requests. This represents both a correctness bug and a potential information disclosure vulnerability.\n",
+      "remediation": "Replace the global mysession dict with Flask's built-in flask.session (which is per-user and cryptographically signed) or use a proper server-side session backend (e.g., Flask-Session with Redis). Replace the global sharedstr with request-scoped state using flask.g. If global state is truly needed, protect it with threading.Lock.\n",
       "tags": [
-        "guards:shared-mutable-state",
-        "guards:race-condition"
+        "architecture:state-management",
+        "architecture:concurrency"
       ],
-      "created_at": "2026-03-05T16:18:52.883377+10:00",
-      "updated_at": "2026-03-05T16:18:52.883377+10:00",
-      "created_by": "guards-agent"
-    },
-    {
-      "id": "FIND-038",
-      "title": "SQL query result reflected in HTML response without escaping in db_sqlite.results()",
-      "severity": "medium",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-79",
-      "location": {
-        "file": "helpers/db_sqlite.py",
-        "line_start": 33,
-        "line_end": 49
-      },
-      "description": "The db_sqlite.results() function renders SQL query results directly into an HTML\nresponse body without applying HTML escaping. Both the SQL query string and the\nrow data from the database are interpolated into HTML without sanitization.\n\nSOURCE: Database row values from cur iteration (line 47), sql parameter (line 43)\nGUARD: None - no escaping applied to either the query string or the row data\nSINK: HTML response string returned to the browser (lines 43, 47)\n\nThe function code:\n  if not cur:\n      ret += f'Results set is empty for query: {sql}'  # sql unescaped\n  ...\n  for row in cur:\n      ret += ', '.join(str(x) for x in row)  # row data unescaped\n\nIf stored XSS payloads exist in the database, or if the SQL string itself contains\nuser-controlled input, the raw values will be rendered as HTML.\n",
-      "impact": "An attacker who can influence data stored in the database (via SQL injection in another\nendpoint, or through legitimate data entry) could inject JavaScript that executes when\nanother user views query results. The unescaped SQL string in error messages could also\nreflect user input as HTML.\n",
-      "remediation": "Apply escape_for_html() from helpers.utils to both the SQL string and each row value\nbefore embedding in the HTML response:\n\n  from helpers.utils import escape_for_html\n  ...\n  ret += f'Results set is empty for query: {escape_for_html(sql)}'\n  ...\n  ret += ', '.join(escape_for_html(str(x)) for x in row)\n",
-      "tags": [
-        "guards:missing-output-encoding",
-        "guards:xss"
-      ],
-      "created_at": "2026-03-05T16:18:51.188194+10:00",
-      "updated_at": "2026-03-05T16:18:51.188194+10:00",
-      "created_by": "guards-agent"
-    },
-    {
-      "id": "FIND-037",
-      "title": "get_parameter returns None without null guard, callers do not check",
-      "severity": "medium",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-476",
-      "location": {
-        "file": "helpers/utils.py",
-        "line_start": 77,
-        "line_end": 81
-      },
-      "description": "The get_parameter() helper function returns None when neither request.args nor\nrequest.form contain the requested parameter. The function has no default value\nfallback and does not raise an exception for missing parameters.\n\nSOURCE: request.args.get(param) and request.form.get(param) (lines 78, 80)\nGUARD: None - the function returns None if both lookups miss\nSINK: Callers that use the return value in string operations, SQL queries, etc.\n\nThe function code:\n  def get_parameter(request, param):\n      ret = request.args.get(param)\n      if not ret:\n          ret = request.form.get(param)\n      return ret\n\nNote also that \"if not ret:\" is truthy-falsy, meaning an empty string \"\" from\nrequest.args would also fall through to checking request.form, and a value of \"0\"\nwould similarly be treated as missing. This is a logic error in the guard condition.\n",
-      "impact": "If a caller does not check for None, downstream operations like string concatenation,\nSQL formatting, or file path construction will raise TypeError or produce unexpected\n\"None\" string interpolation (e.g., f-string with None becomes the literal string \"None\").\nThe falsy check also means legitimate values like \"0\" or empty string are incorrectly\ndiscarded from query parameters in favor of form data.\n",
-      "remediation": "Use \"is None\" instead of \"not ret\" for the guard check, and provide a default return\nvalue (e.g., empty string) or raise a ValueError when the parameter is required:\n\n  def get_parameter(request, param):\n      ret = request.args.get(param)\n      if ret is None:\n          ret = request.form.get(param, \"\")\n      return ret\n",
-      "tags": [
-        "guards:missing-null-check",
-        "guards:falsy-guard"
-      ],
-      "created_at": "2026-03-05T16:18:51.069478+10:00",
-      "updated_at": "2026-03-05T16:18:51.069478+10:00",
-      "created_by": "guards-agent"
-    },
-    {
-      "id": "FIND-036",
-      "title": "Bare except clauses suppress all exceptions across 26 test case endpoints",
-      "severity": "medium",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-754",
-      "location": {
-        "file": "testcode/BenchmarkTest00018.py",
-        "line_start": 59,
-        "line_end": 63
-      },
-      "description": "Twenty-six test case files use bare \"except:\" clauses that catch all exceptions\nincluding SystemExit, KeyboardInterrupt, and MemoryError. This is a systemic pattern\nacross the codebase. Representative files include: BenchmarkTest00018.py (line 59),\nBenchmarkTest00074.py (line 52), BenchmarkTest00078.py (line 54),\nBenchmarkTest00265.py (line 60), BenchmarkTest00069.py (line 60), and 21 others.\n\nSOURCE: Various dangerous operations (exec(), pickle.loads(), XPath queries, LDAP searches)\nGUARD: Bare except: clause catches everything indiscriminately\nSINK: Error is silently consumed; generic error message returned to user\n\nFor example in BenchmarkTest00018.py:\n  try:\n      run_query = lxml.etree.XPath(query)\n      ...\n  except:\n      RESPONSE += f'Error parsing XPath Query...'\n\nThis pattern masks the true nature of failures and can hide security-relevant errors\nsuch as out-of-memory conditions or broken parsing states.\n",
-      "impact": "Bare except clauses can mask critical system errors (SystemExit, KeyboardInterrupt,\nMemoryError), making debugging impossible and potentially leaving the application in\nan inconsistent state. They also prevent proper error propagation and logging, which\nhinders incident response and security monitoring.\n",
-      "remediation": "Replace bare \"except:\" with specific exception types. For example:\n- XPath operations: except (lxml.etree.XPathError, lxml.etree.XPathSyntaxError)\n- pickle.loads: except (pickle.UnpicklingError, ValueError, TypeError)\n- exec(): except (SyntaxError, NameError, TypeError)\n- LDAP: except ldap3.core.exceptions.LDAPException\nAt minimum, use \"except Exception:\" to avoid catching SystemExit and KeyboardInterrupt.\n",
-      "tags": [
-        "guards:bare-except",
-        "guards:error-handling"
-      ],
-      "created_at": "2026-03-05T16:18:50.144403+10:00",
-      "updated_at": "2026-03-05T16:18:50.144403+10:00",
-      "created_by": "guards-agent"
-    },
-    {
-      "id": "FIND-033",
-      "title": "Weak Random Number Generator Used for Session Tokens",
-      "severity": "medium",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-330",
-      "location": {
-        "file": "testcode/BenchmarkTest00025.py",
-        "line_start": 50,
-        "line_end": 50
-      },
-      "description": "Two test cases use Python's random module (not cryptographically secure) to generate\nvalues used for rememberMe session cookies:\n1. BenchmarkTest00025.py (line 50): value = str(random.normalvariate())[2:]\n2. BenchmarkTest00026.py (line 51): value = str(random.normalvariate())[2:]\nIn contrast, BenchmarkTest00032.py and BenchmarkTest00033.py correctly use secrets module.\n",
-      "impact": "Python's random module uses a Mersenne Twister PRNG that is predictable. An attacker\nwho observes several outputs can predict future values and forge valid session tokens.\n",
-      "remediation": "Use the secrets module for security-sensitive random values:\nimport secrets; value = secrets.token_hex(32)\n",
-      "tags": [
-        "security:weak-randomness",
-        "security:session-management"
-      ],
-      "created_at": "2026-03-05T16:18:31.70274+10:00",
-      "updated_at": "2026-03-05T16:18:31.70274+10:00",
-      "created_by": "security-agent"
-    },
-    {
-      "id": "FIND-032",
-      "title": "Cookies Set Without Secure Flag (secure=False)",
-      "severity": "medium",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-614",
-      "location": {
-        "file": "testcode/BenchmarkTest00066.py",
-        "line_start": 63,
-        "line_end": 66
-      },
-      "description": "Three test cases set cookies with the secure flag explicitly set to False:\n1. BenchmarkTest00066.py (line 65): secure=False\n2. BenchmarkTest00065.py (line 65): secure=False\n3. BenchmarkTest00064.py (line 64): secure=False\nAll three create a cookie named SomeCookie with user-derived values.\n",
-      "impact": "Cookies without the secure flag can be intercepted by network attackers via man-in-the-middle\nattacks on HTTP connections. This enables session hijacking or data theft.\n",
-      "remediation": "Always set secure=True for cookies containing sensitive data. Enforce HTTPS across the\nentire application.\n",
-      "tags": [
-        "security:insecure-cookie",
-        "security:session-management"
-      ],
-      "created_at": "2026-03-05T16:18:31.243524+10:00",
-      "updated_at": "2026-03-05T16:18:31.243524+10:00",
-      "created_by": "security-agent"
-    },
-    {
-      "id": "FIND-031",
-      "title": "Use of Weak Cryptographic Hash Algorithm MD5 for Password Hashing",
-      "severity": "medium",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-328",
-      "location": {
-        "file": "testcode/BenchmarkTest00057.py",
-        "line_start": 65,
-        "line_end": 70
-      },
-      "description": "BenchmarkTest00057.py uses hashlib.md5() to hash sensitive data before writing to\npasswordFile.txt. MD5 is cryptographically broken.\nSOURCE: Cookie value (sensitive data) flows through list manipulation\nGUARD: list operations (no sanitization, but bar ends up as lst[1] = 'moresafe')\nSINK: hashlib.md5().update(input) -\u003e written to passwordFile.txt\n\nNote: Due to list manipulation, bar = lst[1] = 'moresafe' (a constant), making this\na false positive for data flow. However, using MD5 for any password hashing is a\ncryptographic weakness. BenchmarkTest00058.py uses SHA-1 with a similar safe data flow.\n",
-      "impact": "MD5 is cryptographically broken and vulnerable to collision attacks. SHA-1 is deprecated.\nBoth can be brute-forced using rainbow tables or GPU-accelerated attacks.\n",
-      "remediation": "Use bcrypt, scrypt, or Argon2 for password hashing. For general-purpose hashing,\nuse SHA-256 or SHA-3.\n",
-      "tags": [
-        "security:weak-cryptography",
-        "security:hashing"
-      ],
-      "created_at": "2026-03-05T16:18:30.354677+10:00",
-      "updated_at": "2026-03-05T16:18:30.354677+10:00",
-      "created_by": "security-agent"
-    },
-    {
-      "id": "FIND-046",
-      "title": "Unreachable code after return in GET handlers across all cookie-setting test cases",
-      "severity": "low",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-561",
-      "location": {
-        "file": "testcode/BenchmarkTest00001.py",
-        "line_start": 32,
-        "line_end": 32
-      },
-      "description": "Approximately 50 test case GET handlers contain unreachable code after a return\nstatement. The pattern is:\n\n  def BenchmarkTestXXXXX_get():\n      response = make_response(...)\n      response.set_cookie(...)\n      return response\n      return BenchmarkTestXXXXX_post()  # \u003c-- unreachable\n\nSOURCE: Code after return statement\nGUARD: N/A - Python's return semantics make the second return unreachable\nSINK: The _post() function is never called from the GET handler\n\nThis appears in BenchmarkTest00001.py (line 32), BenchmarkTest00002.py (line 32),\nBenchmarkTest00012.py (line 32), BenchmarkTest00018.py (line 32),\nBenchmarkTest00069.py (line 32), BenchmarkTest00074.py (line 32),\nBenchmarkTest00077.py (line 32), BenchmarkTest00078.py (line 32), and many others.\n\nWhile not a security vulnerability itself, unreachable code suggests either a\ncopy-paste error or an incomplete refactor. If the intent was to chain GET to POST,\nthe logic is broken.\n",
-      "impact": "The unreachable code has no runtime effect but indicates potential logic errors\nin the test case design. If the intended behavior was for GET requests to also\nexecute POST logic, that behavior is silently not happening.\n",
-      "remediation": "Remove the unreachable return statement, or if the intent is to chain GET to POST,\nrestructure the code so the POST handler is called before the first return:\n\n  # If chaining is intended:\n  def BenchmarkTestXXXXX_get():\n      response = make_response(...)\n      response.set_cookie(...)\n      return response  # Remove the dead code below\n",
-      "tags": [
-        "guards:dead-code",
-        "guards:logic-error"
-      ],
-      "created_at": "2026-03-05T16:18:54.988183+10:00",
-      "updated_at": "2026-03-05T16:18:54.988183+10:00",
-      "created_by": "guards-agent"
-    },
-    {
-      "id": "FIND-029",
-      "title": "db_sqlite.results() outputs database content without HTML escaping",
-      "severity": "low",
-      "confidence": "medium",
-      "status": "open",
-      "cwe": "CWE-79",
-      "location": {
-        "file": "helpers/db_sqlite.py",
-        "line_start": 33,
-        "line_end": 49
-      },
-      "description": "The results() function in db_sqlite.py outputs the SQL query string directly\ninto HTML response content on line 43:\n`ret += f'Results set is empty for query: {sql}'`\n\nIt also outputs database row values on line 47 without HTML escaping:\n`ret += ', '.join(str(x) for x in row)`\n\nIf any database column contains user-controlled data (which it can in the\nbenchmark scenario where user input is inserted via SQL injection), the unescaped\noutput creates a reflected XSS vector through the database.\n\nThe escape_for_html() function exists in utils.py and is used elsewhere, but\ndb_sqlite.py does not import or use it.\n",
-      "impact": "Database content rendered without escaping can lead to stored XSS if\nuser-controlled data reaches the database and is then displayed back. In this\nbenchmark context, several SQL injection test cases insert user data that flows\nthrough this results function.\n",
-      "remediation": "Import and apply escape_for_html() to both the SQL string and the row data\nin the results() function output.\n",
-      "tags": [
-        "architecture:output-encoding",
-        "architecture:security"
-      ],
-      "created_at": "2026-03-05T16:18:29.795917+10:00",
-      "updated_at": "2026-03-05T16:18:29.795917+10:00",
+      "created_at": "2026-04-14T13:37:44.699031+10:00",
+      "updated_at": "2026-04-14T13:37:44.699031+10:00",
       "created_by": "architecture-agent"
     },
     {
-      "id": "FIND-028",
-      "title": "Global mutable state used for session management instead of Flask sessions",
-      "severity": "low",
+      "id": "FIND-003",
+      "title": "Module-level database initialization creates race conditions and lacks thread safety",
+      "severity": "medium",
       "confidence": "high",
       "status": "open",
       "cwe": "CWE-362",
-      "location": {
-        "file": "helpers/utils.py",
-        "line_start": 6,
-        "line_end": 6
-      },
-      "description": "The mysession dictionary in helpers/utils.py (line 6) is a module-level global\nmutable dictionary used as a makeshift session store by test cases (e.g.,\nBenchmarkTest00025). This is used alongside Flask's actual session mechanism\n(via flask.session in trust boundary test cases), creating two parallel session\nmechanisms.\n\nThe global mysession dict is shared across all requests and all users, has no\nexpiration, no isolation between users, and is not thread-safe. Flask's built-in\nsession support (already configured via app.secret_key in app.py) would be the\ncorrect mechanism.\n",
-      "impact": "The global dictionary creates race conditions in concurrent request handling.\nData from one user's session can leak to another user. The dual session mechanism\n(mysession + flask.session) makes it unclear which is authoritative and increases\ncognitive load for reviewers.\n",
-      "remediation": "Replace mysession usage with Flask's flask.session or flask.g for\nrequest-scoped data. Remove the global mysession dictionary from utils.py.\n",
-      "tags": [
-        "architecture:state-management",
-        "architecture:inconsistent-patterns"
-      ],
-      "created_at": "2026-03-05T16:18:29.779446+10:00",
-      "updated_at": "2026-03-05T16:18:29.779446+10:00",
-      "created_by": "architecture-agent"
-    },
-    {
-      "id": "FIND-027",
-      "title": "Dead code: unreachable return RESPONSE after flask.redirect() in redirect test cases",
-      "severity": "low",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-561",
-      "location": {
-        "file": "testcode/BenchmarkTest00067.py",
-        "line_start": 49,
-        "line_end": 49
-      },
-      "description": "In BenchmarkTest00067.py (and similarly in BenchmarkTest00068.py), there is\na `return RESPONSE` statement after `return flask.redirect(bar)`. The return RESPONSE\non line 49 can never be reached because flask.redirect(bar) on line 47 always returns\nfirst.\n\nThis is distinct from the dead code in GET handlers -- this is dead code within the\nPOST handler logic itself, creating an impossible code path that makes it appear the\nfunction might return a regular response when it always redirects.\n",
-      "impact": "Unreachable code after return statements confuses control flow analysis and may\ncause security scanners to produce false findings about the RESPONSE variable.\n",
-      "remediation": "Remove the unreachable `return RESPONSE` statements from the affected redirect\ntest POST handlers.\n",
-      "tags": [
-        "architecture:dead-code",
-        "architecture:code-quality"
-      ],
-      "created_at": "2026-03-05T16:18:29.760569+10:00",
-      "updated_at": "2026-03-05T16:18:29.760569+10:00",
-      "created_by": "architecture-agent"
-    },
-    {
-      "id": "FIND-026",
-      "title": "Inconsistent Flask import pattern: dual import of flask module in 10 test files",
-      "severity": "low",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-710",
-      "location": {
-        "file": "testcode/BenchmarkTest00067.py",
-        "line_start": 45,
-        "line_end": 47
-      },
-      "description": "Ten test files (BenchmarkTest00067, 00068, 00069, 00070, 00071, 00072, 00151,\n00153, 00258, 00260) do `import flask` inside the POST handler body, after already\nhaving `from flask import redirect, url_for, request, make_response, render_template`\nat the module level. Five of these use flask.redirect() (ignoring the imported\nredirect), and five use flask.session (which was not imported at the module level).\n\nThis creates two inconsistent patterns:\n- Module-level named imports: from flask import redirect, request, ...\n- Function-level full module import: import flask then flask.redirect() or\n  flask.session['key']\n",
-      "impact": "Inconsistent import patterns across test files make it harder to search for\nframework usage patterns, perform code audits, and maintain consistent coding\nstandards. Code reviewers and static analysis tools must account for both patterns.\n",
-      "remediation": "Standardize on one approach. Preferred: add session to the module-level\nfrom flask import line for files that need it, and use the already-imported\nredirect instead of flask.redirect. Remove the function-level import flask.\n",
-      "tags": [
-        "architecture:inconsistent-patterns",
-        "architecture:code-quality"
-      ],
-      "created_at": "2026-03-05T16:18:29.743164+10:00",
-      "updated_at": "2026-03-05T16:18:29.743164+10:00",
-      "created_by": "architecture-agent"
-    },
-    {
-      "id": "FIND-025",
-      "title": "Module-level database initialization executes on import with no error handling",
-      "severity": "low",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-665",
       "location": {
         "file": "helpers/db_sqlite.py",
         "line_start": 6,
         "line_end": 28
       },
-      "description": "The db_sqlite.py module executes database schema creation (DROP TABLE, CREATE TABLE,\nINSERT) at module import time (lines 6-28). This code runs as a side effect of\n`import helpers.db_sqlite` with no error handling, no connection pooling, and no\nprotection against concurrent access.\n\nThe module-level connection on line 6 is opened, used for schema setup, and closed\non line 28. The get_connection() function on line 30 creates new connections. This\nmeans every time the application starts or the module is re-imported, the database\nis dropped and recreated, destroying any data.\n",
-      "impact": "1. Any test data accumulated during a session is lost on restart.\n2. The module-level execution makes it impossible to import db_sqlite for testing\n   or inspection without triggering the schema reset side effect.\n3. No error handling means a filesystem permission issue or missing directory\n   will crash the entire application on startup with an unhandled exception.\n4. The sqlite3 connections returned by get_connection() are not thread-safe by\n   default, which is problematic in a Flask application serving concurrent requests.\n",
-      "remediation": "1. Move schema initialization into an explicit init_db() function called from\n   app.py startup, rather than running it as a module-level side effect.\n2. Add error handling around the database initialization.\n3. Consider using Flask application context and g object for connection management.\n",
+      "description": "The db_sqlite.py module executes DDL statements (DROP TABLE, CREATE TABLE, INSERT) at import time as module-level code. This means the database is rebuilt every time the application starts, and in production with multi-process deployments (e.g., gunicorn with multiple workers), multiple processes would race to drop and recreate tables simultaneously. Additionally, autocommit is set to True on this initialization connection (line 7), which disables transactional safety for the DDL operations. The get_connection() function on line 30-31 returns new sqlite3.Connection objects without any thread-safety configuration, and SQLite has known limitations with concurrent writes from multiple threads/processes.\n",
+      "impact": "In multi-worker deployments, simultaneous database initialization from different processes could corrupt the SQLite database or cause startup failures. The autocommit mode removes the ability to atomically initialize the schema. Each request creates a new connection without connection pooling, which is inefficient and could hit SQLite's file-locking limits under load.\n",
+      "remediation": "Move database initialization into an explicit setup function called once during application startup (not at import time). Use a connection pool or singleton pattern for database connections. Add file-locking or use a migration tool to ensure idempotent schema initialization. Consider using WAL journal mode for better concurrent read performance.\n",
       "tags": [
-        "architecture:initialization",
-        "architecture:error-handling"
+        "architecture:database",
+        "architecture:initialization"
       ],
-      "created_at": "2026-03-05T16:18:29.722958+10:00",
-      "updated_at": "2026-03-05T16:18:29.722958+10:00",
+      "created_at": "2026-04-14T13:37:43.75052+10:00",
+      "updated_at": "2026-04-14T13:37:43.75052+10:00",
       "created_by": "architecture-agent"
     },
     {
-      "id": "FIND-024",
-      "title": "SQLAlchemy and Tornado listed as dependencies but never used",
+      "id": "FIND-002",
+      "title": "Dynamic module loading via importlib with insufficient path validation",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-502",
+      "location": {
+        "file": "app.py",
+        "line_start": 27,
+        "line_end": 32
+      },
+      "description": "The application dynamically discovers and loads all Python modules from the testcode/ directory using os.listdir() and importlib.import_module(). The only validation is that the filename starts with 'Benchmark' and ends with '.py' (excluding __init__.py-like files). This pattern means that any .py file placed into the testcode/ directory that matches the naming convention will be automatically imported and its init(app) function called, registering arbitrary Flask routes. The use of os.listdir() also makes the load order non-deterministic, which could cause subtle route-registration-order bugs across different OS/filesystem combinations.\n",
+      "impact": "If an attacker gains write access to the testcode/ directory (e.g., via a path traversal vulnerability -- which this benchmark tests for), they could place a malicious BenchmarkTest*.py file that would be loaded on the next application restart. The non-deterministic import order could also cause unpredictable behavior in route precedence.\n",
+      "remediation": "Use an explicit allowlist or manifest file enumerating which test modules to load rather than auto-discovering from the filesystem. Sort the file list for deterministic loading order. Validate module contents before calling init(). Example: maintain a modules.json manifest and only load listed modules.\n",
+      "tags": [
+        "architecture:framework",
+        "architecture:code-loading"
+      ],
+      "created_at": "2026-04-14T13:37:42.561091+10:00",
+      "updated_at": "2026-04-14T13:37:42.561091+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-010",
+      "title": "Missing __init__.py files for helpers/ and testcode/ packages",
       "severity": "low",
       "confidence": "high",
       "status": "open",
-      "cwe": "CWE-1104",
+      "cwe": "CWE-710",
       "location": {
-        "file": "requirements.txt",
-        "line_start": 87,
-        "line_end": 91
+        "file": "app.py",
+        "line_start": 27,
+        "line_end": 31
       },
-      "description": "The requirements.txt lists SQLAlchemy 2.0.40 (line 87) and Tornado 6.4.2 (line 91)\nas dependencies, but neither is imported or used anywhere in the codebase.\n\nDatabase access is performed exclusively via the sqlite3 standard library module\nin helpers/db_sqlite.py. The web framework is Flask, not Tornado. There are no\nreferences to sqlalchemy, SQLAlchemy, tornado, or any Tornado imports in any\nPython file in the project.\n\nAdditionally, many other dependencies appear to be scanning/testing tool dependencies\nrather than application dependencies (bandit, mitmproxy, wapiti, etc.) that should\nbe separated into dev/test requirements.\n",
-      "impact": "Unnecessary dependencies increase the attack surface, installation time, and\npotential for supply chain vulnerabilities. SQLAlchemy and Tornado are substantial\npackages with their own dependency trees. Including unused dependencies violates\nthe principle of least privilege for package management.\n",
-      "remediation": "1. Remove SQLAlchemy and Tornado from requirements.txt since they are unused.\n2. Separate scanning/testing tools (bandit, mitmproxy, wapiti-related packages)\n   into a separate requirements-dev.txt file.\n3. Audit remaining dependencies against actual imports to remove other unused packages.\n",
+      "description": "Neither the helpers/ nor testcode/ directories contain __init__.py files, yet they are used as Python packages via importlib.import_module('testcode.BenchmarkTestXXXXX') and direct imports like 'import helpers.utils'. In Python 3, these work as implicit namespace packages (PEP 420), but this is an unconventional pattern that relies on implicit behavior. The lack of __init__.py means: (1) these directories are not recognized as regular packages by many Python tools (linters, type checkers, IDEs), (2) wildcard imports and package-level initialization cannot be defined, and (3) some deployment tools and packagers may not include these directories.\n",
+      "impact": "Development tools may not properly recognize the package structure, leading to false import errors in IDEs and linters. Deployment via setuptools or wheel packaging may silently exclude these directories. The implicit namespace package behavior could cause confusing import failures in certain Python environments or with certain import hooks.\n",
+      "remediation": "Add empty __init__.py files to both helpers/ and testcode/ directories to make them explicit regular Python packages. This ensures compatibility with all Python tooling and deployment methods.\n",
       "tags": [
-        "architecture:unused-dependencies",
-        "architecture:supply-chain"
+        "architecture:project-structure",
+        "architecture:packaging"
       ],
-      "created_at": "2026-03-05T16:18:29.702239+10:00",
-      "updated_at": "2026-03-05T16:18:29.702239+10:00",
+      "created_at": "2026-04-14T13:37:51.455301+10:00",
+      "updated_at": "2026-04-14T13:37:51.455301+10:00",
       "created_by": "architecture-agent"
     },
     {
-      "id": "FIND-023",
-      "title": "Unused import: escape_for_html imported but unused in 30 of 70 test files",
-      "severity": "low",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-561",
-      "location": {
-        "file": "testcode/BenchmarkTest00011.py",
-        "line_start": 19,
-        "line_end": 19
-      },
-      "description": "30 out of 70 test files import `escape_for_html` from `helpers.utils` at line 19\nbut never reference it in the file body. The affected files include all SQL injection,\nweak randomness, secure cookie, redirect, trust boundary, and LDAP injection test\ncases that do not produce HTML output requiring escaping.\n\nAffected files: BenchmarkTest00011, 00012, 00025, 00026, 00027, 00032, 00033,\n00067, 00068, 00069, 00078-00080, 00082, 00083, 00096-00099, 00151, 00164-00167,\n00258, 00269, 00283, 00284, 00350, 00512.\n",
-      "impact": "Unused imports add noise to code review and static analysis. They create false\ndependency relationships that obscure the actual module coupling graph.\n",
-      "remediation": "Remove the `from helpers.utils import escape_for_html` line from the 30 test files\nthat do not reference `escape_for_html` in their handler code.\n",
-      "tags": [
-        "architecture:unused-imports",
-        "architecture:code-quality"
-      ],
-      "created_at": "2026-03-05T16:18:29.683953+10:00",
-      "updated_at": "2026-03-05T16:18:29.683953+10:00",
-      "created_by": "architecture-agent"
-    },
-    {
-      "id": "FIND-022",
-      "title": "Unused import: redirect imported but flask.redirect used instead in redirect test cases",
-      "severity": "low",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-561",
-      "location": {
-        "file": "testcode/BenchmarkTest00067.py",
-        "line_start": 18,
-        "line_end": 18
-      },
-      "description": "Five test files (BenchmarkTest00067, 00068, 00069, 00151, 00258) import `redirect`\nfrom flask at the module level via `from flask import redirect, ...` but then\nseparately do `import flask` inside the POST handler and call `flask.redirect(bar)`\ninstead of using the already-imported `redirect`. This means `redirect` is imported\nbut unused in these files, and the pattern is inconsistent with the module-level\nimport style.\n\nMeanwhile, in the remaining 65 test files, `redirect` is imported but never called\nat all (neither as `redirect()` nor as `flask.redirect()`), making it a dead import\nin those files too.\n",
-      "impact": "Inconsistent import patterns make code harder to maintain and review. The dual\nimport of flask (module-level named import + function-level `import flask`) is\nconfusing and suggests the redirect test cases were written with a different\npattern than the rest of the codebase.\n",
-      "remediation": "For the 5 redirect test files: remove `import flask` from inside the handler and\nuse the already-imported `redirect(bar)` instead of `flask.redirect(bar)`.\nFor all other files: remove `redirect` from the import line since it is unused.\n",
-      "tags": [
-        "architecture:unused-imports",
-        "architecture:inconsistent-patterns"
-      ],
-      "created_at": "2026-03-05T16:18:29.662013+10:00",
-      "updated_at": "2026-03-05T16:18:29.662013+10:00",
-      "created_by": "architecture-agent"
-    },
-    {
-      "id": "FIND-021",
-      "title": "Unused import: url_for imported in all 70 test files but never used",
-      "severity": "low",
-      "confidence": "high",
-      "status": "open",
-      "cwe": "CWE-561",
-      "location": {
-        "file": "testcode/BenchmarkTest00001.py",
-        "line_start": 18,
-        "line_end": 18
-      },
-      "description": "All 70 test case files contain the identical import line:\n`from flask import redirect, url_for, request, make_response, render_template`\n\nThe `url_for` function is never used in any test file. It is imported in all 70\nfiles but there are zero references to it beyond the import statements.\n",
-      "impact": "Unused imports add unnecessary coupling to Flask internals, increase module load\ntime (marginally), and generate noise for static analysis and linting tools.\nThey obscure the actual dependencies of each module.\n",
-      "remediation": "Remove `url_for` from the import line in all 70 test files. The import should be:\n`from flask import redirect, request, make_response, render_template`\nor further trimmed per file based on actual usage.\n",
-      "tags": [
-        "architecture:unused-imports",
-        "architecture:code-quality"
-      ],
-      "created_at": "2026-03-05T16:18:29.639712+10:00",
-      "updated_at": "2026-03-05T16:18:29.639712+10:00",
-      "created_by": "architecture-agent"
-    },
-    {
-      "id": "FIND-020",
-      "title": "Dead code: unreachable return statement after return in all GET handlers",
+      "id": "FIND-005",
+      "title": "Dead code: unreachable return statements after early returns in GET handlers and redirect handlers",
       "severity": "low",
       "confidence": "high",
       "status": "open",
@@ -1053,15 +236,15 @@
         "line_start": 32,
         "line_end": 32
       },
-      "description": "Every GET handler in all 70 test case files contains an unreachable return statement\nafter the initial `return response`. For example in BenchmarkTest00001.py line 32:\n`return BenchmarkTest00001_post()` appears after `return response` on line 31.\nThis pattern is replicated across all 70 test files. The dead code suggests a\ncopy-paste artifact where the GET handler was intended to optionally delegate to\nthe POST handler but the early return was added without removing the fallthrough.\n",
-      "impact": "Dead code increases maintenance burden and confuses code analysis tools. Security\nscanners may misinterpret the control flow, leading to false negatives if they\nfollow the unreachable path or false positives from dead code analysis.\n",
-      "remediation": "Remove the unreachable `return BenchmarkTestNNNNN_post()` line from all 70 GET\nhandlers. This line can never execute due to the preceding `return response`.\n",
+      "description": "A systematic pattern of unreachable code exists across the codebase in two forms:\n\n1. In cookie-based GET handlers: After 'return response' on the line that returns the cookie-setting response, there is an unreachable 'return BenchmarkTestXXXXX_post()' statement. This affects at least 17 test files including BenchmarkTest00001, 00003, 00004, 00005, 00011, 00014, 00017, 00018, 00019, 00025, 00032, 00033, 00054, 00055, 00056, 00057, 00064, 00065, 00066, 00068, 00069, 00070, 00071, 00072, 00074, 00075, 00078, 00079, 00080.\n\n2. In redirect handlers: After 'return flask.redirect(bar)', there is an unreachable 'return RESPONSE'. This affects BenchmarkTest00067, 00068, 00069, 00151, 00258.\n\nThese appear to be artifacts from the Java-to-Python translation where the original Java code had different control flow semantics.\n",
+      "impact": "The dead code adds confusion for developers and security auditors reviewing the codebase. The unreachable POST delegation in GET handlers suggests the original design intended GET requests to optionally fall through to POST processing, but this behavior is silently broken. This could mask intended test behavior or cause false results in security tool evaluations.\n",
+      "remediation": "Remove the unreachable return statements. If the GET-to-POST fallthrough was intentional (e.g., when no cookie is present), restructure the control flow to make it reachable with proper conditional logic.\n",
       "tags": [
         "architecture:dead-code",
-        "architecture:code-quality"
+        "architecture:translation-artifact"
       ],
-      "created_at": "2026-03-05T16:18:29.61573+10:00",
-      "updated_at": "2026-03-05T16:18:29.61573+10:00",
+      "created_at": "2026-04-14T13:37:46.158041+10:00",
+      "updated_at": "2026-04-14T13:37:46.158041+10:00",
       "created_by": "architecture-agent"
     }
   ]
