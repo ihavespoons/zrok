@@ -13,7 +13,7 @@ zrok/
 │   ├── finding.go         # finding create/list/show/update/export
 │   ├── agent.go           # agent list/show/prompt/create
 │   ├── navigate.go        # list, find, read, search, symbols
-│   ├── lsp.go             # lsp status/install/list
+│   ├── lsp.go             # LSP server management commands
 │   ├── think.go           # think collected/adherence/done/next/hypothesis
 │   ├── dashboard.go       # dashboard server
 │   ├── index.go           # index enable/build/update/status/watch/clear
@@ -23,8 +23,9 @@ zrok/
 │   ├── memory/            # Memory store with bleve full-text search
 │   ├── finding/           # Finding store and exporters (md, sarif, html, csv, json)
 │   ├── agent/             # Agent registry, config, prompt generation
-│   ├── navigate/          # File operations, LSP client
-│   │   └── lsp/           # LSP protocol, server management
+│   ├── navigate/          # File operations, symbol extraction
+│   │   └── lsp/           # LSP client for language server symbol extraction
+│   ├── treesitter/        # Tree-sitter parser for symbol extraction
 │   ├── think/             # Thinking prompt templates
 │   ├── dashboard/         # Web dashboard server
 │   ├── skill/             # Embedded skill installer (go:embed)
@@ -67,11 +68,11 @@ go test ./...
 - `lister.go` - Directory listing with depth control
 - `finder.go` - Glob pattern file finding
 - `reader.go` - File reading with line ranges
-- `symbols.go` - Code symbol extraction
-- `lsp/` - LSP client for accurate symbol extraction
+- `symbols.go` - Code symbol extraction (tree-sitter → LSP → regex fallback)
+- `lsp/` - LSP client for language server integration
 
 ### Semantic Search (`internal/semantic/`, `internal/chunk/`, `internal/embedding/`, `internal/vectordb/`)
-- `chunk/` - LSP-based code chunking with regex fallback
+- `chunk/` - Tree-sitter code chunking with regex fallback
 - `embedding/` - Embedding providers (Ollama, OpenAI, Hugging Face)
 - `vectordb/` - HNSW vector index with SQLite metadata
 - `semantic/` - Search coordinator with multi-hop exploration

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/ihavespoons/zrok/internal/project"
@@ -17,13 +18,18 @@ import (
 type ExtractionMethod string
 
 const (
-	// MethodAuto tries LSP first, falls back to regex
+	// MethodAuto tries tree-sitter first, falls back to LSP, then regex
 	MethodAuto ExtractionMethod = "auto"
+	// MethodTreeSitter uses only tree-sitter
+	MethodTreeSitter ExtractionMethod = "treesitter"
 	// MethodLSP uses only LSP
 	MethodLSP ExtractionMethod = "lsp"
 	// MethodRegex uses only regex
 	MethodRegex ExtractionMethod = "regex"
 )
+
+// ErrTreeSitterNotAvailable indicates that tree-sitter is not available for this file type
+var ErrTreeSitterNotAvailable = errors.New("tree-sitter not available for this file type")
 
 // ErrLSPNotAvailable indicates that LSP is not available for this file type
 var ErrLSPNotAvailable = errors.New("LSP not available for this file type")
@@ -532,28 +538,25 @@ func (s *SymbolExtractor) shouldIgnore(name string) bool {
 		"node_modules", "vendor", ".git", ".zrok",
 		"__pycache__", "target", "dist", "build",
 	}
-	for _, pattern := range ignorePatterns {
-		if name == pattern {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ignorePatterns, name)
 }
 
 // UnifiedExtractor provides symbol extraction with configurable method
 type UnifiedExtractor struct {
-	project       *project.Project
-	method        ExtractionMethod
+	project        *project.Project
+	method         ExtractionMethod
 	regexExtractor *SymbolExtractor
+	tsExtractor    *TreeSitterExtractor
 	lspExtractor   *LSPExtractor
 }
 
 // NewUnifiedExtractor creates a new unified symbol extractor
 func NewUnifiedExtractor(p *project.Project, method ExtractionMethod) *UnifiedExtractor {
 	return &UnifiedExtractor{
-		project:       p,
-		method:        method,
+		project:        p,
+		method:         method,
 		regexExtractor: NewSymbolExtractor(p),
+		tsExtractor:    NewTreeSitterExtractor(p),
 		lspExtractor:   NewLSPExtractor(p),
 	}
 }
@@ -566,6 +569,8 @@ func (u *UnifiedExtractor) Extract(path string) (*SymbolResult, error) {
 // ExtractWithContext extracts symbols from a file with a context
 func (u *UnifiedExtractor) ExtractWithContext(ctx context.Context, path string) (*SymbolResult, error) {
 	switch u.method {
+	case MethodTreeSitter:
+		return u.tsExtractor.Extract(ctx, path)
 	case MethodLSP:
 		return u.lspExtractor.Extract(ctx, path)
 	case MethodRegex:
@@ -573,14 +578,19 @@ func (u *UnifiedExtractor) ExtractWithContext(ctx context.Context, path string) 
 	case MethodAuto:
 		fallthrough
 	default:
-		// Try LSP first
-		if u.lspExtractor.CanHandle(path) {
-			result, err := u.lspExtractor.Extract(ctx, path)
-			if err == nil {
+		// 1. Try tree-sitter first (fast, in-process)
+		if u.tsExtractor.CanHandle(path) {
+			if result, err := u.tsExtractor.Extract(ctx, path); err == nil {
 				return result, nil
 			}
-			// Fall back to regex on error
 		}
+		// 2. Try LSP (accurate, needs server installed)
+		if u.lspExtractor.CanHandle(path) {
+			if result, err := u.lspExtractor.Extract(ctx, path); err == nil {
+				return result, nil
+			}
+		}
+		// 3. Regex (always works)
 		return u.regexExtractor.Extract(path)
 	}
 }
@@ -593,15 +603,14 @@ func (u *UnifiedExtractor) Find(name string) (*SymbolResult, error) {
 // FindWithContext searches for symbols by name with a context
 func (u *UnifiedExtractor) FindWithContext(ctx context.Context, name string) (*SymbolResult, error) {
 	switch u.method {
-	case MethodLSP:
-		return u.lspExtractor.Find(ctx, name)
+	case MethodTreeSitter:
+		return u.tsExtractor.Find(ctx, name)
 	case MethodRegex:
 		return u.regexExtractor.Find(name)
 	case MethodAuto:
 		fallthrough
 	default:
 		// For find, always use regex since it's faster for project-wide search
-		// LSP would require opening every file
 		return u.regexExtractor.Find(name)
 	}
 }
@@ -613,7 +622,12 @@ func (u *UnifiedExtractor) FindReferences(symbol string) (*SearchResult, error) 
 
 // Close closes all extractors and releases resources
 func (u *UnifiedExtractor) Close() error {
-	return u.lspExtractor.Close()
+	tsErr := u.tsExtractor.Close()
+	lspErr := u.lspExtractor.Close()
+	if tsErr != nil {
+		return tsErr
+	}
+	return lspErr
 }
 
 // Method returns the current extraction method

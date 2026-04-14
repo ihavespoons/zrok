@@ -11,14 +11,17 @@ import (
 
 	"github.com/ihavespoons/zrok/internal/navigate/lsp"
 	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/zrok/internal/treesitter"
 )
 
 // ExtractionMethod specifies how to extract chunks
 type ExtractionMethod string
 
 const (
-	// MethodAuto tries LSP first, falls back to regex
+	// MethodAuto tries tree-sitter first, falls back to LSP, then regex
 	MethodAuto ExtractionMethod = "auto"
+	// MethodTreeSitter uses only tree-sitter
+	MethodTreeSitter ExtractionMethod = "treesitter"
 	// MethodLSP uses only LSP
 	MethodLSP ExtractionMethod = "lsp"
 	// MethodRegex uses only regex
@@ -33,6 +36,7 @@ type Extractor struct {
 	project       *project.Project
 	method        ExtractionMethod
 	maxChunkLines int
+	tsParser      *treesitter.Parser
 	manager       *lsp.Manager
 }
 
@@ -42,6 +46,7 @@ func NewExtractor(p *project.Project) *Extractor {
 		project:       p,
 		method:        MethodAuto,
 		maxChunkLines: MaxChunkLines,
+		tsParser:      treesitter.NewParser(),
 		manager:       lsp.NewManager(p.RootPath),
 	}
 }
@@ -80,6 +85,8 @@ func (e *Extractor) Extract(ctx context.Context, path string) (*ChunkList, error
 	fullPath := e.resolvePath(path)
 
 	switch e.method {
+	case MethodTreeSitter:
+		return e.extractTreeSitter(path, fullPath)
 	case MethodLSP:
 		return e.extractLSP(ctx, path, fullPath)
 	case MethodRegex:
@@ -87,13 +94,21 @@ func (e *Extractor) Extract(ctx context.Context, path string) (*ChunkList, error
 	case MethodAuto:
 		fallthrough
 	default:
-		// Try LSP first
+		// 1. Try tree-sitter first (fast, in-process)
+		if e.tsParser.CanHandle(fullPath) {
+			result, err := e.extractTreeSitter(path, fullPath)
+			if err == nil && len(result.Chunks) > 0 {
+				return result, nil
+			}
+		}
+		// 2. Try LSP (accurate, needs server installed)
 		if e.manager.CanHandle(fullPath) {
 			result, err := e.extractLSP(ctx, path, fullPath)
 			if err == nil && len(result.Chunks) > 0 {
 				return result, nil
 			}
 		}
+		// 3. Regex (always works)
 		return e.extractRegex(path, fullPath)
 	}
 }
@@ -138,6 +153,55 @@ func (e *Extractor) ExtractAll(ctx context.Context) (*ChunkList, error) {
 	return &ChunkList{
 		Chunks: allChunks,
 		Total:  len(allChunks),
+	}, nil
+}
+
+// extractTreeSitter extracts chunks using tree-sitter parsing
+func (e *Extractor) extractTreeSitter(relPath, fullPath string) (*ChunkList, error) {
+	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
+
+	if debugVerbose {
+		fmt.Printf("[TREESITTER] Extracting from: %s\n", relPath)
+	}
+
+	tsSymbols, err := e.tsParser.ExtractSymbols(fullPath, relPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if debugVerbose {
+		fmt.Printf("[TREESITTER] Got %d symbols: %s\n", len(tsSymbols), relPath)
+	}
+
+	// Read file for splitting large chunks
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(content), "\n")
+	language := e.getLanguage(fullPath)
+
+	var chunks []*Chunk
+	for _, sym := range tsSymbols {
+		chunkType := mapTSKindToChunkType(sym.Kind)
+		if chunkType == "" {
+			continue
+		}
+
+		c := NewChunk(relPath, language, chunkType, sym.Name, sym.Content, sym.Line, sym.EndLine)
+		c.Signature = sym.Signature
+		c.ParentName = sym.Parent
+
+		chunks = append(chunks, c)
+	}
+
+	// Split large chunks
+	chunks = e.splitLargeChunks(chunks, lines, language)
+
+	return &ChunkList{
+		Chunks: chunks,
+		File:   relPath,
+		Total:  len(chunks),
 	}, nil
 }
 
@@ -268,6 +332,40 @@ func (e *Extractor) convertSymbolsToChunks(symbols []lsp.DocumentSymbol, file, l
 	}
 
 	return chunks
+}
+
+// extractSignature extracts the signature line from source
+func (e *Extractor) extractSignature(lines []string, startLine int) string {
+	if startLine < 1 || startLine > len(lines) {
+		return ""
+	}
+	return strings.TrimSpace(lines[startLine-1])
+}
+
+// mapLSPKindToChunkType maps LSP SymbolKind to ChunkType
+func mapLSPKindToChunkType(kind lsp.SymbolKind) ChunkType {
+	switch kind {
+	case lsp.SymbolKindFunction:
+		return ChunkFunction
+	case lsp.SymbolKindMethod, lsp.SymbolKindConstructor:
+		return ChunkMethod
+	case lsp.SymbolKindClass:
+		return ChunkClass
+	case lsp.SymbolKindStruct:
+		return ChunkStruct
+	case lsp.SymbolKindInterface:
+		return ChunkInterface
+	case lsp.SymbolKindModule, lsp.SymbolKindNamespace, lsp.SymbolKindPackage:
+		return ChunkModule
+	case lsp.SymbolKindEnum:
+		return ChunkEnum
+	case lsp.SymbolKindConstant, lsp.SymbolKindEnumMember:
+		return ChunkConstant
+	case lsp.SymbolKindVariable, lsp.SymbolKindProperty, lsp.SymbolKindField:
+		return ChunkVariable
+	default:
+		return "" // Skip unsupported types
+	}
 }
 
 // extractRegex extracts chunks using regex patterns
@@ -743,12 +841,6 @@ func (e *Extractor) extractContent(lines []string, startLine, endLine int) strin
 	return strings.Join(lines[startLine-1:endLine], "\n")
 }
 
-func (e *Extractor) extractSignature(lines []string, startLine int) string {
-	if startLine < 1 || startLine > len(lines) {
-		return ""
-	}
-	return strings.TrimSpace(lines[startLine-1])
-}
 
 func (e *Extractor) findBlockEnd(lines []string, startIdx int, open, close string) int {
 	depth := 0
@@ -872,28 +964,28 @@ func (e *Extractor) splitLargeChunks(chunks []*Chunk, lines []string, language s
 	return result
 }
 
-// mapLSPKindToChunkType maps LSP SymbolKind to ChunkType
-func mapLSPKindToChunkType(kind lsp.SymbolKind) ChunkType {
+// mapTSKindToChunkType maps a treesitter.SymbolKind to ChunkType
+func mapTSKindToChunkType(kind treesitter.SymbolKind) ChunkType {
 	switch kind {
-	case lsp.SymbolKindFunction:
+	case treesitter.KindFunction:
 		return ChunkFunction
-	case lsp.SymbolKindMethod, lsp.SymbolKindConstructor:
+	case treesitter.KindMethod:
 		return ChunkMethod
-	case lsp.SymbolKindClass:
+	case treesitter.KindClass:
 		return ChunkClass
-	case lsp.SymbolKindStruct:
+	case treesitter.KindStruct:
 		return ChunkStruct
-	case lsp.SymbolKindInterface:
+	case treesitter.KindInterface:
 		return ChunkInterface
-	case lsp.SymbolKindModule, lsp.SymbolKindNamespace, lsp.SymbolKindPackage:
+	case treesitter.KindModule:
 		return ChunkModule
-	case lsp.SymbolKindEnum:
+	case treesitter.KindType:
 		return ChunkEnum
-	case lsp.SymbolKindConstant, lsp.SymbolKindEnumMember:
+	case treesitter.KindConstant:
 		return ChunkConstant
-	case lsp.SymbolKindVariable, lsp.SymbolKindProperty, lsp.SymbolKindField:
+	case treesitter.KindVariable:
 		return ChunkVariable
 	default:
-		return "" // Skip unsupported types
+		return ""
 	}
 }

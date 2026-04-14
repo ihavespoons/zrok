@@ -5,6 +5,7 @@ go 1.25.6
 require (
 	github.com/blevesearch/bleve/v2 v2.5.7
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/odvcencio/gotreesitter v0.13.4
 	github.com/spf13/cobra v1.10.2
 	github.com/viterin/vek v0.4.3
 	golang.org/x/text v0.8.0
