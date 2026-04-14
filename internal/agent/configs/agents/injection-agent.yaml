@@ -1,5 +1,5 @@
 name: injection-agent
-description: Detects injection vulnerabilities including SQL, command, template, and expression injection
+description: Detects injection vulnerabilities including SQL, command, template, XPath, and expression injection
 phase: analysis
 specialization:
   review_categories:
@@ -7,6 +7,7 @@ specialization:
     - command-injection
     - template-injection
     - expression-injection
+    - xpath-injection
   owasp_categories:
     - "A03:2021"
 cwe_checklist:
@@ -31,6 +32,15 @@ cwe_checklist:
       - "Dynamic code generation from untrusted data"
     flow_patterns:
       - "SOURCE: user input -> SINK: eval/exec/Function constructor"
+  - id: CWE-643
+    name: XPath Injection
+    detection_hints:
+      - "User input interpolated into XPath query strings via f-strings or concatenation"
+      - "Use of lxml.etree.XPath() or elementpath.select() with dynamic queries"
+      - "Cookie, form, or request parameter values used in XML/XPath lookups"
+    flow_patterns:
+      - "SOURCE: request param/cookie/form -> SINK: lxml.etree.XPath(f-string)"
+      - "SOURCE: user input -> dict/variable intermediary -> SINK: elementpath.select()"
   - id: CWE-917
     name: Expression Language Injection
     detection_hints:
@@ -74,9 +84,16 @@ prompt_template: |
   - Client-side template injection in Angular/Vue/React
   - Template engines used with untrusted data
 
+  ### XPath Injection
+  - User input interpolated into XPath query strings (f-strings, concatenation, .format())
+  - lxml.etree.XPath(), lxml.etree.ETXPath(), etree.parse().xpath() with dynamic queries
+  - elementpath.select() with user-controlled query strings
+  - Data flow through intermediary variables, dicts, or match/case before reaching XPath sink
+  - Cookie, form, query param, or header values used in XML document lookups
+
   ### Expression Language Injection
   - User input in ORM query builders
-  - Dynamic LDAP/XPath/GraphQL query construction
+  - Dynamic LDAP/GraphQL query construction
   - Expression evaluation of user-controlled strings
 
   ## Memory System
@@ -133,6 +150,7 @@ prompt_template: |
   - SQL: `fmt.Sprintf.*SELECT`, `"SELECT.*" +`, `f"SELECT`, `query.*+.*input`
   - Commands: `exec.Command`, `os.system`, `subprocess`, `child_process`
   - Templates: `template.HTML`, `|safe`, `dangerouslySetInnerHTML`, `v-html`
+  - XPath: `XPath(`, `elementpath.select`, `.xpath(`, `etree.parse`, `lxml.etree`
   - Eval: `eval(`, `Function(`, `exec(`, `compile(`
 
   ## Reporting
@@ -140,4 +158,5 @@ prompt_template: |
   - injection:sql
   - injection:command
   - injection:template
+  - injection:xpath
   - injection:expression
