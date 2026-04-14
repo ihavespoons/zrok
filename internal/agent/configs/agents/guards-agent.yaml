@@ -1,6 +1,8 @@
 name: guards-agent
 description: Analyzes guard conditions, validation patterns, and defensive coding practices
 phase: analysis
+applicability:
+  always_include: true
 specialization:
   review_categories:
     - frontloading-guards

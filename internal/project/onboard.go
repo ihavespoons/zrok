@@ -108,8 +108,9 @@ func (o *Onboarder) RunAuto() (*OnboardingResult, error) {
 	// Generate initial memories
 	result.Memories = o.generateInitialMemories(result.Config)
 
-	// Suggest agents based on tech stack
-	result.Agents = o.suggestAgents(result.Config)
+	// Classify the project based on detected tech stack
+	classifier := NewClassifier()
+	result.Config.Classification = classifier.Classify(result.Config)
 
 	// Save updated config
 	if err := o.project.Save(); err != nil {
@@ -216,8 +217,9 @@ func (o *Onboarder) RunWizard() (*OnboardingResult, error) {
 	// Generate initial memories
 	result.Memories = append(result.Memories, o.generateInitialMemories(result.Config)...)
 
-	// Suggest agents
-	result.Agents = o.suggestAgents(result.Config)
+	// Classify the project based on detected tech stack
+	classifier := NewClassifier()
+	result.Config.Classification = classifier.Classify(result.Config)
 
 	// Save config
 	if err := o.project.Save(); err != nil {
@@ -343,59 +345,6 @@ func (o *Onboarder) generateInitialMemories(config *ProjectConfig) []MemoryToCre
 	}
 
 	return memories
-}
-
-func (o *Onboarder) suggestAgents(config *ProjectConfig) []string {
-	// Core agents always suggested
-	agents := []string{
-		"recon-agent",      // Always run reconnaissance first
-		"architecture-agent", // Code structure and patterns
-		"guards-agent",     // Validation and defensive coding
-		"validation-agent", // Validate and prioritize findings
-	}
-
-	// Content handling if web frameworks detected
-	hasWebFramework := false
-	for _, lang := range config.TechStack.Languages {
-		for _, fw := range lang.Frameworks {
-			fwLower := strings.ToLower(fw)
-			if strings.Contains(fwLower, "rails") ||
-				strings.Contains(fwLower, "django") ||
-				strings.Contains(fwLower, "express") ||
-				strings.Contains(fwLower, "gin") ||
-				strings.Contains(fwLower, "spring") ||
-				strings.Contains(fwLower, "react") ||
-				strings.Contains(fwLower, "vue") {
-				hasWebFramework = true
-				break
-			}
-		}
-	}
-	if hasWebFramework {
-		agents = append(agents, "content-agent")
-	}
-
-	// Dependencies agent for projects with package managers
-	if len(config.TechStack.Languages) > 0 {
-		agents = append(agents, "dependencies-agent")
-	}
-
-	// Logging agent for production systems
-	if len(config.TechStack.Infrastructure) > 0 {
-		agents = append(agents, "logging-agent")
-	}
-
-	// References agent for external integrations
-	if len(config.TechStack.Databases) > 0 || len(config.TechStack.Infrastructure) > 0 {
-		agents = append(agents, "references-agent")
-	}
-
-	// Security agent for auth/authz/crypto concerns
-	if len(config.TechStack.Auth) > 0 || len(config.TechStack.Databases) > 0 {
-		agents = append(agents, "security-agent")
-	}
-
-	return agents
 }
 
 func splitAndTrim(s string) []string {

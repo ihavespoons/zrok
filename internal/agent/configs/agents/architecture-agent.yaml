@@ -1,6 +1,8 @@
 name: architecture-agent
 description: Analyzes code architecture patterns, framework usage, abstractions, and code quality
 phase: analysis
+applicability:
+  always_include: true
 specialization:
   review_categories:
     - leverage-frameworks

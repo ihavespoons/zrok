@@ -1,6 +1,8 @@
 name: validation-agent
 description: Validates and prioritizes findings from other agents
 phase: validation
+applicability:
+  always_include: true
 tools_allowed:
   - read
   - search

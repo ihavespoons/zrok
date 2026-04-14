@@ -1,6 +1,9 @@
 name: content-agent
 description: Reviews content handling patterns for input, output, text, and file operations
 phase: analysis
+applicability:
+  project_types:
+    - web-app
 specialization:
   review_categories:
     - input-handling

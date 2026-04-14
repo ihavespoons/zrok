@@ -1,6 +1,8 @@
 name: review-agent
 description: Deep validation of individual findings through end-to-end code path analysis
 phase: validation
+applicability:
+  always_include: true
 tools_allowed:
   - read
   - search

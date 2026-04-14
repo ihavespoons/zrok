@@ -2,13 +2,973 @@
   "metadata": {
     "tool": "zrok",
     "version": "1.0.0",
-    "generated_at": "2026-03-05T16:19:01.655134+10:00",
-    "project_name": "tmp.98HZxUlSdv"
+    "generated_at": "2026-04-14T13:50:02.462364+10:00",
+    "project_name": "tmp.AWMjmChL20"
   },
   "summary": {
-    "total": 0,
-    "by_severity": {},
-    "by_status": {}
+    "total": 41,
+    "by_severity": {
+      "critical": 3,
+      "high": 14,
+      "low": 6,
+      "medium": 18
+    },
+    "by_status": {
+      "open": 41
+    }
   },
-  "findings": null
+  "findings": [
+    {
+      "id": "FIND-028",
+      "title": "Code Injection: exec() with User Input in BenchmarkTest00074, 00159, 00160",
+      "severity": "critical",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-94",
+      "location": {
+        "file": "testcode/BenchmarkTest00074.py",
+        "line_start": 50,
+        "line_end": 50
+      },
+      "description": "TRUE POSITIVES (3 cases: BenchmarkTest00074, 00159, 00160).\n\nAll three cases pass user-controlled input directly to Python's exec() function,\nwhich executes arbitrary Python code.\n\nBenchmarkTest00074 (line 50): exec(bar) where bar comes from configparser passthrough.\n  SOURCE: urllib.parse.unquote_plus(request.cookies.get(\"BenchmarkTest00074\"))\n  GUARD: None (configparser stores param under keyB, retrieves it unchanged)\n  SINK: exec(bar) -- arbitrary Python code execution\n\nBenchmarkTest00159 (line 44): exec(bar) where bar comes from list manipulation.\n  SOURCE: request.form.get(\"BenchmarkTest00159\") -\u003e param\n  GUARD: None (list ops: append 'safe', append param, append 'moresafe', pop(0),\n         bar=lst[0] which is param)\n  SINK: exec(bar) -- arbitrary Python code execution\n\nBenchmarkTest00160 (line 48): exec(bar) where bar comes from match/case.\n  SOURCE: request.form.get(\"BenchmarkTest00160\") -\u003e param\n  GUARD: None (match always takes case 'A' since possible[0]='A', bar=param)\n  SINK: exec(bar) -- arbitrary Python code execution\n\nFALSE POSITIVES correctly identified:\n- BenchmarkTest00073: Uses eval() (not exec) with input validation -- checks that bar\n  starts/ends with single quotes and contains no internal quotes. Only allows plain\n  string literals.\n- BenchmarkTest00075: Uses exec() but with the same string-literal guard: checks bar\n  starts/ends with single quote and has no internal quotes. Only allows string literals\n  to be executed (benign).\n",
+      "impact": "Remote Code Execution. An attacker can execute arbitrary Python code on the server,\nincluding importing os/subprocess to run system commands, reading/writing files,\nexfiltrating data, and establishing reverse shells.\n",
+      "remediation": "Never pass user input to exec() or eval(). If dynamic execution is required, use a\nsandboxed interpreter or restrict to a safe DSL with an allow-list of operations.\n",
+      "tags": [
+        "content:code-injection",
+        "owasp-benchmark:true-positive"
+      ],
+      "created_at": "2026-04-14T13:47:44.175178+10:00",
+      "updated_at": "2026-04-14T13:47:44.175178+10:00",
+      "created_by": "content-agent"
+    },
+    {
+      "id": "FIND-027",
+      "title": "Command Injection: Shell Command with User Input in BenchmarkTest00165, 00166, 00167",
+      "severity": "critical",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-78",
+      "location": {
+        "file": "testcode/BenchmarkTest00166.py",
+        "line_start": 52,
+        "line_end": 52
+      },
+      "description": "TRUE POSITIVES (3 cases: BenchmarkTest00165, 00166, 00167).\n\nAll three cases read user input from request.form and pass it to shell commands via\nsubprocess.run. The user-controlled value ends up in an f-string shell command argument.\n\nBenchmarkTest00165 (line 52): subprocess.run(argList) where argList = [\"sh\", \"-c\", f\"echo {bar}\"]\n  SOURCE: request.form.get(\"BenchmarkTest00165\") -\u003e param\n  GUARD: None (list manipulation preserves param: pop('safe'), bar=lst[0] which is param)\n  SINK: subprocess.run([\"sh\", \"-c\", f\"echo {bar}\"]) -- shell interprets the entire string\n\nBenchmarkTest00166 (line 52): subprocess.run(argStr, shell=True)\n  SOURCE: request.form.get(\"BenchmarkTest00166\") -\u003e param\n  GUARD: None (dict map retrieves param via keyB)\n  SINK: subprocess.run(f\"sh -c echo {bar}\", shell=True)\n\nBenchmarkTest00167 (line 52): subprocess.run(argStr, shell=True)\n  SOURCE: request.form.get(\"BenchmarkTest00167\") -\u003e param\n  GUARD: None (condition 'should' not in 'This should never happen' is False, takes else -\u003e bar=param)\n  SINK: subprocess.run(f\"sh -c echo {bar}\", shell=True)\n\nFALSE POSITIVES correctly identified:\n- BenchmarkTest00350: bar overwritten with map['keyA'] (static 'a-Value'), not user input.\n- BenchmarkTest00512: configparser retrieves keyA (static 'a_Value'), not keyB (user input).\n",
+      "impact": "Remote Code Execution. An attacker can inject arbitrary OS commands using shell\nmetacharacters (e.g., \"; cat /etc/passwd\" or \"$(malicious_command)\").\n",
+      "remediation": "Use subprocess.run with a list of arguments and shell=False. Never interpolate user\ninput into shell command strings. Use shlex.quote() if shell=True is unavoidable.\n",
+      "tags": [
+        "content:command-injection",
+        "owasp-benchmark:true-positive"
+      ],
+      "created_at": "2026-04-14T13:47:18.12624+10:00",
+      "updated_at": "2026-04-14T13:47:18.12624+10:00",
+      "created_by": "content-agent"
+    },
+    {
+      "id": "FIND-026",
+      "title": "Insecure Deserialization: pickle.loads and yaml.load on User Input",
+      "severity": "critical",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-502",
+      "location": {
+        "file": "testcode/BenchmarkTest00078.py",
+        "line_start": 49,
+        "line_end": 49
+      },
+      "description": "TRUE POSITIVES (3 cases: BenchmarkTest00078, 00164, 00269).\n\nBenchmarkTest00078 (line 49): pickle.loads(base64.urlsafe_b64decode(bar))\n  SOURCE: urllib.parse.unquote_plus(request.cookies.get(\"BenchmarkTest00078\"))\n  GUARD: None (string concatenation 'help'+param+'snapes on a plane' then [4:-17]\n         slices to extract exactly param)\n  SINK: pickle.loads() - arbitrary code execution via __reduce__\n\nBenchmarkTest00164 (line 49): pickle.loads(base64.urlsafe_b64decode(bar))\n  SOURCE: request.form.get(\"BenchmarkTest00164\")\n  GUARD: None (same string slice trick as 00078)\n  SINK: pickle.loads() - arbitrary code execution\n\nBenchmarkTest00269 (line 46): yaml.load(bar, Loader=yaml.Loader)\n  SOURCE: request.form.getlist(\"BenchmarkTest00269\")[0]\n  GUARD: None (ThingFactory.doSomething passes value through)\n  SINK: yaml.load() with unsafe yaml.Loader allows arbitrary Python object\n        instantiation via !!python/object tags\n\nFALSE POSITIVES correctly identified:\n- BenchmarkTest00079: Uses yaml.safe_load() which only deserializes basic Python types.\n- BenchmarkTest00080: Uses html.escape() on input, then yaml.safe_load() -- doubly safe.\n",
+      "impact": "Remote Code Execution (RCE). An attacker can craft a malicious pickle payload or YAML\ndocument that executes arbitrary system commands when deserialized. This is the highest\nseverity vulnerability class -- full server compromise is possible.\n",
+      "remediation": "For pickle: Never deserialize untrusted data with pickle. Use JSON or other safe formats.\nIf pickle is required, implement a RestrictedUnpickler with an allow-list of safe classes.\nFor YAML: Replace yaml.load(data, Loader=yaml.Loader) with yaml.safe_load(data).\n",
+      "tags": [
+        "content:serialization",
+        "owasp-benchmark:true-positive"
+      ],
+      "created_at": "2026-04-14T13:46:49.849293+10:00",
+      "updated_at": "2026-04-14T13:46:49.849293+10:00",
+      "created_by": "content-agent"
+    },
+    {
+      "id": "FIND-035",
+      "title": "Missing Import Causes Fragile NameError Path in All LDAP Test Files",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-676",
+      "location": {
+        "file": "testcode/BenchmarkTest00427.py",
+        "line_start": 63,
+        "line_end": 63
+      },
+      "description": "All 5 LDAP test files reference helpers.utils.escape_for_html(filter) in their error-path\ncode but never import helpers.utils within the function body. They import helpers.ldap\nand ldap3 but use the module-qualified name helpers.utils.escape_for_html() which requires\nhelpers.utils to be imported as a module. The module-level import at line 19 only makes\nescape_for_html available as a bare name. The code works only because other modules in the\nsame process have already done 'import helpers.utils', making it available in sys.modules.\nAffected files: BenchmarkTest00265, 00266, 00427, 00076, 00077.\n",
+      "impact": "The code relies on import order side effects. If LDAP tests were loaded in isolation or\nimport order changed, they would fail with NameError on the error handling path.\n",
+      "remediation": "Add 'import helpers.utils' before the LDAP query code, or change the call from\nhelpers.utils.escape_for_html(filter) to just escape_for_html(filter).\n",
+      "tags": [
+        "architecture:bug",
+        "quality:missing-import"
+      ],
+      "created_at": "2026-04-14T13:49:18.235284+10:00",
+      "updated_at": "2026-04-14T13:49:18.235284+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-033",
+      "title": "Dynamic Module Loading Without Input Validation in app.py",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-502",
+      "location": {
+        "file": "app.py",
+        "line_start": 27,
+        "line_end": 32
+      },
+      "description": "app.py dynamically discovers and loads all Python modules from the testcode/ directory\nusing importlib.import_module(), then executes their init(app) function. Any file placed\nin testcode/ starting with 'Benchmark' and ending with '.py' will be automatically loaded\nand its init() function executed at startup. The lambda uses 'str' as parameter name,\nshadowing the built-in str type. No allowlist, hash verification, or error handling exists.\nos.listdir ordering is non-deterministic.\n",
+      "impact": "If an attacker can write a file to the testcode/ directory, arbitrary code will execute at\napplication startup. A single broken test file crashes the entire application. The shadowed\nstr builtin could cause subtle bugs.\n",
+      "remediation": "Use an explicit allowlist of test modules. Rename lambda parameter from 'str' to 'filename'.\nWrap import_module and init() calls in try/except. Sort test_files for deterministic order.\n",
+      "tags": [
+        "architecture:dynamic-loading",
+        "quality:builtin-shadowing"
+      ],
+      "created_at": "2026-04-14T13:49:17.00981+10:00",
+      "updated_at": "2026-04-14T13:49:17.00981+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-018",
+      "title": "Hardcoded Flask secret_key enables session forgery",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-798",
+      "location": {
+        "file": "app.py",
+        "line_start": 25,
+        "line_end": 25
+      },
+      "description": "The Flask secret_key is hardcoded as a static byte string on line 25:\n  app.secret_key = b'if you need this you are doing something wrong'\n\nThis key is used to cryptographically sign Flask session cookies. Since it is embedded\ndirectly in the source code, any person with access to the repository (or who can guess\nthis predictable value) can forge arbitrary session data.\n\nFlask's session mechanism (flask.session) is used by the trust boundary test cases\n(BenchmarkTest00070, 00071, 00072, 00153, 00260) to store user IDs. A forged session\ncould set arbitrary userid values.\n",
+      "impact": "An attacker who knows the secret_key can craft arbitrary session cookies, bypassing any\nsession-based authentication or authorization. They can impersonate any user by setting\nthe 'userid' session key to an arbitrary value. The secret_key also protects against\nsession tampering - without it, any session data is untrusted.\n",
+      "remediation": "Load the secret_key from an environment variable or a secrets management system:\n  app.secret_key = os.environ.get('FLASK_SECRET_KEY')\n  if not app.secret_key:\n      raise RuntimeError(\"FLASK_SECRET_KEY environment variable must be set\")\nUse a cryptographically random value of at least 32 bytes generated via:\n  python -c \"import secrets; print(secrets.token_hex(32))\"\n",
+      "tags": [
+        "guards:missing",
+        "secrets"
+      ],
+      "created_at": "2026-04-14T13:46:40.613152+10:00",
+      "updated_at": "2026-04-14T13:46:40.613152+10:00",
+      "created_by": "guards-agent"
+    },
+    {
+      "id": "FIND-015",
+      "title": "No CSRF protection on any POST endpoints",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-352",
+      "location": {
+        "file": "app.py",
+        "line_start": 23,
+        "line_end": 52
+      },
+      "description": "The Flask application does not use Flask-WTF or any other CSRF protection mechanism.\nAll 70 test case POST endpoints accept form submissions without any token validation.\nFlask does not provide CSRF protection by default - it requires Flask-WTF's CSRFProtect\nor equivalent middleware. No csrf_token is generated, embedded in forms, or validated\non submission. This is a systemic gap across the entire application.\n",
+      "impact": "An attacker can craft a malicious page that submits forms to any of the 70 POST endpoints\non behalf of an authenticated user. Since several endpoints perform sensitive operations\n(SQL queries, command execution, file access, session manipulation, redirects), CSRF\nexploitation could lead to data exfiltration, command injection, or session hijacking.\n",
+      "remediation": "Install Flask-WTF and initialize CSRFProtect on the Flask app:\n  from flask_wtf.csrf import CSRFProtect\n  csrf = CSRFProtect(app)\nEnsure all forms include {{ csrf_token() }} and that AJAX requests send the token\nin the X-CSRFToken header.\n",
+      "tags": [
+        "guards:missing",
+        "csrf"
+      ],
+      "created_at": "2026-04-14T13:46:38.704197+10:00",
+      "updated_at": "2026-04-14T13:46:38.704197+10:00",
+      "created_by": "guards-agent"
+    },
+    {
+      "id": "FIND-014",
+      "title": "LDAP Injection Enables Authentication Bypass (BenchmarkTest00265, 00266, 00427)",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-90",
+      "location": {
+        "file": "testcode/BenchmarkTest00265.py",
+        "line_start": 42,
+        "line_end": 45
+      },
+      "description": "Three test cases construct LDAP search filters using f-string interpolation with unsanitized\nuser input, enabling LDAP injection that can bypass authentication checks:\n\nBenchmarkTest00265 (line 42): filter = f'(\u0026(objectclass=person)(|(uid={bar})(street=...)))' - TRUE VULNERABILITY\n  SOURCE: request.form.getlist(\"BenchmarkTest00265\")[0]\n  GUARD: None - param assigned directly to bar\n  SINK: conn.search(base, filter) with user-controlled LDAP filter\n\nBenchmarkTest00266: Same pattern with form parameter - TRUE VULNERABILITY\nBenchmarkTest00427: Same pattern with form parameter via list manipulation - TRUE VULNERABILITY\n\nAn attacker can inject LDAP filter syntax such as:\n- Input: *)(|(uid=*  -\u003e Filter becomes: (\u0026(objectclass=person)(|(uid=*)(|(uid=*)(street=...)))\n  This returns ALL users, bypassing any intended filtering\n- Input: admin)(userpassword=*)  -\u003e Extract password attributes\n\nSafe patterns (BenchmarkTest00076, 00077): Data flow ensures user input does NOT reach the filter\n(e.g., 00076 reads keyA-93153 = 'a-Value' instead of keyB containing user input).\n\nThe hardcoded admin credentials in helpers/ldap.py (uid=admin, password='secret') are used\nfor the LDAP connection binding, compounding the risk.\n",
+      "impact": "LDAP injection can allow an attacker to:\n- Enumerate all users in the directory (information disclosure)\n- Bypass authentication filters to access unauthorized records\n- Extract sensitive attributes (passwords, addresses) from directory entries\n- Modify LDAP queries to return attacker-chosen results\nCombined with the mock LDAP server containing known credentials, this enables full\ndirectory enumeration.\n",
+      "remediation": "- Use parameterized LDAP queries or escape special characters in user input\n- Apply ldap3's escape_filter_chars() function: from ldap3.utils.conv import escape_filter_chars\n- Validate input against an allowlist of expected characters (alphanumeric only for uid)\n- Implement input length limits\n- Use the ldap3 abstraction layer's built-in search filters instead of string interpolation\n",
+      "tags": [
+        "security:authentication",
+        "security:injection",
+        "security:ldap"
+      ],
+      "created_at": "2026-04-14T13:46:34.151252+10:00",
+      "updated_at": "2026-04-14T13:46:34.151252+10:00",
+      "created_by": "security-agent"
+    },
+    {
+      "id": "FIND-013",
+      "title": "No Authentication or Authorization Middleware on Any Route",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-306",
+      "location": {
+        "file": "app.py",
+        "line_start": 29,
+        "line_end": 52
+      },
+      "description": "The Flask application registers 70 test case routes plus 3 static routes with no authentication\nor authorization middleware whatsoever. All routes are publicly accessible:\n\n- No login_required decorator or equivalent\n- No authentication middleware (e.g., Flask-Login, Flask-Security)\n- No API key validation\n- No rate limiting\n- No CSRF protection\n- No input validation middleware\n\nDynamic routes are registered at lines 29-32 via importlib.import_module() for all BenchmarkTest*.py\nfiles. Static routes at lines 36-49 serve templates and handle redirects.\n\nSOURCE: All incoming HTTP requests\nGUARD: None\nSINK: All test case route handlers (70+ endpoints) process requests from any client\n\nWhile this is a test application, the complete absence of security controls means every\nvulnerability test case is directly exploitable without any authentication barrier.\n",
+      "impact": "Every endpoint in the application is accessible to unauthenticated users. This includes:\n- Command injection endpoints (BenchmarkTest00165, 00166, 00167) - RCE without auth\n- Code injection endpoints (BenchmarkTest00074, 00159, 00160) - exec() without auth\n- Deserialization endpoints (BenchmarkTest00078, 00164, 00269) - pickle.loads without auth\n- SQL injection endpoints (BenchmarkTest00099, 00283, 00284) - DB access without auth\n- LDAP injection endpoints - directory access without auth\n\nThe attack surface includes all 42 true vulnerability test cases, each directly reachable.\n",
+      "remediation": "- Add authentication middleware (Flask-Login, Flask-Security, or custom)\n- Implement role-based access control (RBAC)\n- Add CSRF protection (Flask-WTF)\n- Implement rate limiting (Flask-Limiter)\n- Add request validation middleware\n- Use security headers (Content-Security-Policy, X-Content-Type-Options, etc.)\n",
+      "tags": [
+        "security:authentication",
+        "security:authorization",
+        "security:missing-controls"
+      ],
+      "created_at": "2026-04-14T13:46:33.755894+10:00",
+      "updated_at": "2026-04-14T13:46:33.755894+10:00",
+      "created_by": "security-agent"
+    },
+    {
+      "id": "FIND-009",
+      "title": "Weak PRNG (random.normalvariate/randbytes) Used for Security Tokens (BenchmarkTest00025, 00026, 00027)",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-330",
+      "location": {
+        "file": "testcode/BenchmarkTest00025.py",
+        "line_start": 50,
+        "line_end": 51
+      },
+      "description": "Three test cases use Python's 'random' module (Mersenne Twister PRNG) to generate security-sensitive\nremember-me cookie values:\n\nBenchmarkTest00025 (line 50): random.normalvariate() - TRUE VULNERABILITY\n  value = str(random.normalvariate())[2:] used as remember-me cookie\n\nBenchmarkTest00026 (line 51): random.normalvariate() - TRUE VULNERABILITY  \n  value = str(random.normalvariate())[2:] used as remember-me cookie\n\nBenchmarkTest00027 (line 54): random.randbytes(32) - TRUE VULNERABILITY\n  value = str(base64.b64encode(random.randbytes(32))) used as remember-me cookie\n  Note: random.randbytes() uses Mersenne Twister (getrandbits), NOT os.urandom.\n  It is predictable given 624 consecutive 32-bit outputs.\n\nSOURCE: random module's Mersenne Twister PRNG (not seeded with secure entropy for crypto use)\nGUARD: None - values go directly into remember-me cookies\nSINK: mysession[cookie] = value, then compared against request cookies for authentication\n\nThe Mersenne Twister is NOT a CSPRNG. After observing 624 consecutive 32-bit values, an attacker\ncan predict all future outputs and reconstruct all past outputs.\n",
+      "impact": "An attacker who observes sufficient random outputs (e.g., by creating multiple sessions) can\npredict future remember-me token values and forge valid authentication cookies for other users.\nThis enables session hijacking and authentication bypass.\n",
+      "remediation": "Use Python's 'secrets' module for all security-sensitive random values:\n- secrets.token_hex(32) for cookie/token values\n- secrets.randbelow() for numeric ranges\n- secrets.token_urlsafe() for URL-safe tokens\nThe 'secrets' module uses os.urandom() which provides cryptographically secure randomness.\n\nNote: BenchmarkTest00032 and BenchmarkTest00033 correctly use secrets.randbelow() as the safe pattern.\n",
+      "tags": [
+        "security:cryptography",
+        "security:weak-random",
+        "security:session-management"
+      ],
+      "created_at": "2026-04-14T13:46:30.9725+10:00",
+      "updated_at": "2026-04-14T13:46:30.9725+10:00",
+      "created_by": "security-agent"
+    },
+    {
+      "id": "FIND-008",
+      "title": "Weak Hash Algorithm SHA-1 Used for Sensitive Data (BenchmarkTest00058)",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-328",
+      "location": {
+        "file": "testcode/BenchmarkTest00058.py",
+        "line_start": 65,
+        "line_end": 70
+      },
+      "description": "BenchmarkTest00058 uses the deprecated SHA-1 hash algorithm to hash sensitive data and write\nthe results to a password file.\n\nSOURCE: Cookie value via urllib.parse.unquote_plus(request.cookies.get(\"BenchmarkTest00058\"))\nGUARD: ConfigParser indirection - param is stored as keyB but bar reads keyA ('a_Value').\n       The user input does NOT reach the hash sink, but the vulnerability is the use of SHA-1 itself.\nSINK: hashlib.sha1().update(input) -\u003e written to testfiles/passwordFile.txt (line 65-70)\n\nSHA-1 is cryptographically broken. Google's SHAttered attack (2017) demonstrated practical\ncollision generation. NIST deprecated SHA-1 for digital signatures in 2011 and for all uses\nin 2030 transition guidance. Per the expected results CSV, this is classified as a true\nvulnerability (CWE-328).\n",
+      "impact": "SHA-1 collision attacks are practical and have been demonstrated in real-world scenarios.\nUsing SHA-1 for password hashing or integrity checking provides inadequate security margins.\nIf password hashes stored in passwordFile.txt use SHA-1, they are vulnerable to collision\nand increasingly feasible preimage attacks.\n",
+      "remediation": "Replace SHA-1 with a strong hash algorithm:\n- For password hashing: use bcrypt, scrypt, or Argon2id\n- For general integrity: use SHA-256 or SHA-512\n- Replace hashlib.sha1() with hashlib.sha256() as a minimum\n",
+      "tags": [
+        "security:cryptography",
+        "security:weak-hash"
+      ],
+      "created_at": "2026-04-14T13:46:29.978694+10:00",
+      "updated_at": "2026-04-14T13:46:29.978694+10:00",
+      "created_by": "security-agent"
+    },
+    {
+      "id": "FIND-007",
+      "title": "Weak Hash Algorithm MD5 Used for Sensitive Data (BenchmarkTest00054, 00057)",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-328",
+      "location": {
+        "file": "testcode/BenchmarkTest00054.py",
+        "line_start": 64,
+        "line_end": 69
+      },
+      "description": "Two test cases use the cryptographically broken MD5 hash algorithm to hash sensitive data\nand write the results to a password file:\n\nBenchmarkTest00054 (line 64): hashlib.new('md5') - TRUE VULNERABILITY\n  SOURCE: Cookie value via urllib.parse.unquote_plus(request.cookies.get(\"BenchmarkTest00054\"))\n  GUARD: Data flow passes through string concatenation obfuscation but user input is NOT used\n         (copy = '' + 'SomeOKString', bar = copy). Actually, tracing carefully:\n         string26833 = '', copy = string26833 (empty), string26833 += param (now param),\n         copy += 'SomeOKString' (copy = 'SomeOKString'), bar = copy.\n         So bar = 'SomeOKString', NOT user input. However the hash algorithm is still MD5.\n  SINK: hashlib.new('md5').update(input) -\u003e written to testfiles/passwordFile.txt\n\nBenchmarkTest00057 (line 65): hashlib.md5() - TRUE VULNERABILITY\n  SOURCE: Cookie value, then through list manipulation\n  GUARD: List operations: lst = ['safe', param, 'moresafe'], pop(0) removes 'safe',\n         bar = lst[1] which is 'moresafe' NOT param. However the hash algorithm is still MD5.\n  SINK: hashlib.md5().update(input) -\u003e written to testfiles/passwordFile.txt\n\nMD5 is cryptographically broken - collisions can be generated in seconds and preimage\nresistance is severely weakened. It must not be used for any security-sensitive hashing.\nPer the expected results CSV, both BenchmarkTest00054 and BenchmarkTest00057 are classified\nas true vulnerabilities (CWE-328) because the use of MD5 itself is the vulnerability,\nregardless of whether user input reaches it.\n",
+      "impact": "MD5 hashes stored in passwordFile.txt can be reversed using rainbow tables or brute force in\ntrivial time. If these represent password hashes, account compromise is likely. MD5 collision\nattacks are practical and well-documented (e.g., Flame malware, rogue CA certificates).\n",
+      "remediation": "Replace MD5 with a strong hash algorithm:\n- For password hashing: use bcrypt, scrypt, or Argon2id (adaptive, salted)\n- For general integrity: use SHA-256, SHA-384, or SHA-512\n- hashlib.new('sha256') or hashlib.sha256() as a minimum replacement\n",
+      "tags": [
+        "security:cryptography",
+        "security:weak-hash"
+      ],
+      "created_at": "2026-04-14T13:46:29.041084+10:00",
+      "updated_at": "2026-04-14T13:46:29.041084+10:00",
+      "created_by": "security-agent"
+    },
+    {
+      "id": "FIND-005",
+      "title": "Hardcoded LDAP Admin Credentials and User Passwords",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-798",
+      "location": {
+        "file": "helpers/ldap.py",
+        "line_start": 5,
+        "line_end": 16
+      },
+      "description": "The LDAP helper module contains multiple sets of hardcoded credentials:\n\n1. Admin bind credentials (line 5): user='uid=admin,ou=system', password='secret'\n2. Test user passwords (line 6):\n   - foo / MrFooPa$$word\n   - MS Bar / barM$B4dPass\n   - Mr Unknown / YouwontGue$$\n3. The get_connection() function (line 19) also hardcodes the same admin credentials.\n\nSOURCE: Hardcoded string literals in helpers/ldap.py\nGUARD: None\nSINK: ldap3.Connection() constructor, strategy.add_entry() calls\n\nWhile this is a mock LDAP server for testing, the credentials are in plaintext in source code.\nThese credentials could leak through version control and are used in the LDAP injection test\ncases (BenchmarkTest00076, 00077, 00265, 00266, 00427).\n",
+      "impact": "Hardcoded credentials in source code can be extracted by anyone with read access to the repository.\nIf this pattern were replicated in production code, it would allow unauthorized LDAP directory\naccess and potential data exfiltration. The admin credentials grant full read/write access to the\ndirectory.\n",
+      "remediation": "- Move credentials to environment variables or a secrets management system\n- Use a dedicated test configuration that is clearly separated from production\n- For mock/test scenarios, generate ephemeral credentials at test time\n- Never commit real credentials to version control\n",
+      "tags": [
+        "security:secrets",
+        "security:authentication",
+        "security:credentials"
+      ],
+      "created_at": "2026-04-14T13:46:27.921467+10:00",
+      "updated_at": "2026-04-14T13:46:27.921467+10:00",
+      "created_by": "security-agent"
+    },
+    {
+      "id": "FIND-004",
+      "title": "Hardcoded Flask Secret Key Enables Session Forgery",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-798",
+      "location": {
+        "file": "app.py",
+        "line_start": 25,
+        "line_end": 25
+      },
+      "description": "The Flask application uses a hardcoded secret_key: b'if you need this you are doing something wrong'.\nFlask's secret_key is used to cryptographically sign session cookies. Any attacker who knows this\nvalue can forge arbitrary session data, impersonate users, and bypass any session-based trust\nboundary checks (such as those in the trustbound-00 test cases).\n\nData flow: hardcoded string -\u003e app.secret_key -\u003e flask.session cookie signing -\u003e all session-dependent routes\n\nSOURCE: Hardcoded literal in app.py line 25\nGUARD: None\nSINK: Flask session cookie signing mechanism used by all flask.session operations\n",
+      "impact": "An attacker can craft valid session cookies containing arbitrary key-value pairs. This directly\nundermines the trust boundary tests (BenchmarkTest00072, 00153, 00260) that store user-controlled\ndata in flask.session, since the session itself can be forged. Session fixation, privilege\nescalation, and authentication bypass are all possible.\n",
+      "remediation": "Generate the secret key from a cryptographically secure source and store it outside the codebase:\n- Use os.urandom(32) or secrets.token_hex(32) to generate the key\n- Store in an environment variable: app.secret_key = os.environ['FLASK_SECRET_KEY']\n- Rotate the key periodically and on suspected compromise\n",
+      "tags": [
+        "security:secrets",
+        "security:session-management",
+        "security:authentication"
+      ],
+      "created_at": "2026-04-14T13:46:26.877796+10:00",
+      "updated_at": "2026-04-14T13:46:26.877796+10:00",
+      "created_by": "security-agent"
+    },
+    {
+      "id": "FIND-003",
+      "title": "Path Traversal: Arbitrary File Read in BenchmarkTest00001, 00002, 00003",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-22",
+      "location": {
+        "file": "testcode/BenchmarkTest00001.py",
+        "line_start": 47,
+        "line_end": 47
+      },
+      "description": "TRUE POSITIVES (3 cases: BenchmarkTest00001, 00002, 00003).\n\nAll three test cases read user input from a cookie, then use it to construct a file\npath via f-string interpolation and open the file with codecs.open() -- no path\nvalidation or directory traversal checks are performed.\n\nBenchmarkTest00001 (line 47): Direct assignment bar = param.\n  SOURCE: urllib.parse.unquote_plus(request.cookies.get(\"BenchmarkTest00001\"))\n  GUARD: None\n  SINK: codecs.open(f'{TESTFILES_DIR}/{bar}', 'r', 'utf-8')\n\nBenchmarkTest00002 (line 49): Condition 'should' in 'This should never happen' is\nalways true, so bar = param.\n  SOURCE: urllib.parse.unquote_plus(request.cookies.get(\"BenchmarkTest00002\"))\n  GUARD: None (dead-code condition always passes user input)\n  SINK: codecs.open(f'{TESTFILES_DIR}/{bar}', 'r', 'utf-8')\n\nBenchmarkTest00003 (line 50): ThingFactory.createThing().doSomething(param) returns\nparam unchanged (Thing1.doSomething returns x).\n  SOURCE: urllib.parse.unquote_plus(request.cookies.get(\"BenchmarkTest00003\"))\n  GUARD: None (ThingFactory passes value through)\n  SINK: codecs.open(f'{TESTFILES_DIR}/{bar}', 'r', 'utf-8')\n\nFALSE POSITIVES correctly identified:\n- BenchmarkTest00004: Condition 7*18+106=232\u003e200 is true, bar='This_should_always_happen'.\n- BenchmarkTest00005: Checks for '../' in bar and returns early if found (partial guard,\n  though bypassable with ..\\ on Windows or encoded variants -- still classified as false\n  positive per expected results).\n",
+      "impact": "An attacker can read arbitrary files on the server by setting the cookie value to a\npath traversal payload like ../../etc/passwd. The file contents may be exposed through\nresponse messages or error handling.\n",
+      "remediation": "Validate that the resolved path is within TESTFILES_DIR using os.path.realpath():\n  real_path = os.path.realpath(os.path.join(TESTFILES_DIR, bar))\n  if not real_path.startswith(os.path.realpath(TESTFILES_DIR)):\n      abort(403)\n",
+      "tags": [
+        "content:file-operations",
+        "owasp-benchmark:true-positive"
+      ],
+      "created_at": "2026-04-14T13:46:20.721212+10:00",
+      "updated_at": "2026-04-14T13:46:20.721212+10:00",
+      "created_by": "content-agent"
+    },
+    {
+      "id": "FIND-002",
+      "title": "XXE: XML External Entity Injection in BenchmarkTest00205, 00294, 00460",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-611",
+      "location": {
+        "file": "testcode/BenchmarkTest00205.py",
+        "line_start": 52,
+        "line_end": 53
+      },
+      "description": "TRUE POSITIVES (3 cases: BenchmarkTest00205, 00294, 00460).\n\nAll three test cases create an xml.sax parser and explicitly enable external entity\nprocessing via parser.setFeature(xml.sax.handler.feature_external_ges, True), then\nparse user-controlled XML input with xml.dom.minidom.parseString(bar, parser).\n\nBenchmarkTest00205 (line 52-53): Input from form getlist, via configparser passthrough.\n  SOURCE: request.form.getlist(\"BenchmarkTest00205\")[0] -\u003e param\n  GUARD: None (configparser stores and retrieves user value)\n  SINK: parseString(bar, parser) with feature_external_ges=True\n\nBenchmarkTest00294 (line 52-53): Input from form via separate_request wrapper.\n  SOURCE: wrapped.get_form_parameter(\"BenchmarkTest00294\") -\u003e param\n  GUARD: None (condition always passes user input through)\n  SINK: parseString(bar, parser) with feature_external_ges=True\n\nBenchmarkTest00460 (line 43-44): Input from HTTP header, direct assignment.\n  SOURCE: request.headers.get(\"BenchmarkTest00460\") -\u003e param -\u003e bar = param\n  GUARD: None\n  SINK: parseString(bar, parser) with feature_external_ges=True\n\nNote: Output is properly escaped with escape_for_html() before rendering, but\nthis does NOT prevent the XXE attack itself -- the entity resolution and file\nread/SSRF occurs during parsing, before output encoding.\n\nFALSE POSITIVES correctly identified:\n- BenchmarkTest00017: Parser uses default features (external entities disabled).\n- BenchmarkTest00204: Parser uses default features (external entities disabled).\n",
+      "impact": "An attacker can read arbitrary server-side files (e.g., /etc/passwd), perform SSRF\nto internal services, or cause denial of service via entity expansion attacks.\n",
+      "remediation": "Remove the line enabling external entities:\n  parser.setFeature(xml.sax.handler.feature_external_ges, True)\nOr use defusedxml library which disables dangerous features by default.\n",
+      "tags": [
+        "content:xxe",
+        "owasp-benchmark:true-positive"
+      ],
+      "created_at": "2026-04-14T13:45:54.922059+10:00",
+      "updated_at": "2026-04-14T13:45:54.922059+10:00",
+      "created_by": "content-agent"
+    },
+    {
+      "id": "FIND-001",
+      "title": "XSS: Reflected Cross-Site Scripting in BenchmarkTest00096, 00097, 00098",
+      "severity": "high",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-79",
+      "location": {
+        "file": "testcode/BenchmarkTest00096.py",
+        "line_start": 49,
+        "line_end": 52
+      },
+      "description": "TRUE POSITIVES (3 cases: BenchmarkTest00096, 00097, 00098).\n\nAll three test cases read user input from request.form, pass it through obfuscation\nthat preserves the tainted value, then interpolate it directly into an HTML response\nvia f-string without calling escape_for_html().\n\nBenchmarkTest00096 (line 49-52): match/case always takes case 'A' -\u003e bar = param.\nBenchmarkTest00097 (line 40-43): bar = param.split(' ')[0] (still user-controlled).\nBenchmarkTest00098 (line 47-50): configparser stores then retrieves param via keyB.\n\nSOURCE: request.form.get(\"BenchmarkTestNNNNN\") -\u003e param\nGUARD: None (escape_for_html imported but never called on output)\nSINK: f-string interpolation into HTML response body\n\nFALSE POSITIVES correctly identified:\n- BenchmarkTest00082: bar overwritten with map['keyA'] (static 'a-Value'), not user input.\n- BenchmarkTest00083: condition 7*42-86=208\u003e200 is true, so bar='This_should_always_happen'.\n",
+      "impact": "Arbitrary JavaScript execution in victim's browser, enabling session hijacking,\ncredential theft, defacement, and phishing.\n",
+      "remediation": "Apply escape_for_html(bar) before interpolating into the response string.\n",
+      "tags": [
+        "content:xss",
+        "owasp-benchmark:true-positive"
+      ],
+      "created_at": "2026-04-14T13:45:30.275577+10:00",
+      "updated_at": "2026-04-14T13:45:30.275577+10:00",
+      "created_by": "content-agent"
+    },
+    {
+      "id": "FIND-040",
+      "title": "Global Mutable State Used for Session Management Instead of Flask Sessions",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-362",
+      "location": {
+        "file": "helpers/utils.py",
+        "line_start": 6,
+        "line_end": 8
+      },
+      "description": "helpers/utils.py defines module-level mutable dict 'mysession = {}' used as session store by\nweakrand test cases, and 'sharedstr' modified by deserialization tests. This is process-global,\nshared across all requests/users, has no thread safety, and reimplements Flask's built-in\nsession management poorly.\n",
+      "impact": "In multi-threaded/multi-worker deployments, causes race conditions. User session data leaks\nbetween users. Data lost on restart.\n",
+      "remediation": "Use Flask's built-in session mechanism (flask.session) or a proper session store.\n",
+      "tags": [
+        "architecture:anti-pattern",
+        "quality:global-state"
+      ],
+      "created_at": "2026-04-14T13:49:21.503731+10:00",
+      "updated_at": "2026-04-14T13:49:21.503731+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-037",
+      "title": "Bare Except Clauses Suppress All Errors in 26 Test Files",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-396",
+      "location": {
+        "file": "testcode/BenchmarkTest00269.py",
+        "line_start": 49,
+        "line_end": 49
+      },
+      "description": "26 test files use bare 'except:' clauses that catch ALL exceptions including SystemExit,\nKeyboardInterrupt, and MemoryError. Affected categories: deserialization, XPath injection,\nXXE, code injection, LDAP, redirect tests. By contrast, some files correctly use specific\nexceptions like 'except FileNotFoundError:' or 'except IOError:'.\n",
+      "impact": "SystemExit and KeyboardInterrupt are silently swallowed. Debugging becomes difficult as\nerrors are hidden. In a benchmark context, this could mask whether vulnerability tests\ntriggered expected behavior or silently failed.\n",
+      "remediation": "Replace bare 'except:' with 'except Exception:' at minimum, or preferably with specific\nexception types (pickle.UnpicklingError, xml.sax.SAXException, ldap3.LDAPException).\n",
+      "tags": [
+        "architecture:error-handling",
+        "quality:bare-except"
+      ],
+      "created_at": "2026-04-14T13:49:19.635182+10:00",
+      "updated_at": "2026-04-14T13:49:19.635182+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-036",
+      "title": "Module-Level Database Execution in db_sqlite.py Creates Side Effects on Import",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-665",
+      "location": {
+        "file": "helpers/db_sqlite.py",
+        "line_start": 6,
+        "line_end": 28
+      },
+      "description": "helpers/db_sqlite.py executes database DDL and DML at module level. When first imported it\nopens a SQLite connection, drops and recreates 4 tables, inserts seed data with hardcoded\ncredentials, and closes the connection. No guard like 'if __name__ == __main__' exists.\nThe database is completely reset on every application start.\n",
+      "impact": "Database state is silently destroyed on every restart. Module import has side effects\nviolating Python best practices. Relative paths break if working directory changes.\n",
+      "remediation": "Move database initialization into an explicit init_db() function called from app.py.\nAdd idempotent table creation checks.\n",
+      "tags": [
+        "architecture:side-effects",
+        "quality:module-level-execution"
+      ],
+      "created_at": "2026-04-14T13:49:19.182877+10:00",
+      "updated_at": "2026-04-14T13:49:19.182877+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-034",
+      "title": "Injected Class Has Broken __init__ - Constructor Discards Arguments",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-665",
+      "location": {
+        "file": "helpers/utils.py",
+        "line_start": 87,
+        "line_end": 95
+      },
+      "description": "The Injected class in helpers/utils.py has a bug in its constructor. The __init__ method\naccepts text and othertext parameters but does nothing with them (body is just pass).\nThe __getitem__ method then tries to access self.othertext, which was never assigned,\nso it will always raise an AttributeError. The class is described as used in\ndeserialization test cases as an exploit payload but is broken.\n",
+      "impact": "Any deserialization test case that creates an Injected object and tries to access its\ndata via __getitem__ will crash with AttributeError instead of demonstrating the intended\nvulnerability behavior.\n",
+      "remediation": "Fix the constructor to store the arguments:\n  def __init__(self, text, othertext):\n      self.text = text\n      self.othertext = othertext\n",
+      "tags": [
+        "architecture:bug",
+        "quality:broken-class"
+      ],
+      "created_at": "2026-04-14T13:49:17.731712+10:00",
+      "updated_at": "2026-04-14T13:49:17.731712+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-032",
+      "title": "Massive Dependency Bloat - 80+ Unused Packages in requirements.txt",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-1104",
+      "location": {
+        "file": "requirements.txt",
+        "line_start": 1,
+        "line_end": 102
+      },
+      "description": "requirements.txt lists 102 pinned packages, but the application only uses a handful.\nACTUALLY USED: Flask, Jinja2, Werkzeug, MarkupSafe, blinker, click, itsdangerous (Flask deps),\nldap3, lxml. NEVER IMPORTED: tornado, mitmproxy, aiohttp, beautifulsoup4, requests, httpx,\nSQLAlchemy, cryptography, pyOpenSSL, bandit, loguru, structlog, PyYAML, Mako, jsonpickle,\nargon2-cffi, and 60+ others. The file was copied from the parent OWASP Benchmark project.\n",
+      "impact": "Supply chain attack surface is dramatically increased. Each unused dependency is a potential\nvector for dependency confusion, typosquatting, or known CVE exploitation. Installation\ntime and image size are unnecessarily bloated.\n",
+      "remediation": "Strip requirements.txt to only the packages actually imported by the application:\nFlask\u003e=3.1.0, ldap3\u003e=2.9.1, lxml\u003e=6.0.0, and their direct dependencies.\n",
+      "tags": [
+        "architecture:dependency-hygiene",
+        "supply-chain"
+      ],
+      "created_at": "2026-04-14T13:49:16.354128+10:00",
+      "updated_at": "2026-04-14T13:49:16.354128+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-030",
+      "title": "Unreachable Dead Code After return Statement in GET Handlers",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-561",
+      "location": {
+        "file": "testcode/BenchmarkTest00001.py",
+        "line_start": 32,
+        "line_end": 32
+      },
+      "description": "39 of the 70 test files contain unreachable code after a return statement in their GET handlers.\nThe pattern is: the GET handler returns a response, then has a dead second return statement\nlike `return BenchmarkTest00001_post()`. Since the first return already exits the function,\nthe second return never executes.\n\nAdditionally, 5 redirect test files (BenchmarkTest00067, 00068, 00151, 00258, 00069) contain\nunreachable `return RESPONSE` after `return flask.redirect(bar)` in their POST handlers.\n\nAffected files (GET handler dead code): BenchmarkTest00001-00005, 00011-00014, 00017-00019,\n00025-00027, 00032-00033, 00054-00058, 00064-00069, 00070-00080, 00082, and more (39 total).\n",
+      "impact": "Dead code inflates codebase size, confuses SAST tools, and may mislead developers about\nthe intended control flow. The dead `return ..._post()` lines appear to be remnants from\na Java-to-Python translation where GET handlers were supposed to delegate to POST handlers.\n",
+      "remediation": "Remove all unreachable return statements after the first return in each function.\nIf the intent was for GET to delegate to POST, remove the first return and keep only\nthe delegation call.\n",
+      "tags": [
+        "architecture:dead-code",
+        "quality:unreachable-code"
+      ],
+      "created_at": "2026-04-14T13:49:14.908556+10:00",
+      "updated_at": "2026-04-14T13:49:14.908556+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-029",
+      "title": "Inconsistent Output Encoding: XSS Tests Import but Do Not Use escape_for_html",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-116",
+      "location": {
+        "file": "testcode/BenchmarkTest00096.py",
+        "line_start": 19,
+        "line_end": 19
+      },
+      "description": "All five XSS test files (BenchmarkTest00082, 00083, 00096, 00097, 00098) import\nescape_for_html from helpers.utils but none of them actually call it on the bar value\nbefore rendering into the HTML response. This is an encoding consistency gap.\n\nIn contrast, other categories consistently apply escape_for_html to user-controlled\nvalues in output contexts:\n- Path traversal files escape file names in output\n- XXE files escape parsed XML output and error messages\n- XPath injection files escape query strings in error messages\n- LDAP injection files escape filter strings in output\n- Hash files escape hashed input values in output\n\nThe XSS test cases that are false positives (00082, 00083) are safe only because\nthe data flow never reaches user input at the sink -- NOT because of encoding.\nIf the data flow logic were changed, XSS would be immediately exploitable.\n\nThe ESAPI escape_for_html() implementation itself is robust: it encodes all\nnon-alphanumeric, non-immune characters as HTML entities, handles illegal control\ncharacters, and covers the critical \u003c \u003e \u0026 \" characters. However, the html_entity_names\ndictionary is incomplete (only 4 entries with a TODO comment) -- this is cosmetic\nsince unmapped characters fall through to the numeric \u0026#xNN; encoding.\n",
+      "impact": "The unused import creates a false sense of security. Developers may assume encoding\nis being applied when it is not. Defense-in-depth is violated -- the false positive\ntest cases rely solely on data-flow logic, not output encoding, for safety.\n",
+      "remediation": "Apply escape_for_html() to all user-influenced values before rendering in HTML\nresponses, regardless of whether the data flow appears safe. This provides defense\nin depth against logic errors in the data flow transformations.\n",
+      "tags": [
+        "content:encoding-consistency",
+        "defense-in-depth"
+      ],
+      "created_at": "2026-04-14T13:48:12.298549+10:00",
+      "updated_at": "2026-04-14T13:48:12.298549+10:00",
+      "created_by": "content-agent"
+    },
+    {
+      "id": "FIND-024",
+      "title": "Database initialized at module import with hardcoded credentials",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-798",
+      "location": {
+        "file": "helpers/db_sqlite.py",
+        "line_start": 6,
+        "line_end": 28
+      },
+      "description": "The db_sqlite.py module executes database initialization (DROP TABLE, CREATE TABLE,\nINSERT) at import time as module-level code (lines 6-28). This means:\n\n1. Database schema is recreated every time the application starts\n2. Hardcoded credentials are inserted: User01/P455w0rd, User02/B3nchM3rk, User03/a$c11, foo/bar\n3. Passwords are stored in plaintext in both the source code and the database\n4. The database file path is relative (./testfiles/benchmark-sqlite3.db) with no\n   validation that the directory exists or is writable\n\nThe database connection on line 6-7 uses autocommit=True, meaning all DDL/DML\nexecutes immediately without transaction control.\n\nSimilarly, helpers/ldap.py (line 5) hardcodes the LDAP admin password as 'secret'\nand user passwords (MrFooPa$$word, barM$B4dPass, YouwontGue$$) in plaintext.\n",
+      "impact": "Hardcoded credentials in source code can be extracted by anyone with repository access.\nModule-level database initialization means the database is reset on every application\nrestart, destroying any runtime data. The plaintext password storage violates basic\ncredential management practices.\n",
+      "remediation": "1. Move database initialization to an explicit setup function called during deployment\n2. Load credentials from environment variables or a secrets manager\n3. Hash passwords using bcrypt or argon2 before storage\n4. Use absolute paths for the database file, configured via environment variable\n5. Wrap initialization in a check for existing tables to avoid data loss on restart\n",
+      "tags": [
+        "guards:missing",
+        "secrets",
+        "initialization"
+      ],
+      "created_at": "2026-04-14T13:46:45.385868+10:00",
+      "updated_at": "2026-04-14T13:46:45.385868+10:00",
+      "created_by": "guards-agent"
+    },
+    {
+      "id": "FIND-022",
+      "title": "Global mutable state shared across requests without synchronization",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-362",
+      "location": {
+        "file": "helpers/utils.py",
+        "line_start": 6,
+        "line_end": 8
+      },
+      "description": "Two global mutable variables are defined in helpers/utils.py without any thread\nsynchronization:\n\n  mysession = {}      (line 6)\n  sharedstr = 'default shared string'  (line 8)\n\nThe mysession dictionary is used by the weakrand test cases (BenchmarkTest00025, 00026,\n00027, 00032, 00033) as a server-side session store, with cookie names as keys and random\nvalues as data. The sharedstr variable is a global mutable string.\n\nFlask may serve requests concurrently (with threaded=True, which is the default in\nFlask 2.x+). Concurrent requests can read and write mysession simultaneously without\nlocking, leading to race conditions where:\n- One request reads a stale value while another is writing\n- Dictionary mutations during iteration cause RuntimeError\n- Session data from one user leaks to another\n\nSOURCE: concurrent HTTP requests\nGUARD: none (no threading.Lock or other synchronization)\nSINK: mysession dict and sharedstr global\n",
+      "impact": "Race conditions in the session store can cause session data to be lost, corrupted, or\nleaked between concurrent users. Since mysession stores security-relevant random values\nused to validate cookie authenticity (in the weakrand test cases), a race condition could\nallow one user to access another user's session data.\n",
+      "remediation": "Replace global mutable state with Flask's built-in session mechanism (flask.session)\nor use a proper session store (Flask-Session with Redis/Memcached backend). If global\nstate is required, protect it with threading.Lock:\n  import threading\n  _session_lock = threading.Lock()\n  mysession = {}\n  def set_session(key, value):\n      with _session_lock:\n          mysession[key] = value\n",
+      "tags": [
+        "guards:missing",
+        "concurrency"
+      ],
+      "created_at": "2026-04-14T13:46:43.912628+10:00",
+      "updated_at": "2026-04-14T13:46:43.912628+10:00",
+      "created_by": "guards-agent"
+    },
+    {
+      "id": "FIND-021",
+      "title": "SQL query string included unescaped in HTML error response",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-209",
+      "location": {
+        "file": "helpers/db_sqlite.py",
+        "line_start": 33,
+        "line_end": 49
+      },
+      "description": "The db_sqlite.results() function includes the raw SQL query string in its HTML response\nwithout escaping when no results are found (line 43):\n\n  def results(cur, sql: str):\n      ...\n      if not cur:\n          ret += f'Results set is empty for query: {sql}'\n          return ret\n\nThe sql parameter may contain user-controlled input (e.g., from SQL injection test cases\nlike BenchmarkTest00099.py where sql = f\"SELECT username from USERS where password = '{bar}'\").\nWhen no cursor results are returned, the raw SQL string including the injected user input\nis reflected directly into the HTML response without HTML encoding.\n\nThis is also a secondary XSS vector: user input embedded in the SQL string gets reflected\ninto the page without escaping.\n\nSOURCE: sql parameter (containing user input via f-string interpolation)\nGUARD: none (no HTML escaping applied to sql in error path)\nSINK: HTML response body\n",
+      "impact": "Sensitive database schema information (table names, column names, query structure) is\nexposed to the user. If the SQL string contains user-controlled input, this also creates\na reflected XSS vulnerability via the error message path.\n",
+      "remediation": "Apply HTML escaping to the SQL string before including it in the response:\n  from helpers.utils import escape_for_html\n  ret += f'Results set is empty for query: {escape_for_html(sql)}'\nConsider not exposing the full SQL query at all - return a generic message instead.\n",
+      "tags": [
+        "guards:missing",
+        "information-disclosure",
+        "xss"
+      ],
+      "created_at": "2026-04-14T13:46:42.969193+10:00",
+      "updated_at": "2026-04-14T13:46:42.969193+10:00",
+      "created_by": "guards-agent"
+    },
+    {
+      "id": "FIND-020",
+      "title": "Database and LDAP connections not closed on exception paths",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-404",
+      "location": {
+        "file": "testcode/",
+        "line_start": 0
+      },
+      "description": "SQL database connections (sqlite3) and LDAP connections are opened but not closed\nin a finally block or using a context manager. If an exception occurs between\nopening the connection and the close()/unbind() call, the connection leaks.\n\nSQL test cases affected (5 files using con.close() without try/finally):\n- BenchmarkTest00011.py, 00012.py, 00099.py, 00283.py, 00284.py\nExample from BenchmarkTest00099.py lines 47-53:\n  con = helpers.db_sqlite.get_connection()\n  cur = con.cursor()\n  cur.execute(sql)        # can raise if sql is malformed\n  RESPONSE += (...)\n  con.close()             # skipped if execute raises\n\nLDAP test cases affected (5 files using conn.unbind() without try/finally):\n- BenchmarkTest00076.py, 00077.py, 00265.py, 00266.py, 00427.py\nWhile these LDAP cases have try/except blocks, the conn.unbind() is inside the try\nand will not execute if an exception occurs after connection but before unbind.\n\nSOURCE: get_connection() call\nGUARD: none (no try/finally or context manager)\nSINK: connection leak on exception\n",
+      "impact": "Leaked database connections accumulate over time and can exhaust connection pool\nlimits or file descriptor limits, causing denial of service. For SQLite, each leaked\nconnection also holds a file lock that can block other operations. For LDAP, leaked\nconnections consume server resources.\n",
+      "remediation": "Use context managers (with statements) for all connection handling:\n  with helpers.db_sqlite.get_connection() as con:\n      cur = con.cursor()\n      cur.execute(sql, params)\n      ...\nFor LDAP, wrap in try/finally:\n  conn = helpers.ldap.get_connection()\n  try:\n      conn.search(...)\n  finally:\n      conn.unbind()\n",
+      "tags": [
+        "guards:missing",
+        "resource-management"
+      ],
+      "created_at": "2026-04-14T13:46:42.488801+10:00",
+      "updated_at": "2026-04-14T13:46:42.488801+10:00",
+      "created_by": "guards-agent"
+    },
+    {
+      "id": "FIND-019",
+      "title": "Path traversal in static file serving route via send_from_directory",
+      "severity": "medium",
+      "confidence": "medium",
+      "status": "open",
+      "cwe": "CWE-22",
+      "location": {
+        "file": "app.py",
+        "line_start": 36,
+        "line_end": 41
+      },
+      "description": "The show_page route on line 36-41 serves files using send_from_directory when the\nrequested path does not end with \".html\" or ends with \"404.html\":\n\n  @app.route('/benchmark/\u003cpath:mypath\u003e')\n  def show_page(mypath: str):\n      if mypath.endswith(\".html\") and not mypath.endswith(\"404.html\"):\n          return render_template(f\"web/{mypath}\")\n      else:\n          return send_from_directory(os.path.join(app.root_path, 'templates'), mypath)\n\nWhile Flask's send_from_directory has built-in path traversal protection, the route\nalso passes user-controlled mypath to render_template(f\"web/{mypath}\") without any\nvalidation. Jinja2's render_template uses the template loader which restricts to\nthe templates directory, but the mypath value is not validated for expected file\nextensions or path components. The send_from_directory fallback serves any file type\nfrom the templates directory without an allowlist of permitted file extensions.\n\nThere is no guard clause checking for path traversal sequences, unexpected file\nextensions, or null bytes in the mypath parameter.\n",
+      "impact": "The send_from_directory path may expose any file within the templates directory that\nis not an HTML file (configuration files, template source files, etc.). While Flask\nprevents directory traversal in send_from_directory, the lack of an extension allowlist\nmeans any file in the templates directory tree is accessible.\n",
+      "remediation": "Add guard clauses to validate the requested path:\n  - Check for allowed file extensions (e.g., .html, .css, .js, .png)\n  - Validate that the path does not contain null bytes\n  - Return 404 for any request that doesn't match expected patterns\nExample:\n  ALLOWED_EXTENSIONS = {'.html', '.css', '.js', '.png', '.jpg', '.gif'}\n  ext = os.path.splitext(mypath)[1].lower()\n  if ext not in ALLOWED_EXTENSIONS:\n      abort(404)\n",
+      "tags": [
+        "guards:missing",
+        "input-validation"
+      ],
+      "created_at": "2026-04-14T13:46:41.530226+10:00",
+      "updated_at": "2026-04-14T13:46:41.530226+10:00",
+      "created_by": "guards-agent"
+    },
+    {
+      "id": "FIND-017",
+      "title": "Bare except clauses suppress all errors in 26 test cases",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-396",
+      "location": {
+        "file": "testcode/",
+        "line_start": 0
+      },
+      "description": "26 out of 70 test files use bare `except:` clauses that catch all exceptions including\nSystemExit, KeyboardInterrupt, and MemoryError. This is a systemic pattern found in:\nBenchmarkTest00013, 00014, 00017, 00018, 00019, 00069, 00073, 00074, 00075, 00076,\n00077, 00078, 00079, 00080, 00101, 00151, 00159, 00160, 00164, 00204, 00205, 00265,\n00266, 00269, 00294, 00460.\n\nThese bare except clauses catch exceptions from security-sensitive operations (LDAP queries,\nXPath evaluation, XML parsing, redirect URL validation, code execution, deserialization)\nand return generic error messages, swallowing the actual failure reason.\n\nSOURCE: security-sensitive operation (LDAP search, XPath query, XML parse, exec(), pickle.loads)\nGUARD: none (bare except catches everything)\nSINK: generic error message returned to user\n",
+      "impact": "Bare except clauses mask programming errors, security exceptions, and system-level failures.\nWhen a security check raises an unexpected exception type, the bare except prevents it from\npropagating, potentially allowing continued execution in an unsafe state. For example, in\nBenchmarkTest00069 line 60, if URL validation raises an unexpected error, execution falls\nthrough to the generic error handler instead of properly blocking the redirect.\n",
+      "remediation": "Replace all bare `except:` with specific exception types:\n- For LDAP operations: except ldap3.core.exceptions.LDAPException\n- For XPath/XML operations: except (etree.XPathError, xml.sax.SAXException)\n- For URL parsing: except (ValueError, urllib.parse.ParseError)\n- For code execution: except (SyntaxError, NameError, TypeError)\n- For deserialization: except (pickle.UnpicklingError, binascii.Error)\nAdd logging for caught exceptions to aid debugging and security monitoring.\n",
+      "tags": [
+        "guards:weak",
+        "error-handling"
+      ],
+      "created_at": "2026-04-14T13:46:40.102065+10:00",
+      "updated_at": "2026-04-14T13:46:40.102065+10:00",
+      "created_by": "guards-agent"
+    },
+    {
+      "id": "FIND-016",
+      "title": "No rate limiting on any endpoint",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-770",
+      "location": {
+        "file": "app.py",
+        "line_start": 23,
+        "line_end": 52
+      },
+      "description": "The application has no rate limiting on any route. There is no usage of Flask-Limiter\nor any custom throttling middleware. All 70 test endpoints plus the static file serving\nroutes accept unlimited requests. Several endpoints perform expensive operations\nincluding database queries, LDAP searches, subprocess execution, XML parsing, and\nfile I/O, making them attractive targets for resource exhaustion.\n",
+      "impact": "Without rate limiting, the application is vulnerable to denial-of-service attacks.\nEndpoints that execute subprocess commands (cmdi-00), perform database queries (sqli-00),\nor parse XML (xxe-00) can be called at unlimited rates, exhausting server resources.\nBrute-force attacks against any parameter-driven logic are also trivially possible.\n",
+      "remediation": "Add Flask-Limiter to the application:\n  from flask_limiter import Limiter\n  limiter = Limiter(app, default_limits=[\"100 per minute\"])\nApply stricter limits to sensitive endpoints (command execution, file access, etc.).\n",
+      "tags": [
+        "guards:missing",
+        "rate-limiting"
+      ],
+      "created_at": "2026-04-14T13:46:39.241087+10:00",
+      "updated_at": "2026-04-14T13:46:39.241087+10:00",
+      "created_by": "guards-agent"
+    },
+    {
+      "id": "FIND-012",
+      "title": "Global Mutable Session State Enables Cross-User Data Leakage",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-362",
+      "location": {
+        "file": "helpers/utils.py",
+        "line_start": 6,
+        "line_end": 6
+      },
+      "description": "The helpers/utils.py module uses a module-level global dictionary 'mysession = {}' (line 6) and\na global string 'sharedstr' (line 8) as shared mutable state across all requests and users.\n\nThe 'mysession' dictionary is used by the weakrand test cases (BenchmarkTest00025, 00026, 00027,\n00032, 00033) to implement a \"remember me\" cookie system. Since this is a module-level global,\nit is shared across ALL concurrent requests in a single-process Flask server:\n\n- Any user's remember-me token stored in mysession is visible to request handlers serving other users\n- In a multi-threaded or async deployment, concurrent access to mysession creates race conditions\n- The 'sharedstr' variable has similar cross-request leakage potential\n\nSOURCE: User interactions that write to mysession (weakrand test cases)\nGUARD: None - no per-user isolation, no locking\nSINK: mysession dictionary read in cookie comparison logic\n",
+      "impact": "- Cross-user information leakage: one user's remember-me token could be accessed during another\n  user's request processing\n- Race conditions in concurrent deployments can cause authentication bypass (TOCTOU)\n- Memory grows unbounded as tokens accumulate without cleanup\n- In production, this pattern would allow session fixation across users\n",
+      "remediation": "- Replace the global dictionary with Flask's built-in session mechanism or a proper session store\n  (Redis, database-backed sessions)\n- Use flask.session for per-user server-side state\n- If a shared cache is needed, use a thread-safe implementation with proper locking\n- Implement session expiration and cleanup\n",
+      "tags": [
+        "security:session-management",
+        "security:race-condition",
+        "security:information-disclosure"
+      ],
+      "created_at": "2026-04-14T13:46:32.816153+10:00",
+      "updated_at": "2026-04-14T13:46:32.816153+10:00",
+      "created_by": "security-agent"
+    },
+    {
+      "id": "FIND-011",
+      "title": "Trust Boundary Violation - User Input Stored in Session (BenchmarkTest00072, 00153, 00260)",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-501",
+      "location": {
+        "file": "testcode/BenchmarkTest00153.py",
+        "line_start": 39,
+        "line_end": 39
+      },
+      "description": "Three test cases store user-controlled data directly into flask.session without validation,\nviolating the trust boundary between user input and server-side trusted storage:\n\nBenchmarkTest00072 (line 49): flask.session[bar] = '12345' - TRUE VULNERABILITY\n  SOURCE: Cookie value via urllib.parse.unquote_plus(request.cookies.get(\"BenchmarkTest00072\"))\n  GUARD: Conditional assignment ('should' in TestParam) - but 'should' IS in \"This should never happen\",\n         so bar = param (user input). The user controls the SESSION KEY name.\n  SINK: flask.session[bar] = '12345' - attacker-controlled key in session\n\nBenchmarkTest00153 (line 39): flask.session['userid'] = bar - TRUE VULNERABILITY\n  SOURCE: request.form.get(\"BenchmarkTest00153\")\n  GUARD: String concatenation: bar = param + '_SafeStuff' (suffix added but input preserved)\n  SINK: flask.session['userid'] = bar - attacker-controlled value in session\n\nBenchmarkTest00260 (line 41): flask.session['userid'] = bar - TRUE VULNERABILITY\n  SOURCE: request.form.getlist(\"BenchmarkTest00260\")[0]\n  GUARD: String slicing obfuscation: f'39218{param}abcd'[5:-5] = param (no sanitization)\n  SINK: flask.session['userid'] = bar - attacker-controlled value in session\n\nNote: BenchmarkTest00070 (safe - uses configparser keyA not user input) and\nBenchmarkTest00071 (safe - copy = '' + 'SomeOKString', user input goes to string26833 not copy)\nare correctly classified as false positives.\n\nWait - let me re-verify BenchmarkTest00071:\nstring39223 = '', copy = string39223 (= ''), string39223 += param (string39223 = param),\ncopy += 'SomeOKString' (copy = 'SomeOKString'), bar = copy = 'SomeOKString'.\nConfirmed: user input does NOT reach bar. False positive is correct.\n",
+      "impact": "Storing unvalidated user input in the server-side session can lead to:\n- Session poisoning: attacker injects malicious values that are later trusted by the application\n- Authorization bypass: if session['userid'] is used for access control decisions\n- In BenchmarkTest00072, the attacker controls the session KEY, which could overwrite\n  existing session variables (e.g., 'userid', 'role', 'is_admin')\n\nCombined with the hardcoded Flask secret_key (CWE-798 in app.py), session data can also\nbe forged directly without going through these endpoints.\n",
+      "remediation": "- Validate and sanitize all user input before storing in session\n- Use an allowlist of permitted session keys\n- Never use user input as a session key name (BenchmarkTest00072 pattern)\n- Implement session data integrity checks\n- Use a secure, randomly-generated Flask secret_key\n",
+      "tags": [
+        "security:session-management",
+        "security:authorization",
+        "security:trust-boundary"
+      ],
+      "created_at": "2026-04-14T13:46:32.371453+10:00",
+      "updated_at": "2026-04-14T13:46:32.371453+10:00",
+      "created_by": "security-agent"
+    },
+    {
+      "id": "FIND-010",
+      "title": "Cookies Set Without Secure Flag (BenchmarkTest00064, 00065, 00066)",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-614",
+      "location": {
+        "file": "testcode/BenchmarkTest00064.py",
+        "line_start": 62,
+        "line_end": 65
+      },
+      "description": "Three test cases create cookies with the Secure flag explicitly set to False, allowing the\ncookie to be transmitted over unencrypted HTTP connections:\n\nBenchmarkTest00064 (line 62-65): secure=False, httponly=True - TRUE VULNERABILITY\n  SOURCE: Cookie value from request, HTML-escaped via escape_for_html()\n  SINK: response.set_cookie('SomeCookie', value, secure=False, httponly=True)\n\nBenchmarkTest00065 (line 63-66): secure=False, httponly=True - TRUE VULNERABILITY\n  SOURCE: Cookie value from request, HTML-escaped via html.escape()\n  SINK: response.set_cookie('SomeCookie', value, secure=False, httponly=True)\n\nBenchmarkTest00066 (line 63-66): secure=False, httponly=True - TRUE VULNERABILITY\n  SOURCE: Cookie value from request, passed through conditional assignment\n  SINK: response.set_cookie('SomeCookie', value, secure=False, httponly=True)\n\nNote: BenchmarkTest00337 and BenchmarkTest00415 correctly set secure=True, httponly=True\nas the safe pattern.\n\nSOURCE: User-controlled cookie values\nGUARD: HTML escaping applied but irrelevant to transport security\nSINK: response.set_cookie() with secure=False\n",
+      "impact": "Cookies without the Secure flag can be intercepted by network attackers performing\nman-in-the-middle attacks on HTTP connections. If the cookie contains session tokens,\nauthentication data, or other sensitive values, an attacker on the same network can\nsteal them by monitoring unencrypted traffic. This is especially dangerous on public\nWiFi networks.\n",
+      "remediation": "Always set secure=True on cookies containing sensitive data:\n- response.set_cookie(name, value, secure=True, httponly=True, samesite='Lax')\n- Deploy the application with HTTPS-only (HSTS) to prevent HTTP downgrade\n- Consider setting the SameSite attribute to prevent CSRF\n",
+      "tags": [
+        "security:session-management",
+        "security:cookies",
+        "security:transport-security"
+      ],
+      "created_at": "2026-04-14T13:46:31.397549+10:00",
+      "updated_at": "2026-04-14T13:46:31.397549+10:00",
+      "created_by": "security-agent"
+    },
+    {
+      "id": "FIND-006",
+      "title": "Hardcoded Database User Credentials in Plaintext",
+      "severity": "medium",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-798",
+      "location": {
+        "file": "helpers/db_sqlite.py",
+        "line_start": 20,
+        "line_end": 23
+      },
+      "description": "The SQLite database initialization contains hardcoded plaintext usernames and passwords inserted\ndirectly into the USERS table:\n\n- User01 / P455w0rd (line 20)\n- User02 / B3nchM3rk (line 21)\n- User03 / a$c11 (line 22)\n- foo / bar (line 23)\n\nThese passwords are stored as plaintext (not hashed) in both the source code and the SQLite database.\n\nSOURCE: Hardcoded string literals in SQL INSERT statements\nGUARD: None\nSINK: SQLite database at testfiles/benchmark-sqlite3.db\n\nThe database is initialized at module import time (lines 6-28) with autocommit=True,\nmeaning credentials are written to disk immediately.\n",
+      "impact": "Plaintext passwords in source code and the database are trivially extractable. The passwords\nfollow predictable patterns (P455w0rd = leet-speak for \"Password\") suggesting poor password\npolicies. If any of these credentials overlap with real accounts, credential stuffing attacks\nbecome possible.\n",
+      "remediation": "- Hash passwords using a strong adaptive algorithm (bcrypt, scrypt, or Argon2id)\n- Use a salt unique to each user\n- Store only the hash, never the plaintext\n- Generate test credentials dynamically using a test fixture system\n",
+      "tags": [
+        "security:secrets",
+        "security:credentials",
+        "security:cryptography"
+      ],
+      "created_at": "2026-04-14T13:46:28.53643+10:00",
+      "updated_at": "2026-04-14T13:46:28.53643+10:00",
+      "created_by": "security-agent"
+    },
+    {
+      "id": "FIND-041",
+      "title": "Function-Level Imports Anti-Pattern from Java Translation",
+      "severity": "low",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-1078",
+      "location": {
+        "file": "testcode/BenchmarkTest00001.py",
+        "line_start": 38,
+        "line_end": 44
+      },
+      "description": "All 70 test files perform imports inside function bodies rather than at module level,\nfollowing a pattern from Java translation. Some files even re-import Flask components\nalready imported at the top (e.g., BenchmarkTest00064 imports make_response at line 18\nAND again at line 44 inside the function body). This violates PEP 8 conventions.\n",
+      "impact": "Makes it harder to see module dependencies at a glance. Adds minor runtime overhead.\nIndicates mechanical Java-to-Python translation rather than idiomatic Python.\n",
+      "remediation": "Move all imports to module level following PEP 8 conventions.\n",
+      "tags": [
+        "quality:code-style",
+        "architecture:anti-pattern"
+      ],
+      "created_at": "2026-04-14T13:49:22.035826+10:00",
+      "updated_at": "2026-04-14T13:49:22.035826+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-039",
+      "title": "Spring Framework XML Configuration File is Dead Artifact",
+      "severity": "low",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-1164",
+      "location": {
+        "file": "helpers/resources/context.xml",
+        "line_start": 1,
+        "line_end": 23
+      },
+      "description": "helpers/resources/context.xml is a Spring Framework bean configuration file defining HSQLDB\ndatasource beans and JdbcTemplate. This is a Java/Spring artifact with no relevance to\na Python/Flask application. Never referenced by any Python code. Contains database connection\nstrings for non-existent HSQLDB instance.\n",
+      "impact": "Adds confusion about the technology stack. May mislead security reviewers. Could be flagged\nby secret scanning tools for the database connection strings.\n",
+      "remediation": "Remove helpers/resources/context.xml from the project.\n",
+      "tags": [
+        "architecture:dead-code",
+        "quality:dead-artifact"
+      ],
+      "created_at": "2026-04-14T13:49:21.027744+10:00",
+      "updated_at": "2026-04-14T13:49:21.027744+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-038",
+      "title": "Builtin Name Shadowing: filter, hash, input Used as Variable Names",
+      "severity": "low",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-1078",
+      "location": {
+        "file": "testcode/BenchmarkTest00427.py",
+        "line_start": 47,
+        "line_end": 47
+      },
+      "description": "Multiple test files shadow Python builtin names by using them as local variable names:\n'filter' in 5 LDAP test files, 'hash' in 5 hash test files, 'input' in 10 securecookie/hash\ntest files. app.py also uses 'str' as a lambda parameter name. This is a direct artifact\nof Java-to-Python translation where these names don't conflict with Java builtins.\n",
+      "impact": "Shadowed builtins cannot be used in the same scope. Static analysis tools flag these as\nissues, adding noise to SAST results.\n",
+      "remediation": "Rename: filter -\u003e ldap_filter, hash -\u003e hasher, input -\u003e input_data, str -\u003e filename.\n",
+      "tags": [
+        "quality:builtin-shadowing",
+        "architecture:naming"
+      ],
+      "created_at": "2026-04-14T13:49:20.117561+10:00",
+      "updated_at": "2026-04-14T13:49:20.117561+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-031",
+      "title": "Unused Flask Imports Across All 70 Test Files",
+      "severity": "low",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-1164",
+      "location": {
+        "file": "testcode/BenchmarkTest00001.py",
+        "line_start": 18,
+        "line_end": 18
+      },
+      "description": "Every test file (all 70) contains the identical boilerplate import:\n  from flask import redirect, url_for, request, make_response, render_template\n\nThe import `url_for` is NEVER used anywhere in the entire codebase (0 occurrences).\nThe import `redirect` is never used directly - redirect test files instead do a separate\n`import flask` inside the function body and call `flask.redirect()`.\n\nMany test files also don't use `make_response` or `render_template` (those that get input\nfrom form/header/getlist rather than cookies don't have GET handlers that render templates).\n\nSimilarly, `from helpers.utils import escape_for_html` is imported in all 70 files but many\nfiles (e.g., weakrand, trustbound, some redirect tests) never call escape_for_html.\n",
+      "impact": "Unused imports increase memory footprint, clutter the namespace, and create noise for\nlinters and SAST tools. The redundant `import flask` inside function bodies (when redirect\nis already imported at the top) shows inconsistent import patterns.\n",
+      "remediation": "Remove unused imports from each test file. Only import what each file actually uses.\nFor redirect test files, use the already-imported `redirect` function instead of doing\na separate `import flask` and calling `flask.redirect()`.\n",
+      "tags": [
+        "architecture:dead-code",
+        "quality:unused-import"
+      ],
+      "created_at": "2026-04-14T13:49:15.8627+10:00",
+      "updated_at": "2026-04-14T13:49:15.8627+10:00",
+      "created_by": "architecture-agent"
+    },
+    {
+      "id": "FIND-025",
+      "title": "get_parameter returns None without type safety for downstream consumers",
+      "severity": "low",
+      "confidence": "medium",
+      "status": "open",
+      "cwe": "CWE-754",
+      "location": {
+        "file": "helpers/utils.py",
+        "line_start": 77,
+        "line_end": 81
+      },
+      "description": "The get_parameter() function in helpers/utils.py can return None when neither\nrequest.args nor request.form contains the requested parameter (lines 77-81):\n\n  def get_parameter(request, param):\n      ret = request.args.get(param)\n      if not ret:\n          ret = request.form.get(param)\n      return ret\n\nIssues with this implementation:\n1. Returns None if the parameter is not found in either source, but callers in test\n   cases that use form-based input do `if not param: param = \"\"` as a separate guard,\n   while cookie-based inputs use a default value. However, there is no consistent\n   pattern - some callers may receive None unexpectedly.\n2. The `if not ret` check is falsy-based, meaning it treats empty strings (\"\") and\n   the string \"0\" as missing, falling through to check request.form even when args\n   had a valid but falsy value.\n3. The similarly named get_parameter_list() on line 83-84 concatenates both sources\n   unconditionally (no falsy check), creating an inconsistency between the two functions.\n",
+      "impact": "The falsy check means that a query parameter with value \"\" or \"0\" will be ignored in\nfavor of a form parameter with the same name, potentially causing unexpected behavior.\nNone return values passed to downstream operations (string concatenation, f-strings)\nwill cause TypeErrors in some contexts.\n",
+      "remediation": "Use `is None` checks instead of falsy checks to properly handle empty strings:\n  def get_parameter(request, param):\n      ret = request.args.get(param)\n      if ret is None:\n          ret = request.form.get(param)\n      return ret if ret is not None else \"\"\n",
+      "tags": [
+        "guards:weak",
+        "input-validation"
+      ],
+      "created_at": "2026-04-14T13:46:45.986643+10:00",
+      "updated_at": "2026-04-14T13:46:45.986643+10:00",
+      "created_by": "guards-agent"
+    },
+    {
+      "id": "FIND-023",
+      "title": "Injected class __init__ discards constructor arguments",
+      "severity": "low",
+      "confidence": "high",
+      "status": "open",
+      "cwe": "CWE-665",
+      "location": {
+        "file": "helpers/utils.py",
+        "line_start": 87,
+        "line_end": 95
+      },
+      "description": "The Injected class in helpers/utils.py has a constructor that accepts text and othertext\nparameters but discards them without assignment (line 88-89):\n\n  class Injected:\n      def __init__(self, text, othertext):\n          pass\n\n      def __getitem__(self, index):\n          if index == \"text\":\n              return self.othertext    # AttributeError: 'Injected' has no attribute 'othertext'\n          return None\n\nThe __init__ method receives text and othertext but never assigns them as instance\nattributes (missing self.text = text and self.othertext = othertext). The __getitem__\nmethod then attempts to access self.othertext, which will always raise an AttributeError.\n\nThis class is documented as being \"used in deserialization test cases as an exploit\npayload\" but is broken due to missing attribute assignment.\n",
+      "impact": "The Injected class will raise an AttributeError whenever __getitem__ is called with\n\"text\" as the index. If deserialization test cases depend on this class for exploit\nsimulation, they may not function as intended. The bare except clauses in those test\ncases will silently catch this error, masking the bug.\n",
+      "remediation": "Fix the constructor to properly assign instance attributes:\n  def __init__(self, text, othertext):\n      self.text = text\n      self.othertext = othertext\n",
+      "tags": [
+        "guards:missing",
+        "initialization"
+      ],
+      "created_at": "2026-04-14T13:46:44.381118+10:00",
+      "updated_at": "2026-04-14T13:46:44.381118+10:00",
+      "created_by": "guards-agent"
+    }
+  ]
 }

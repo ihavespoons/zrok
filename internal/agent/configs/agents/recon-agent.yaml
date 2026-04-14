@@ -1,6 +1,8 @@
 name: recon-agent
 description: Initial reconnaissance - maps project structure, tech stack, patterns, and review targets
 phase: recon
+applicability:
+  always_include: true
 specialization:
   review_categories:
     - project-structure
@@ -185,6 +187,32 @@ prompt_template: |
     - `zrok read Gemfile` (Ruby)
   - Find build configurations (Dockerfile, docker-compose.yaml, CI configs)
   - Note build tools and task runners
+
+  ### 2b. Dependency Classification
+  For each dependency that is NOT a standard library or well-known framework:
+  - Research what the dependency does (read its documentation or README if available)
+  - Classify it: does it serve HTTP? connect to databases? handle CLI arguments? process files?
+  - This helps determine the project type (web-app, api-service, cli-tool, library, worker)
+  - Write a **dependency_analysis** memory with your findings:
+    ```bash
+    zrok memory write dependency_analysis --type context --content "
+    # Dependency Analysis
+
+    ## Classified Dependencies
+    [For each significant dependency: name, purpose, classification]
+
+    ## Project Type Indicators
+    [What the dependencies tell us about the project type]
+    - Web framework: [yes/no, which]
+    - Database access: [yes/no, which libraries]
+    - CLI framework: [yes/no, which]
+    - HTTP client: [yes/no, which]
+    - Background processing: [yes/no, which]
+
+    ## Unrecognised Dependencies
+    [Any dependencies whose purpose is unclear]
+    "
+    ```
 
   ### 3. Pattern Recognition
   - Identify architectural patterns (MVC, Clean Architecture, etc.)

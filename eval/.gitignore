@@ -1,0 +1,12 @@
+results/
+eval-scorer
+# OWASP subset is generated, not committed
+fixtures/owasp-subset/testcode/
+fixtures/owasp-subset/helpers/
+fixtures/owasp-subset/testfiles/
+fixtures/owasp-subset/templates/
+fixtures/owasp-subset/app.py
+fixtures/owasp-subset/requirements.txt
+fixtures/owasp-subset/expected-results-subset.csv
+# Ground truth for OWASP is generated
+ground-truth-owasp.yaml

@@ -18,14 +18,21 @@ zrok/
 │   ├── dashboard.go       # dashboard server
 │   ├── index.go           # index enable/build/update/status/watch/clear
 │   └── semantic.go        # semantic search commands
+├── eval/                   # Evaluation framework
+│   ├── cmd/               # Scorer CLI (score, baseline, compare)
+│   ├── scorer/            # Scoring package (matching, metrics, baseline)
+│   ├── fixtures/          # Test fixtures (OWASP subset, vulnerable-app)
+│   └── results/           # Run output with manifests
 ├── internal/
-│   ├── project/           # Project config, tech detection, onboarding
+│   ├── project/           # Project config, tech detection, classification, onboarding
+│   │   └── configs/       # Embedded classification rules YAML
 │   ├── memory/            # Memory store with bleve full-text search
 │   ├── finding/           # Finding store and exporters (md, sarif, html, csv, json)
-│   ├── agent/             # Agent registry, config, prompt generation
+│   ├── agent/             # Agent registry, config, prompt generation, agent suggestion
+│   │   └── configs/agents/ # Agent YAML configs with applicability rules
 │   ├── navigate/          # File operations, symbol extraction
 │   │   └── lsp/           # LSP client for language server symbol extraction
-│   ├── treesitter/        # Tree-sitter parser for symbol extraction
+│   ├── treesitter/        # Tree-sitter parser (gotreesitter v0.13.4, pooled parsing)
 │   ├── think/             # Thinking prompt templates
 │   ├── dashboard/         # Web dashboard server
 │   ├── skill/             # Embedded skill installer (go:embed)
@@ -50,9 +57,10 @@ go test ./...
 ## Key Components
 
 ### Agent System (`internal/agent/`)
-- `registry.go` - Built-in agent definitions (recon, security, guards, etc.)
-- `config.go` - Agent configuration types
+- `registry.go` - Built-in agent definitions, `SuggestAgents()` classification-based selection
+- `config.go` - Agent configuration types with `ApplicabilityRule` for project-type matching
 - `prompt.go` - Prompt generation with project context
+- `configs/agents/*.yaml` - Agent definitions with `applicability:` (always_include, project_types, project_traits)
 
 ### Memory Store (`internal/memory/`)
 - `store.go` - YAML-based memory persistence in `.zrok/memories/`
@@ -72,15 +80,17 @@ go test ./...
 - `lsp/` - LSP client for language server integration
 
 ### Semantic Search (`internal/semantic/`, `internal/chunk/`, `internal/embedding/`, `internal/vectordb/`)
-- `chunk/` - Tree-sitter code chunking with regex fallback
+- `chunk/` - Code chunking using tree-sitter (via gotreesitter pooled parsing) with LSP and regex fallback
 - `embedding/` - Embedding providers (Ollama, OpenAI, Hugging Face)
 - `vectordb/` - HNSW vector index with SQLite metadata
 - `semantic/` - Search coordinator with multi-hop exploration
 
 ### Project Config (`internal/project/`)
-- `config.go` - Project configuration in `.zrok/project.yaml`
-- `detector.go` - Tech stack auto-detection
-- `onboard.go` - Interactive and auto onboarding
+- `config.go` - Project configuration, `ProjectClassification`, `ApplicabilityRule` types
+- `detector.go` - Tech stack auto-detection (languages, frameworks, databases, auth, infrastructure)
+- `classifier.go` - Infers project types (web-app, api-service, cli-tool, library, worker) and traits (has-datastore, has-auth, etc.) from detected tech stack
+- `configs/classification_rules.yaml` - Data-driven rules mapping framework keywords to project types (extensible without code changes)
+- `onboard.go` - Interactive and auto onboarding, invokes classifier
 
 ## Adding New Features
 
@@ -109,6 +119,15 @@ go test ./internal/finding/...
 # With coverage
 go test -cover ./...
 ```
+
+## Evaluation
+
+```bash
+./eval/run.sh --fixture owasp --compare      # Single run vs baseline
+./eval/run.sh --fixture owasp -n 10 --baseline # Generate baseline from N runs
+```
+
+Run manifests (`run-NN-manifest.json`) capture agent usage and execution metadata.
 
 ## Semantic Search
 

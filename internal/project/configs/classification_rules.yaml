@@ -1,0 +1,147 @@
+# Classification rules: maps detected tech stack signals to project types and traits.
+# Adding a new framework = add a keyword here. No code changes needed.
+
+types:
+  web-app:
+    framework_keywords:
+      # Python
+      - django
+      - flask
+      - tornado
+      - pyramid
+      - bottle
+      - cherrypy
+      # JavaScript/TypeScript
+      - express
+      - nextjs
+      - nuxt
+      - react
+      - vue
+      - angular
+      - svelte
+      - gatsby
+      - remix
+      - astro
+      # Ruby
+      - rails
+      - sinatra
+      - hanami
+      # Java/Kotlin
+      - spring
+      - springboot
+      - thymeleaf
+      - jsf
+      - vaadin
+      # Go
+      - gin
+      - echo
+      - fiber
+      - chi
+      - gorilla
+      - buffalo
+      # Rust
+      - actix
+      - rocket
+      - axum
+      - warp
+      - yew
+      # PHP
+      - laravel
+      - symfony
+      - wordpress
+      # C#
+      - blazor
+      - razor
+
+  api-service:
+    framework_keywords:
+      # Multi-language
+      - grpc
+      - graphql
+      # Python
+      - fastapi
+      - flask
+      - django
+      - tornado
+      # JavaScript/TypeScript
+      - express
+      - fastify
+      - koa
+      - nestjs
+      - hono
+      # Go
+      - gin
+      - echo
+      - fiber
+      - chi
+      - gorilla
+      # Rust
+      - actix
+      - axum
+      - warp
+      # Java
+      - spring
+      - springboot
+      - micronaut
+      - quarkus
+      - jax-rs
+      # Ruby
+      - rails
+      - grape
+      - sinatra
+
+  cli-tool:
+    framework_keywords:
+      # Go
+      - cobra
+      - urfave/cli
+      - kingpin
+      # Python
+      - click
+      - argparse
+      - typer
+      - fire
+      # Rust
+      - clap
+      - structopt
+      # JavaScript/TypeScript
+      - commander
+      - yargs
+      - oclif
+      # Ruby
+      - thor
+      - optparse
+      # Java
+      - picocli
+      - jcommander
+
+  worker:
+    framework_keywords:
+      # Python
+      - celery
+      - rq
+      - dramatiq
+      - huey
+      # Ruby
+      - sidekiq
+      - resque
+      - delayed_job
+      # JavaScript
+      - bull
+      - bullmq
+      - agenda
+      # Java
+      - quartz
+      # Go
+      - asynq
+      - machinery
+
+traits:
+  has-datastore:
+    condition: databases_detected
+  has-auth:
+    condition: auth_detected
+  has-infrastructure:
+    condition: infrastructure_detected
+  has-sensitive-data:
+    condition: sensitive_areas_detected

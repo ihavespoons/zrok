@@ -1,6 +1,9 @@
 name: logging-agent
 description: Reviews logging implementation, monitoring, audit trails, and detection & response capabilities
 phase: analysis
+applicability:
+  project_traits:
+    - has-infrastructure
 specialization:
   review_categories:
     - log-levels

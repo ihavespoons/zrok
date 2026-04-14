@@ -1,0 +1,183 @@
+# Ground truth for the vulnerable Flask application.
+# Each entry defines a known vulnerability that zrok should detect.
+# Used by the eval scorer to calculate detection rate and accuracy.
+
+vulnerabilities:
+  - id: "VULN-01"
+    title: "Hardcoded secret key"
+    severity: high
+    cwe: "CWE-798"
+    file: "app.py"
+    line_start: 12
+    tags: ["secrets", "hardcoded-credentials"]
+    description: "Flask secret_key is hardcoded in source code"
+
+  - id: "VULN-02"
+    title: "Hardcoded database credentials"
+    severity: high
+    cwe: "CWE-798"
+    file: "app.py"
+    line_start: 15
+    tags: ["secrets", "hardcoded-credentials"]
+    description: "Database credentials and API key hardcoded in source"
+
+  - id: "VULN-03"
+    title: "Weak password hashing (MD5, no salt)"
+    severity: high
+    cwe: "CWE-328"
+    file: "app.py"
+    line_start: 43
+    tags: ["crypto", "password"]
+    description: "MD5 used for password hashing without salt"
+
+  - id: "VULN-04"
+    title: "SQL injection in login"
+    severity: critical
+    cwe: "CWE-89"
+    file: "app.py"
+    line_start: 62
+    tags: ["injection", "sql"]
+    description: "String formatting used in SQL query with user input"
+
+  - id: "VULN-05"
+    title: "SQL injection in search"
+    severity: critical
+    cwe: "CWE-89"
+    file: "app.py"
+    line_start: 76
+    tags: ["injection", "sql"]
+    description: "String concatenation in SQL query with user input"
+
+  - id: "VULN-06"
+    title: "Stored XSS via posts"
+    severity: high
+    cwe: "CWE-79"
+    file: "app.py"
+    line_start: 83
+    tags: ["xss", "stored"]
+    description: "User content stored without sanitization"
+
+  - id: "VULN-07"
+    title: "Reflected XSS"
+    severity: high
+    cwe: "CWE-79"
+    file: "app.py"
+    line_start: 100
+    tags: ["xss", "reflected"]
+    description: "User input directly embedded in HTML response"
+
+  - id: "VULN-08"
+    title: "Path traversal in file download"
+    severity: critical
+    cwe: "CWE-22"
+    file: "app.py"
+    line_start: 107
+    tags: ["path-traversal"]
+    description: "No validation on filename parameter allows directory traversal"
+
+  - id: "VULN-09"
+    title: "Command injection"
+    severity: critical
+    cwe: "CWE-78"
+    file: "app.py"
+    line_start: 114
+    tags: ["injection", "command"]
+    description: "User input passed to shell command via shell=True"
+
+  - id: "VULN-10"
+    title: "Insecure deserialization"
+    severity: critical
+    cwe: "CWE-502"
+    file: "app.py"
+    line_start: 123
+    tags: ["deserialization"]
+    description: "pickle.loads on user-controlled base64 data"
+
+  - id: "VULN-11"
+    title: "IDOR - missing authorization check"
+    severity: medium
+    cwe: "CWE-639"
+    file: "app.py"
+    line_start: 133
+    tags: ["authorization", "idor"]
+    description: "Any authenticated user can access any user's data"
+
+  - id: "VULN-12"
+    title: "Mass assignment"
+    severity: high
+    cwe: "CWE-915"
+    file: "app.py"
+    line_start: 145
+    tags: ["authorization", "mass-assignment"]
+    description: "User can update any field including is_admin and role"
+
+  - id: "VULN-13"
+    title: "Open redirect"
+    severity: medium
+    cwe: "CWE-601"
+    file: "app.py"
+    line_start: 157
+    tags: ["redirect"]
+    description: "Unvalidated redirect URL from user input"
+
+  - id: "VULN-14"
+    title: "Sensitive data in error messages"
+    severity: medium
+    cwe: "CWE-209"
+    file: "app.py"
+    line_start: 163
+    tags: ["information-disclosure"]
+    description: "Database credentials exposed in error output"
+
+  - id: "VULN-15"
+    title: "Missing CSRF protection"
+    severity: medium
+    cwe: "CWE-352"
+    file: "app.py"
+    line_start: 172
+    tags: ["csrf"]
+    description: "State-changing POST endpoint without CSRF token"
+
+  - id: "VULN-16"
+    title: "Environment variable disclosure"
+    severity: high
+    cwe: "CWE-200"
+    file: "app.py"
+    line_start: 183
+    tags: ["information-disclosure", "debug"]
+    description: "Debug endpoint exposes all environment variables"
+
+  - id: "VULN-17"
+    title: "Weak session configuration"
+    severity: low
+    cwe: "CWE-614"
+    file: "app.py"
+    line_start: 189
+    tags: ["session", "configuration"]
+    description: "Session cookies missing Secure, HttpOnly, SameSite flags"
+
+  - id: "VULN-18"
+    title: "Debug mode enabled"
+    severity: medium
+    cwe: "CWE-489"
+    file: "app.py"
+    line_start: 196
+    tags: ["configuration", "debug"]
+    description: "Flask debug mode enabled, exposes debugger and reloader"
+
+# Scoring weights - critical findings matter more
+severity_weights:
+  critical: 5
+  high: 3
+  medium: 2
+  low: 1
+  info: 0
+
+# Matching configuration
+matching:
+  # How close a finding's line number must be to match ground truth
+  line_tolerance: 15
+  # CWE matching considers CWE hierarchy (e.g., CWE-89 matches CWE-89)
+  cwe_exact_match: true
+  # Minimum similarity for title matching (0.0 to 1.0)
+  title_similarity_threshold: 0.3

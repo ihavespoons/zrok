@@ -1,6 +1,12 @@
 name: references-agent
 description: Reviews external references, URLs, domains, and file paths in source code
 phase: analysis
+applicability:
+  project_types:
+    - web-app
+    - api-service
+  project_traits:
+    - has-infrastructure
 specialization:
   review_categories:
     - source-references
