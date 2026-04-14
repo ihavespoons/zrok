@@ -199,6 +199,80 @@ run_single_eval() {
         echo '{"metadata":{"tool":"zrok"},"summary":{"total":0},"findings":[]}' > "$result_file"
     fi
 
+    # Capture run manifest (agent activity, memories, reasoning)
+    local manifest_file="${OUTPUT_DIR}/run-$(printf '%02d' "$run_id")-manifest.json"
+    echo "  Capturing run manifest..."
+    {
+        echo '{'
+
+        # Which agents created findings
+        echo '  "agents_used": ['
+        if [[ -f "$result_file" ]]; then
+            python3 -c "
+import json, sys
+with open('$result_file') as f:
+    data = json.load(f)
+agents = {}
+for finding in data.get('findings', []):
+    agent = finding.get('created_by', 'unknown')
+    agents[agent] = agents.get(agent, 0) + 1
+entries = [f'    {{\"name\": \"{a}\", \"findings\": {c}}}' for a, c in sorted(agents.items())]
+print(',\n'.join(entries))
+" 2>/dev/null || true
+        fi
+        echo '  ],'
+
+        # Memories created during the run (captures agent reasoning and discovered patterns)
+        echo '  "memories": ['
+        if [[ -d "$run_dir/.zrok/memories" ]]; then
+            local first_mem=true
+            for mem_file in "$run_dir"/.zrok/memories/*.yaml; do
+                [[ -f "$mem_file" ]] || continue
+                if $first_mem; then first_mem=false; else echo ','; fi
+                python3 -c "
+import yaml, json, sys
+with open('$mem_file') as f:
+    mem = yaml.safe_load(f)
+print(f'    {json.dumps({\"name\": mem.get(\"name\",\"\"), \"type\": mem.get(\"type\",\"\"), \"content\": mem.get(\"content\",\"\")[:500]})}', end='')
+" 2>/dev/null || true
+            done
+            echo ''
+        fi
+        echo '  ],'
+
+        # Claude's approach and reasoning (truncated to key parts)
+        echo '  "claude_output_summary": '
+        if [[ -f "$run_dir/claude-output.json" ]]; then
+            python3 -c "
+import json
+with open('$run_dir/claude-output.json') as f:
+    data = json.load(f) if f.read(1) == '{' or True else {}
+# Extract the result text, truncated
+f.seek(0)
+try:
+    data = json.load(f)
+    text = ''
+    if isinstance(data, dict):
+        text = data.get('result', data.get('content', str(data)))[:2000]
+    elif isinstance(data, str):
+        text = data[:2000]
+    print(json.dumps(text))
+except:
+    print('null')
+" 2>/dev/null || echo 'null'
+        else
+            echo 'null'
+        fi
+        echo ','
+
+        # Run metadata
+        echo "  \"duration_seconds\": $duration,"
+        echo "  \"claude_success\": $claude_success,"
+        echo "  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+        echo '}'
+    } > "$manifest_file" 2>/dev/null
+    echo "  Manifest: $manifest_file"
+
     # Score this run
     echo "  Scoring..."
     "$EVAL_BIN" score --run "$result_file" --ground-truth "$GROUND_TRUTH" || true
