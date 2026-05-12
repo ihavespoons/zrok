@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ihavespoons/zrok/internal/agent"
 	"github.com/ihavespoons/zrok/internal/finding"
 	"github.com/ihavespoons/zrok/internal/finding/export"
 	"github.com/ihavespoons/zrok/internal/project"
@@ -137,6 +138,14 @@ Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
 			}
 		}
 
+		// Validate ownership: if --created-by names a known agent with a
+		// non-empty owns_cwes list, warn (or reject under --strict) when the
+		// finding's CWE is outside that agent's scope.
+		strict, _ := cmd.Flags().GetBool("strict")
+		if err := validateOwnsCWEs(p, &f, strict); err != nil {
+			exitError("%v", err)
+		}
+
 		store := finding.NewStore(p)
 		if err := store.Create(&f); err != nil {
 			exitError("%v", err)
@@ -156,6 +165,44 @@ Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
 			fmt.Printf("Severity: %s\n", f.Severity)
 		}
 	},
+}
+
+// validateOwnsCWEs checks that f.CWE is within the owning agent's owns_cwes list.
+// Returns nil for the warn case (writes to stderr) and a non-nil error in --strict
+// mode for out-of-scope findings. Returns nil (no validation) when:
+//   - f.CreatedBy is empty
+//   - the named agent is not found in the registry/config
+//   - the agent has no owns_cwes declared
+//   - f.CWE is empty
+func validateOwnsCWEs(p *project.Project, f *finding.Finding, strict bool) error {
+	if f.CreatedBy == "" || f.CWE == "" {
+		return nil
+	}
+
+	mgr := agent.NewConfigManager(p, "")
+	cfg, err := mgr.Get(f.CreatedBy)
+	if err != nil || cfg == nil {
+		return nil // agent not found, skip validation
+	}
+	if len(cfg.Specialization.OwnsCWEs) == 0 {
+		return nil
+	}
+
+	want := strings.ToUpper(strings.TrimSpace(f.CWE))
+	for _, c := range cfg.Specialization.OwnsCWEs {
+		if strings.ToUpper(strings.TrimSpace(c)) == want {
+			return nil
+		}
+	}
+
+	if strict {
+		return fmt.Errorf("%s is not in %s's owns_cwes %v; finding rejected (--strict)",
+			f.CWE, f.CreatedBy, cfg.Specialization.OwnsCWEs)
+	}
+	fmt.Fprintf(os.Stderr,
+		"warning: %s is not in %s's owns_cwes %v; finding created anyway. Pass --strict to reject out-of-scope findings.\n",
+		f.CWE, f.CreatedBy, cfg.Specialization.OwnsCWEs)
+	return nil
 }
 
 // buildFindingFromFlags constructs a Finding from CLI flags.
@@ -231,6 +278,17 @@ to record the canonical finding ID.`,
 		}
 		if dupOf, _ := cmd.Flags().GetString("duplicate-of"); dupOf != "" {
 			f.DuplicateOf = dupOf
+		}
+		if note, _ := cmd.Flags().GetString("note"); note != "" {
+			author, _ := cmd.Flags().GetString("note-author")
+			if author == "" {
+				author = "user"
+			}
+			f.Notes = append(f.Notes, finding.FindingNote{
+				Timestamp: time.Now(),
+				Author:    author,
+				Text:      note,
+			})
 		}
 
 		if err := store.Update(f); err != nil {
@@ -385,6 +443,21 @@ var findingShowCmd = &cobra.Command{
 			}
 			if len(f.Tags) > 0 {
 				fmt.Printf("Tags: %s\n", strings.Join(f.Tags, ", "))
+			}
+			if f.DuplicateOf != "" {
+				fmt.Printf("Duplicate of: %s\n", f.DuplicateOf)
+			}
+			if len(f.Notes) > 0 {
+				fmt.Println()
+				fmt.Println("Notes:")
+				for _, n := range f.Notes {
+					author := n.Author
+					if author == "" {
+						author = "user"
+					}
+					fmt.Printf("  Note [%s] (%s): %s\n",
+						n.Timestamp.Format(time.RFC3339), author, n.Text)
+				}
 			}
 			fmt.Printf("\nCreated: %s\n", f.CreatedAt.Format(time.RFC3339))
 			if f.CreatedBy != "" {
@@ -679,6 +752,7 @@ func init() {
 	findingCreateCmd.Flags().String("confidence", "", "Confidence: high, medium, low (default: medium)")
 	findingCreateCmd.Flags().StringSlice("tag", []string{}, "Tags (repeatable)")
 	findingCreateCmd.Flags().String("created-by", "", "Identifier of agent/user creating the finding")
+	findingCreateCmd.Flags().Bool("strict", false, "Reject findings whose CWE is outside the --created-by agent's owns_cwes")
 
 	findingUpdateCmd.Flags().String("status", "", "Update status (open, confirmed, false_positive, fixed, duplicate)")
 	findingUpdateCmd.Flags().String("severity", "", "Update severity")
@@ -686,6 +760,8 @@ func init() {
 	findingUpdateCmd.Flags().String("exploitability", "", "Update exploitability (proven, likely, possible, unlikely, unknown)")
 	findingUpdateCmd.Flags().String("fix-priority", "", "Update fix priority (immediate, high, medium, low, defer)")
 	findingUpdateCmd.Flags().String("duplicate-of", "", "Canonical finding ID this is a duplicate of (e.g. FIND-001); typically paired with --status duplicate")
+	findingUpdateCmd.Flags().String("note", "", "Append a timestamped note to the finding (repeatable across updates)")
+	findingUpdateCmd.Flags().String("note-author", "", "Author for --note (default: \"user\")")
 
 	findingListCmd.Flags().String("severity", "", "Filter by severity")
 	findingListCmd.Flags().String("status", "", "Filter by status")

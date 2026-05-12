@@ -3,6 +3,8 @@ package agent
 import (
 	"bytes"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -301,13 +303,83 @@ func (g *PromptGenerator) buildToolDescriptions(tools []string) string {
 	return b.String()
 }
 
-// buildCWEChecklist renders the CWE checklist for an agent config
+// sortCWEsAscending returns a copy of cweIDs sorted by numeric suffix.
+// Inputs like "CWE-20", "cwe-100", "CWE-89" sort as 20, 89, 100.
+// Non-numeric or malformed IDs are placed after numeric ones, sorted lexically.
+func sortCWEsAscending(cweIDs []string) []string {
+	out := make([]string, len(cweIDs))
+	copy(out, cweIDs)
+	sort.SliceStable(out, func(i, j int) bool {
+		ni, oki := cweNumeric(out[i])
+		nj, okj := cweNumeric(out[j])
+		switch {
+		case oki && okj:
+			return ni < nj
+		case oki && !okj:
+			return true
+		case !oki && okj:
+			return false
+		default:
+			return out[i] < out[j]
+		}
+	})
+	return out
+}
+
+// cweNumeric extracts the numeric suffix of a CWE id (e.g. "CWE-89" -> 89).
+func cweNumeric(id string) (int, bool) {
+	// Find the last '-' and parse the suffix.
+	idx := strings.LastIndex(id, "-")
+	if idx < 0 || idx == len(id)-1 {
+		return 0, false
+	}
+	n, err := strconv.Atoi(id[idx+1:])
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// buildAuthoritativeCWEBlock renders the authoritative ownership block.
+// This is the SOURCE OF TRUTH for which CWEs this agent may file findings for.
+// The downstream CWE Checklist is informational only and may include adjacent
+// CWEs for context, but only CWEs in owns_cwes are in-scope for findings.
+func buildAuthoritativeCWEBlock(config *AgentConfig) string {
+	var b strings.Builder
+	b.WriteString("## Your Authoritative CWEs\n\n")
+	b.WriteString("You are the OWNING agent for these CWEs in this review. Only create findings\n")
+	b.WriteString("for CWEs in this list. If you discover a vuln outside this list, share it via\n")
+	b.WriteString("a memory referral (not a finding) for the appropriate agent.\n\n")
+
+	if len(config.Specialization.OwnsCWEs) == 0 {
+		b.WriteString("  Your CWE scope is defined by the checklist below.\n")
+		return b.String()
+	}
+
+	sorted := sortCWEsAscending(config.Specialization.OwnsCWEs)
+	fmt.Fprintf(&b, "  %s\n", strings.Join(sorted, ", "))
+	return b.String()
+}
+
+// buildCWEChecklist renders the CWE checklist for an agent config.
+// Note: the authoritative ownership list is rendered separately via
+// buildAuthoritativeCWEBlock and is the source of truth for in-scope findings;
+// the checklist below is supplementary detection guidance.
 func buildCWEChecklist(config *AgentConfig) string {
+	auth := buildAuthoritativeCWEBlock(config)
+
 	if len(config.CWEChecklist) == 0 {
+		// Still emit the authoritative block when owns_cwes is set even if
+		// no checklist exists.
+		if len(config.Specialization.OwnsCWEs) > 0 {
+			return auth
+		}
 		return ""
 	}
 
 	var b strings.Builder
+	b.WriteString(auth)
+	b.WriteString("\n")
 	b.WriteString("## CWE Checklist\n\n")
 	b.WriteString("Check for the following vulnerability classes during analysis:\n\n")
 

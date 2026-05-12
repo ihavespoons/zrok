@@ -141,6 +141,13 @@ type FlowTrace struct {
 	Unguarded bool     `yaml:"unguarded" json:"unguarded"`
 }
 
+// FindingNote represents a timestamped note appended to a finding.
+type FindingNote struct {
+	Timestamp time.Time `yaml:"timestamp" json:"timestamp"`
+	Author    string    `yaml:"author,omitempty" json:"author,omitempty"`
+	Text      string    `yaml:"text" json:"text"`
+}
+
 // Finding represents a security vulnerability finding
 type Finding struct {
 	ID             string         `yaml:"id" json:"id"`
@@ -161,6 +168,7 @@ type Finding struct {
 	References     []string       `yaml:"references,omitempty" json:"references,omitempty"`
 	Tags           []string       `yaml:"tags,omitempty" json:"tags,omitempty"`
 	ReviewedBy     []string       `yaml:"reviewed_by,omitempty" json:"reviewed_by,omitempty"`
+	Notes          []FindingNote  `yaml:"notes,omitempty" json:"notes,omitempty"`
 	CreatedAt      time.Time      `yaml:"created_at" json:"created_at"`
 	UpdatedAt      time.Time      `yaml:"updated_at" json:"updated_at"`
 	CreatedBy      string         `yaml:"created_by,omitempty" json:"created_by,omitempty"`

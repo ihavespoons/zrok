@@ -493,7 +493,93 @@ func TestBuildCWEChecklistEmpty(t *testing.T) {
 
 	result := buildCWEChecklist(config)
 	if result != "" {
-		t.Error("expected empty result for no CWE checklist")
+		t.Error("expected empty result for no CWE checklist and no owns_cwes")
+	}
+}
+
+func TestBuildCWEChecklistAuthoritativeBlock(t *testing.T) {
+	config := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseAnalysis,
+		Specialization: Specialization{
+			// Intentionally unsorted, and numerically non-lexical.
+			OwnsCWEs: []string{"CWE-89", "CWE-20", "CWE-100"},
+		},
+		CWEChecklist: []CWEChecklistItem{
+			{ID: "CWE-89", Name: "SQL Injection"},
+		},
+	}
+
+	result := buildCWEChecklist(config)
+	if !strings.Contains(result, "## Your Authoritative CWEs") {
+		t.Error("expected authoritative CWE header in output")
+	}
+	// Sorted ascending by numeric suffix: 20, 89, 100.
+	if !strings.Contains(result, "CWE-20, CWE-89, CWE-100") {
+		t.Errorf("expected sorted owns_cwes line; got:\n%s", result)
+	}
+	// Authoritative block should come BEFORE the checklist section.
+	authIdx := strings.Index(result, "## Your Authoritative CWEs")
+	listIdx := strings.Index(result, "## CWE Checklist")
+	if authIdx < 0 || listIdx < 0 || authIdx >= listIdx {
+		t.Errorf("authoritative block should appear before checklist: authIdx=%d listIdx=%d", authIdx, listIdx)
+	}
+}
+
+func TestBuildCWEChecklistOwnsCWEsOnly(t *testing.T) {
+	// owns_cwes set but no cwe_checklist — should still render auth block.
+	config := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseAnalysis,
+		Specialization: Specialization{
+			OwnsCWEs: []string{"CWE-89"},
+		},
+	}
+
+	result := buildCWEChecklist(config)
+	if !strings.Contains(result, "## Your Authoritative CWEs") {
+		t.Error("expected authoritative block even without cwe_checklist")
+	}
+	if !strings.Contains(result, "CWE-89") {
+		t.Error("expected CWE-89 in output")
+	}
+}
+
+func TestBuildCWEChecklistFallback(t *testing.T) {
+	// cwe_checklist set, owns_cwes empty — should render fallback line.
+	config := &AgentConfig{
+		Name:  "test-agent",
+		Phase: PhaseAnalysis,
+		CWEChecklist: []CWEChecklistItem{
+			{ID: "CWE-89", Name: "SQL Injection"},
+		},
+	}
+
+	result := buildCWEChecklist(config)
+	if !strings.Contains(result, "Your CWE scope is defined by the checklist below") {
+		t.Errorf("expected fallback line when owns_cwes empty; got:\n%s", result)
+	}
+}
+
+func TestAgentConfigOwnsCWEsYAMLRoundTrip(t *testing.T) {
+	// Verify that a real built-in agent (injection-agent) has owns_cwes populated.
+	agent := GetBuiltinAgent("injection-agent")
+	if agent == nil {
+		t.Fatal("injection-agent not found")
+	}
+	if len(agent.Specialization.OwnsCWEs) == 0 {
+		t.Fatal("injection-agent has no owns_cwes — YAML field not wired up correctly")
+	}
+	// Spot-check one known CWE from the YAML.
+	found := false
+	for _, c := range agent.Specialization.OwnsCWEs {
+		if c == "CWE-89" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected CWE-89 in injection-agent owns_cwes; got %v", agent.Specialization.OwnsCWEs)
 	}
 }
 

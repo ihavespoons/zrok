@@ -26,6 +26,10 @@ type Specialization struct {
 	VulnerabilityClasses []string `yaml:"vulnerability_classes,omitempty" json:"vulnerability_classes,omitempty"`
 	OWASPCategories      []string `yaml:"owasp_categories,omitempty" json:"owasp_categories,omitempty"`
 	TechStack            []string `yaml:"tech_stack,omitempty" json:"tech_stack,omitempty"`
+	// OwnsCWEs is the authoritative list of CWEs this agent owns. Findings outside
+	// this list should be referred to other agents via memory rather than filed
+	// directly. This is the source of truth for finding-ownership validation.
+	OwnsCWEs []string `yaml:"owns_cwes,omitempty" json:"owns_cwes,omitempty"`
 }
 
 // CWEChecklistItem represents a CWE entry with detection guidance
