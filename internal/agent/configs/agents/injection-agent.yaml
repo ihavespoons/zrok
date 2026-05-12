@@ -20,50 +20,99 @@ specialization:
   # If you discover a vuln outside this list, write a memory for the right agent
   # rather than filing a finding (avoids duplicate findings across agents).
   owns_cwes:
-    - CWE-89
     - CWE-78
-    - CWE-94
-    - CWE-643
+    - CWE-89
     - CWE-90
+    - CWE-94
     - CWE-611
+    - CWE-643
+    - CWE-917
 cwe_checklist:
-  - id: CWE-89
-    name: SQL Injection
-    detection_hints:
-      - "String concatenation or formatting used to build SQL queries"
-      - "Dynamic table or column names from user input"
-    flow_patterns:
-      - "SOURCE: HTTP param/body -> SINK: db.Query/db.Exec with string concat"
   - id: CWE-78
     name: OS Command Injection
     detection_hints:
-      - "User input passed to exec.Command with shell=true or via sh -c"
-      - "String concatenation in system call arguments"
+      - "BAD: user input passed to subprocess.run/Popen/call with shell=True"
+      - "BAD: os.system(user_input), os.popen(user_input), commands.getoutput()"
+      - "BAD: string concatenation or f-strings in shell command arguments"
+      - "GOOD: subprocess.run([cmd, arg1, arg2], shell=False) with list args and shell=False"
     flow_patterns:
-      - "SOURCE: user input -> SINK: exec.Command/os.system/child_process.exec"
+      - "SOURCE: user input -> SINK: subprocess.* with shell=True / os.system / os.popen"
+    negative_pattern: |
+      import subprocess
+      subprocess.run(["grep", pattern, file_path], shell=False, check=True)
+  - id: CWE-89
+    name: SQL Injection
+    detection_hints:
+      - "BAD: string concatenation or f-strings to build SQL (`f\"SELECT * FROM u WHERE id={uid}\"`)"
+      - "BAD: cursor.execute(query % user_input) / cursor.execute(query.format(...))"
+      - "BAD: dynamic table or column names from user input"
+      - "GOOD: cursor.execute('SELECT * FROM u WHERE id=%s', (uid,)) — parameterised query"
+      - "GOOD: SQLAlchemy `text(\"... :id\")` with bound params, or ORM filter() with kwargs"
+    flow_patterns:
+      - "SOURCE: HTTP param/body -> SINK: cursor.execute / db.Query with string concat"
+    negative_pattern: |
+      cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+  - id: CWE-90
+    name: LDAP Injection
+    detection_hints:
+      - "BAD: f-strings or concatenation building LDAP filters (`f\"(uid={username})\"`)"
+      - "BAD: ldap3.Connection.search(search_filter=f\"...{user_input}...\")"
+      - "BAD: ldap.search_s / ldap.search_ext_s with unescaped user input in filter"
+      - "GOOD: ldap.filter.escape_filter_chars(user_input) before interpolation, or python-ldap's escape helpers"
+      - "GOOD: ldap3.utils.conv.escape_filter_chars(user_input) prior to filter assembly"
+    flow_patterns:
+      - "SOURCE: request param/form -> SINK: ldap3.Connection.search(search_filter=f-string)"
+      - "SOURCE: user input -> SINK: ldap.search_s(base, scope, filter_with_concat)"
+    negative_pattern: |
+      from ldap3.utils.conv import escape_filter_chars
+      safe = escape_filter_chars(username)
+      conn.search("ou=users,dc=x,dc=y", f"(uid={safe})")
   - id: CWE-94
     name: Code Injection
     detection_hints:
-      - "User input passed to eval(), Function(), or similar code execution"
-      - "Dynamic code generation from untrusted data"
+      - "BAD: eval(user_input), exec(user_input), compile(user_input, ...)"
+      - "BAD: pickle.loads on untrusted data is code execution via __reduce__"
+      - "BAD: dynamic import of user-controlled module names (importlib.import_module(user_input))"
+      - "GOOD: ast.literal_eval for whitelisted literal structures only; explicit dispatch tables for behaviour selection"
     flow_patterns:
-      - "SOURCE: user input -> SINK: eval/exec/Function constructor"
+      - "SOURCE: user input -> SINK: eval/exec/compile/Function constructor"
+    negative_pattern: |
+      import ast
+      value = ast.literal_eval(user_input)  # raises on anything non-literal
+  - id: CWE-611
+    name: Improper Restriction of XML External Entity Reference (XXE)
+    detection_hints:
+      - "BAD: lxml.etree.fromstring(xml) / lxml.etree.parse() without `resolve_entities=False` parser"
+      - "BAD: xml.sax.make_parser() without `feature_external_ges=False` / `feature_external_pes=False`"
+      - "BAD: xml.dom.minidom.parseString / xml.etree.ElementTree on untrusted XML (older Python may resolve entities)"
+      - "GOOD: defusedxml.ElementTree.fromstring, defusedxml.lxml, defusedxml.sax as drop-in replacements"
+      - "GOOD: lxml.etree.XMLParser(resolve_entities=False, no_network=True, dtd_validation=False)"
+    flow_patterns:
+      - "SOURCE: user-supplied XML body/file -> GUARD: hardened parser config (no entity resolution) -> SINK: XML parse call"
+    negative_pattern: |
+      import defusedxml.ElementTree as ET
+      root = ET.fromstring(request.data)
   - id: CWE-643
     name: XPath Injection
     detection_hints:
-      - "User input interpolated into XPath query strings via f-strings or concatenation"
-      - "Use of lxml.etree.XPath() or elementpath.select() with dynamic queries"
-      - "Cookie, form, or request parameter values used in XML/XPath lookups"
+      - "BAD: user input interpolated into XPath strings via f-strings, concatenation, or .format()"
+      - "BAD: lxml.etree.XPath(), lxml.etree.ETXPath(), etree.parse().xpath() with dynamic queries"
+      - "BAD: elementpath.select() with user-controlled query strings"
+      - "GOOD: lxml's parameterised XPath via `XPath(\"//u[@id=$uid]\").evaluate(tree, uid=user_id)` style bound variables"
     flow_patterns:
       - "SOURCE: request param/cookie/form -> SINK: lxml.etree.XPath(f-string)"
       - "SOURCE: user input -> dict/variable intermediary -> SINK: elementpath.select()"
   - id: CWE-917
     name: Expression Language Injection
     detection_hints:
-      - "User input embedded in template expressions or query languages"
-      - "Dynamic ORM query construction from user data"
+      - "BAD: user input embedded in template expressions evaluated server-side (Jinja2 `Template(user_input).render()`)"
+      - "BAD: dynamic ORM query construction from user data passed to `eval()`-style expression evaluators"
+      - "BAD: Flask `render_template_string(user_input)` — full Jinja2 eval on user data"
+      - "GOOD: render fixed templates with user data as context vars, not template source: `render_template('page.html', name=user_name)`"
     flow_patterns:
-      - "SOURCE: user input -> SINK: template engine/expression evaluator"
+      - "SOURCE: user input -> SINK: template engine / expression evaluator (Jinja2 Environment, MakoTemplate)"
+    negative_pattern: |
+      return render_template("hello.html", name=user_name)  # template fixed, name escaped
 tools_allowed:
   - read
   - search
@@ -126,17 +175,20 @@ prompt_template: |
   ## Tech Stack
   {{.TechStack}}
 
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `<your-agent>_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
-
-  ## Finding Ownership (avoid duplicate findings)
-  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
-  If you discover a vulnerability outside your scope, mention it in a memory aimed
-  at the right agent rather than filing a finding directly.
 
   {{if .FlowGuidance}}
   {{.FlowGuidance}}

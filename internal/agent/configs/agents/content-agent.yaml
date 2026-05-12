@@ -16,39 +16,61 @@ specialization:
   # If you discover a vuln outside this list, write a memory for the right agent
   # rather than filing a finding (avoids duplicate findings across agents).
   owns_cwes:
+    - CWE-22
     - CWE-79
     - CWE-116
     - CWE-502
-    - CWE-22
 cwe_checklist:
+  - id: CWE-22
+    name: Improper Limitation of a Pathname to a Restricted Directory (Path Traversal)
+    detection_hints:
+      - "BAD: open(os.path.join(BASE, user_input)) without normalising and re-checking containment"
+      - "BAD: send_file(user_path), flask.send_from_directory(dir, user_path) where user_path contains `../`"
+      - "BAD: substring guards like `if '..' not in path` — bypassable via %2e%2e, unicode, encoded slashes"
+      - "GOOD: realpath the candidate AND base, then verify `os.path.commonpath([base, candidate]) == base`"
+      - "GOOD: werkzeug.utils.secure_filename(user_input) for upload names; allowlist of permitted filenames"
+    flow_patterns:
+      - "SOURCE: filename param / upload name -> GUARD: realpath + commonpath containment -> SINK: open() / send_file()"
+    negative_pattern: |
+      import os
+      base = os.path.realpath("/var/app/uploads")
+      candidate = os.path.realpath(os.path.join(base, user_name))
+      if os.path.commonpath([base, candidate]) != base:
+          abort(400)
+      return send_file(candidate)
   - id: CWE-79
     name: Cross-site Scripting (XSS)
     detection_hints:
-      - "User input rendered in HTML without encoding"
-      - "Dynamic content inserted into DOM without sanitization"
+      - "BAD: Flask `Markup(user_input)`, Jinja2 `{{ user_input | safe }}` on untrusted data"
+      - "BAD: Django `mark_safe(user_input)`, `{% autoescape off %}` blocks rendering user data"
+      - "BAD: building HTML via string concatenation/f-strings then returning as text/html"
+      - "GOOD: rely on Jinja2/Django default auto-escaping; never call `| safe` / `mark_safe` on user data"
+      - "GOOD: bleach.clean(user_html, tags=[...], attributes={...}) before insertion when raw HTML is required"
     flow_patterns:
-      - "SOURCE: user input -> GUARD: output encoding -> SINK: HTML response/DOM insertion"
+      - "SOURCE: user input -> GUARD: output encoding / auto-escape -> SINK: HTML response / DOM insertion"
+    negative_pattern: |
+      return render_template("comment.html", body=user_body)  # Jinja2 auto-escapes by default
   - id: CWE-116
     name: Improper Encoding or Escaping of Output
     detection_hints:
-      - "Output written to different context without appropriate encoding"
-      - "Mixed encoding schemes across output boundaries"
+      - "BAD: data encoded for one context (HTML) emitted in another (JS string, URL attr) without re-encoding"
+      - "BAD: mixing `json.dumps` output directly into HTML without `|tojson` filter (Jinja2) or html.escape"
+      - "BAD: building JSON via string concatenation rather than json.dumps"
+      - "GOOD: use context-aware encoders — `urllib.parse.quote` for URLs, `html.escape` for HTML, `json.dumps` for JSON"
     flow_patterns:
       - "SOURCE: internal data -> GUARD: context-appropriate encoding -> SINK: output channel"
-  - id: CWE-434
-    name: Unrestricted Upload of File with Dangerous Type
+  - id: CWE-502
+    name: Deserialization of Untrusted Data
     detection_hints:
-      - "File upload without content-type validation"
-      - "Relying only on file extension for type checking"
+      - "BAD: pickle.loads(request_body), pickle.load(open(user_file)) — pickle is code execution"
+      - "BAD: yaml.load(data) without `Loader=SafeLoader` (PyYAML default is unsafe)"
+      - "BAD: jsonpickle.decode(data) on untrusted input; marshal.loads on untrusted input"
+      - "GOOD: json.loads for untrusted data; yaml.safe_load(data); explicit pydantic.BaseModel.model_validate_json"
     flow_patterns:
-      - "SOURCE: file upload -> GUARD: type/content validation -> SINK: file storage/execution"
-  - id: CWE-611
-    name: Improper Restriction of XML External Entity Reference
-    detection_hints:
-      - "XML parsing with external entity resolution enabled"
-      - "User-controlled XML input parsed without disabling DTDs"
-    flow_patterns:
-      - "SOURCE: user-supplied XML -> GUARD: parser config (disable DTD) -> SINK: XML parser"
+      - "SOURCE: HTTP body / queue payload / cookie -> GUARD: schema validation / safe loader -> SINK: deserialiser call"
+    negative_pattern: |
+      import yaml
+      config = yaml.safe_load(user_yaml)  # only constructs basic types
 tools_allowed:
   - read
   - search
@@ -108,17 +130,20 @@ prompt_template: |
   ## Tech Stack
   {{.TechStack}}
 
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `<your-agent>_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
-
-  ## Finding Ownership (avoid duplicate findings)
-  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
-  If you discover a vulnerability outside your scope, mention it in a memory aimed
-  at the right agent rather than filing a finding directly.
 
   {{if .FlowGuidance}}
   {{.FlowGuidance}}

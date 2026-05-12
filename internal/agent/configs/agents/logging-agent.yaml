@@ -20,30 +20,29 @@ specialization:
   # related and remain in the checklist for context, but logging-agent's
   # primary ownership is CWE-778 (insufficient logging) and CWE-532.
   owns_cwes:
-    - CWE-778
     - CWE-532
+    - CWE-778
 cwe_checklist:
   - id: CWE-532
     name: Insertion of Sensitive Information into Log File
     detection_hints:
-      - "Passwords, tokens, or PII written to log output"
-      - "Full request/response bodies logged without redaction"
+      - "BAD: logger.info(f'login {username} {password}'), logger.debug(request.headers) (Authorization included)"
+      - "BAD: dumping full request/response bodies, JWTs, session cookies, API keys, PII into log records"
+      - "BAD: writing stack traces or `repr(user_obj)` that contain password hashes / tokens"
+      - "GOOD: structured logging with explicit allowlisted fields; redact secrets via a logging.Filter"
     flow_patterns:
       - "SOURCE: sensitive data (password, token, PII) -> GUARD: redaction filter -> SINK: log output"
+    negative_pattern: |
+      logger.info("login", extra={"user_id": user.id})  # never the password / token
   - id: CWE-778
     name: Insufficient Logging
     detection_hints:
-      - "Security-relevant events (auth failures, access denied) not logged"
-      - "Missing audit trail for administrative actions"
+      - "BAD: failed-auth / access-denied paths return 401/403 with NO log line — invisible to detection"
+      - "BAD: admin / privilege-change endpoints with no audit log entry"
+      - "BAD: silent `except Exception: pass` around security-relevant calls (also CWE-396)"
+      - "GOOD: explicit logger.warning on auth failure with user-id + correlation id; audit log table for admin actions"
     flow_patterns:
-      - "SOURCE: security event -> GUARD: logging check -> SINK: log store/SIEM"
-  - id: CWE-117
-    name: Improper Output Neutralization for Logs
-    detection_hints:
-      - "User-controlled input written to logs without sanitization"
-      - "Log injection via newline characters or log format strings"
-    flow_patterns:
-      - "SOURCE: user input -> GUARD: log sanitization -> SINK: log output"
+      - "SOURCE: security event (auth fail, authz deny, admin action) -> GUARD: logging emitted -> SINK: log store / SIEM"
 tools_allowed:
   - read
   - search
@@ -112,17 +111,20 @@ prompt_template: |
   ## Tech Stack
   {{.TechStack}}
 
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `<your-agent>_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
-
-  ## Finding Ownership (avoid duplicate findings)
-  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
-  If you discover a vulnerability outside your scope, mention it in a memory aimed
-  at the right agent rather than filing a finding directly.
 
   {{if .FlowGuidance}}
   {{.FlowGuidance}}

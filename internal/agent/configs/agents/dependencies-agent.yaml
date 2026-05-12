@@ -20,17 +20,13 @@ cwe_checklist:
   - id: CWE-1104
     name: Use of Unmaintained Third Party Components
     detection_hints:
-      - "Dependencies with no updates in 2+ years"
-      - "Dependencies with known unpatched vulnerabilities"
+      - "BAD: requirements.txt / Pipfile / pyproject pinning packages with no upstream release in 2+ years"
+      - "BAD: dependencies flagged by `pip-audit`, `safety check`, or GitHub Dependabot as having known CVEs"
+      - "BAD: unpinned versions (`requests`, `flask`) that float onto compromised releases"
+      - "BAD: forks / abandoned packages chosen over maintained equivalents (e.g. `python-jose` legacy vs `pyjwt`)"
+      - "GOOD: pinned versions with lockfile (Pipfile.lock / poetry.lock / uv.lock) + scheduled audit task"
     flow_patterns:
-      - "SOURCE: dependency manifest -> GUARD: version/maintenance check -> SINK: application runtime"
-  - id: CWE-829
-    name: Inclusion of Functionality from Untrusted Control Sphere
-    detection_hints:
-      - "Dependencies loaded from untrusted or unverified sources"
-      - "Missing integrity checks (checksums, signatures) on dependencies"
-    flow_patterns:
-      - "SOURCE: package registry -> GUARD: integrity verification -> SINK: build/runtime"
+      - "SOURCE: dependency manifest -> GUARD: version/maintenance/vuln check -> SINK: application runtime"
 tools_allowed:
   - read
   - search
@@ -91,17 +87,20 @@ prompt_template: |
   ## Tech Stack
   {{.TechStack}}
 
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `<your-agent>_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
-
-  ## Finding Ownership (avoid duplicate findings)
-  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
-  If you discover a vulnerability outside your scope, mention it in a memory aimed
-  at the right agent rather than filing a finding directly.
 
   {{if .FlowGuidance}}
   {{.FlowGuidance}}

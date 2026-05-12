@@ -52,34 +52,21 @@ cwe_checklist:
       - "GOOD: narrow exception types (`except ValueError`, `except sqlalchemy.exc.IntegrityError`) + logged + re-raised when not handled"
     flow_patterns:
       - "SOURCE: unexpected error -> GUARD: specific exception class -> SINK: caller / error response"
-  - id: CWE-252
-    name: Unchecked Return Value
-    detection_hints:
-      - "Ignored error returns from system calls or library functions"
-      - "Missing nil/null checks on function return values"
-    flow_patterns:
-      - "SOURCE: function call -> GUARD: return value check -> SINK: subsequent use"
   - id: CWE-754
     name: Improper Check for Exceptional Conditions
     detection_hints:
-      - "Missing checks for unusual or exceptional input conditions"
-      - "Incomplete error handling in critical code paths"
+      - "BAD: ignoring return values / unchecked exceptions from security-relevant calls (auth, payment, integrity check)"
+      - "BAD: assuming a parse / lookup / network call always succeeds — no error branch, no logging"
+      - "BAD: missing handling for boundary conditions (empty list, zero-length input, integer overflow on user-supplied size)"
+      - "GOOD: explicit error handling with narrow exception classes; log + return distinct error response on failure"
     flow_patterns:
-      - "SOURCE: external input -> GUARD: exceptional condition check -> SINK: error handler"
-  - id: CWE-476
-    name: NULL Pointer Dereference
-    detection_hints:
-      - "Pointer or reference used without nil/null check"
-      - "Dereference after conditional that may not guarantee non-null"
-    flow_patterns:
-      - "SOURCE: nullable value -> GUARD: nil check -> SINK: dereference/method call"
-  - id: CWE-1284
-    name: Improper Validation of Specified Quantity in Input
-    detection_hints:
-      - "Missing bounds checking on numeric input (array index, size, count)"
-      - "Integer overflow or underflow in calculations from user input"
-    flow_patterns:
-      - "SOURCE: numeric input -> GUARD: range/bounds check -> SINK: array access or allocation"
+      - "SOURCE: external input / external call -> GUARD: exceptional condition check -> SINK: error handler / fallback path"
+    negative_pattern: |
+      try:
+          payload = json.loads(body)
+      except json.JSONDecodeError as e:
+          logger.warning("bad payload", extra={"cid": cid})
+          abort(400)
 tools_allowed:
   - read
   - search
@@ -137,17 +124,20 @@ prompt_template: |
   ## Tech Stack
   {{.TechStack}}
 
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `<your-agent>_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
-
-  ## Finding Ownership (avoid duplicate findings)
-  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
-  If you discover a vulnerability outside your scope, mention it in a memory aimed
-  at the right agent rather than filing a finding directly.
 
   {{if .FlowGuidance}}
   {{.FlowGuidance}}

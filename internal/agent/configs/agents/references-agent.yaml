@@ -21,19 +21,22 @@ specialization:
     - CWE-601
 cwe_checklist:
   - id: CWE-601
-    name: URL Redirection to Untrusted Site
+    name: URL Redirection to Untrusted Site (Open Redirect)
     detection_hints:
-      - "Redirect URLs constructed from user input without validation"
-      - "Open redirect parameters in login/auth flows"
+      - "BAD: flask.redirect(request.args.get('next')) with no allowlist or origin check"
+      - "BAD: HttpResponseRedirect(request.GET['url']) in Django without `url_has_allowed_host_and_scheme`"
+      - "BAD: substring guards like `if 'example.com' in url` (bypassable by `evil.com?example.com`)"
+      - "GOOD: parse with urllib.parse.urlparse, compare netloc against an explicit allowlist"
+      - "GOOD: Django `django.utils.http.url_has_allowed_host_and_scheme(url, allowed_hosts)`"
     flow_patterns:
-      - "SOURCE: user-supplied URL -> GUARD: allowlist check -> SINK: HTTP redirect response"
-  - id: CWE-610
-    name: Externally Controlled Reference to a Resource
-    detection_hints:
-      - "Resource paths or identifiers derived from user input"
-      - "External references loaded without origin validation"
-    flow_patterns:
-      - "SOURCE: user-controlled reference -> GUARD: allowlist/origin check -> SINK: resource load"
+      - "SOURCE: user-supplied URL / `next` param -> GUARD: netloc allowlist -> SINK: redirect response"
+    negative_pattern: |
+      from urllib.parse import urlparse
+      ALLOWED = {"app.example.com"}
+      target = request.args.get("next", "/")
+      if urlparse(target).netloc and urlparse(target).netloc not in ALLOWED:
+          target = "/"
+      return redirect(target)
 tools_allowed:
   - read
   - search
@@ -93,17 +96,20 @@ prompt_template: |
   ## Tech Stack
   {{.TechStack}}
 
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `<your-agent>_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
-
-  ## Finding Ownership (avoid duplicate findings)
-  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
-  If you discover a vulnerability outside your scope, mention it in a memory aimed
-  at the right agent rather than filing a finding directly.
 
   {{if .FlowGuidance}}
   {{.FlowGuidance}}

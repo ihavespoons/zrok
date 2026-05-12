@@ -42,14 +42,14 @@ specialization:
   # configuration concern; security-agent owns the rest of A01/A02/A07.
   owns_cwes:
     - CWE-287
-    - CWE-862
     - CWE-327
     - CWE-328
-    - CWE-916
-    - CWE-798
-    - CWE-613
-    - CWE-338
     - CWE-330
+    - CWE-338
+    - CWE-613
+    - CWE-798
+    - CWE-862
+    - CWE-916
 cwe_checklist:
   - id: CWE-287
     name: Improper Authentication
@@ -218,17 +218,20 @@ prompt_template: |
   ## Tech Stack
   {{.TechStack}}
 
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `<your-agent>_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
-
-  ## Finding Ownership (avoid duplicate findings)
-  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
-  If you discover a vulnerability outside your scope, mention it in a memory aimed
-  at the right agent rather than filing a finding directly.
 
   {{if .FlowGuidance}}
   {{.FlowGuidance}}

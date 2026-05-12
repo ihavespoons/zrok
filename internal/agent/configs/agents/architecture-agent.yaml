@@ -17,8 +17,43 @@ specialization:
   # If you discover a vuln outside this list, write a memory for the right agent
   # rather than filing a finding (avoids duplicate findings across agents).
   owns_cwes:
+    - CWE-501
     - CWE-657
     - CWE-710
+cwe_checklist:
+  - id: CWE-501
+    name: Trust Boundary Violation
+    detection_hints:
+      - "BAD: data flowing from untrusted scope (HTTP request, queue, cookie) into trusted scope (session, cache, in-memory model) without re-validation"
+      - "BAD: `flask.session['profile'] = request.json` or `session.update(request.form)` — raw user dict stored as authoritative state"
+      - "BAD: deserialising user-controlled JSON straight into a domain object that other code trusts (no schema validation at the boundary)"
+      - "BAD: caching user-controlled values keyed by user-controlled keys, then reading them in privileged paths without re-checking provenance"
+      - "GOOD: explicit DTOs (pydantic models, dataclasses with __post_init__ checks) at the boundary; trusted scope only stores derived, validated values"
+    flow_patterns:
+      - "SOURCE: HTTP / queue / cookie payload -> GUARD: schema + provenance check -> SINK: session / cache / in-memory authoritative state"
+    negative_pattern: |
+      class ProfileIn(BaseModel):
+          display_name: constr(min_length=1, max_length=64)
+      data = ProfileIn(**request.json)
+      session["profile"] = {"display_name": data.display_name}  # only validated, derived values cross the boundary
+  - id: CWE-657
+    name: Violation of Secure Design Principles
+    detection_hints:
+      - "BAD: custom reimplementation of primitives the framework already provides (hand-rolled CSRF, hand-rolled password hashing wrappers)"
+      - "BAD: defence-in-depth absent — single layer (e.g. only client-side validation, only an `if admin` check with no audit log)"
+      - "BAD: secrets/keys baked into the same trust scope as user data; no separation of concerns between auth, business logic, persistence"
+      - "GOOD: rely on framework features (Django/Flask CSRF, FastAPI dependency-injected auth, library-provided crypto primitives)"
+    flow_patterns:
+      - "SOURCE: design choice -> GUARD: framework / library primitive -> SINK: runtime behaviour"
+  - id: CWE-710
+    name: Improper Adherence to Coding Standards
+    detection_hints:
+      - "BAD: suppressed linter warnings (`# noqa`, `# type: ignore`) clustered around security-sensitive paths (auth, crypto, deserialisation)"
+      - "BAD: inconsistent naming / structure obscures which functions are sinks vs sanitisers (review-time confusion = missed bugs)"
+      - "BAD: dead / stale code paths kept alongside live ones — auditors don't know which is reachable"
+      - "GOOD: enforced ruff / flake8 / mypy in CI, no blanket ignores in security-critical modules, dead code removed"
+    flow_patterns:
+      - "SOURCE: convention violation -> GUARD: linter / type-checker / review -> SINK: reviewable codebase"
 tools_allowed:
   - read
   - search
@@ -84,17 +119,20 @@ prompt_template: |
   ## Tech Stack
   {{.TechStack}}
 
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `<your-agent>_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
-
-  ## Finding Ownership (avoid duplicate findings)
-  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
-  If you discover a vulnerability outside your scope, mention it in a memory aimed
-  at the right agent rather than filing a finding directly.
 
   {{if .FlowGuidance}}
   {{.FlowGuidance}}
