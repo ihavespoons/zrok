@@ -337,6 +337,9 @@ var findingListCmd = &cobra.Command{
 		if cwe, _ := cmd.Flags().GetString("cwe"); cwe != "" {
 			opts.CWE = cwe
 		}
+		if file, _ := cmd.Flags().GetString("file"); file != "" {
+			opts.File = file
+		}
 
 		result, err := store.List(opts)
 		if err != nil {
@@ -768,6 +771,7 @@ func init() {
 	findingListCmd.Flags().String("exploitability", "", "Filter by exploitability")
 	findingListCmd.Flags().String("fix-priority", "", "Filter by fix priority")
 	findingListCmd.Flags().String("cwe", "", "Filter by CWE")
+	findingListCmd.Flags().String("file", "", "Filter by location file (exact match against finding's location.file)")
 	findingListCmd.Flags().String("diff", "", "Filter to findings in files changed since base ref (e.g., main)")
 
 	findingExportCmd.Flags().StringP("format", "f", "json", "Export format (sarif, json, md, html, csv)")

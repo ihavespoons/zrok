@@ -209,6 +209,7 @@ type FilterOptions struct {
 	FixPriority    FixPriority
 	CWE            string
 	Tag            string
+	File           string
 	Limit          int
 	Offset         int
 }

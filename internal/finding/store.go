@@ -155,6 +155,9 @@ func (s *Store) List(opts *FilterOptions) (*FindingList, error) {
 			if opts.CWE != "" && f.CWE != opts.CWE {
 				continue
 			}
+			if opts.File != "" && f.Location.File != opts.File {
+				continue
+			}
 			if opts.Tag != "" && !containsTag(f.Tags, opts.Tag) {
 				continue
 			}
