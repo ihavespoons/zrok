@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,9 +28,20 @@ to various formats including SARIF, JSON, Markdown, HTML, and CSV.`,
 
 // findingCreateCmd represents the finding create command
 var findingCreateCmd = &cobra.Command{
-	Use:   "create",
+	Use:   "create [-]",
 	Short: "Create a new finding",
-	Long: `Create a new security finding from a YAML file or interactively.
+	Long: `Create a new security finding from a YAML file, stdin, or flags.
+
+Three input modes are supported:
+
+  1. YAML file:    zrok finding create -f finding.yaml
+  2. Stdin:        zrok finding create -          (also: -f -)
+  3. Flags:        zrok finding create --title ... --severity high \
+                       --cwe CWE-89 --file app.py --line 42 \
+                       --description "..." [--remediation "..."]
+
+Flag mode is triggered when --title is provided. Stdin mode reads YAML from
+standard input. The three modes are mutually exclusive.
 
 Example YAML format:
   title: "SQL Injection in user search"
@@ -40,26 +52,89 @@ Example YAML format:
     file: "src/api/users.go"
     line_start: 45
   description: "User input is concatenated into SQL query"
-  remediation: "Use parameterized queries"`,
+  remediation: "Use parameterized queries"
+
+Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		p, err := project.EnsureActive()
 		if err != nil {
 			exitError("%v", err)
 		}
 
-		file, _ := cmd.Flags().GetString("file")
-		if file == "" {
-			exitError("provide finding via --file flag")
+		fileFlag, _ := cmd.Flags().GetString("file")
+		title, _ := cmd.Flags().GetString("title")
+
+		// Detect stdin mode: positional "-" or "-f -" / "--file -"
+		// (only counts as stdin when not in flag mode, since --file in flag
+		// mode means source file path)
+		stdin := false
+		if len(args) == 1 {
+			if args[0] != "-" {
+				exitError("unexpected positional argument %q (use '-' for stdin)", args[0])
+			}
+			stdin = true
+		}
+		if title == "" && fileFlag == "-" {
+			stdin = true
+			fileFlag = ""
 		}
 
-		data, err := os.ReadFile(file)
-		if err != nil {
-			exitError("failed to read file: %v", err)
+		// Reject obvious conflicts before counting modes.
+		// e.g. `finding create -f foo.yaml -` (positional stdin + non-dash -f)
+		if stdin && fileFlag != "" && title == "" {
+			exitError("cannot combine stdin '-' with -f <file>")
+		}
+
+		// In flag mode, --file is the source file path, not a YAML file.
+		// In file mode (no --title, no stdin), --file is the YAML path.
+		yamlFile := ""
+		if title == "" && !stdin {
+			yamlFile = fileFlag
+		}
+
+		modes := 0
+		if stdin {
+			modes++
+		}
+		if yamlFile != "" {
+			modes++
+		}
+		if title != "" {
+			modes++
+		}
+		if modes == 0 {
+			exitError("provide finding via -f <file>, '-' for stdin, or --title (with other flags)")
+		}
+		if modes > 1 {
+			exitError("conflicting input modes: pass exactly one of -f, '-' (stdin), or --title flag-mode")
 		}
 
 		var f finding.Finding
-		if err := yaml.Unmarshal(data, &f); err != nil {
-			exitError("failed to parse finding: %v", err)
+
+		switch {
+		case title != "":
+			// Flag mode
+			f, err = buildFindingFromFlags(cmd, title)
+			if err != nil {
+				exitError("%v", err)
+			}
+		case stdin:
+			data, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				exitError("failed to read stdin: %v", err)
+			}
+			if err := yaml.Unmarshal(data, &f); err != nil {
+				exitError("failed to parse finding: %v", err)
+			}
+		default:
+			data, err := os.ReadFile(yamlFile)
+			if err != nil {
+				exitError("failed to read file: %v", err)
+			}
+			if err := yaml.Unmarshal(data, &f); err != nil {
+				exitError("failed to parse finding: %v", err)
+			}
 		}
 
 		store := finding.NewStore(p)
@@ -83,13 +158,46 @@ Example YAML format:
 	},
 }
 
+// buildFindingFromFlags constructs a Finding from CLI flags.
+func buildFindingFromFlags(cmd *cobra.Command, title string) (finding.Finding, error) {
+	severity, _ := cmd.Flags().GetString("severity")
+	cwe, _ := cmd.Flags().GetString("cwe")
+	srcFile, _ := cmd.Flags().GetString("file")
+	line, _ := cmd.Flags().GetInt("line")
+	description, _ := cmd.Flags().GetString("description")
+	remediation, _ := cmd.Flags().GetString("remediation")
+	confidence, _ := cmd.Flags().GetString("confidence")
+	tags, _ := cmd.Flags().GetStringSlice("tag")
+	createdBy, _ := cmd.Flags().GetString("created-by")
+
+	f := finding.Finding{
+		Title:       title,
+		Severity:    finding.Severity(severity),
+		Confidence:  finding.Confidence(confidence),
+		CWE:         cwe,
+		Description: description,
+		Remediation: remediation,
+		Tags:        tags,
+		CreatedBy:   createdBy,
+		Location: finding.Location{
+			File:      srcFile,
+			LineStart: line,
+		},
+	}
+	return f, nil
+}
+
 // findingUpdateCmd represents the finding update command
 var findingUpdateCmd = &cobra.Command{
 	Use:   "update <id>",
 	Short: "Update a finding",
 	Long: `Update an existing finding by ID.
 
-You can update status, severity, or provide a new YAML file.`,
+You can update status, severity, or provide a new YAML file.
+
+Valid statuses: open, confirmed, false_positive, fixed, duplicate.
+When marking a finding as duplicate, optionally pass --duplicate-of FIND-XXX
+to record the canonical finding ID.`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		p, err := project.EnsureActive()
@@ -120,6 +228,9 @@ You can update status, severity, or provide a new YAML file.`,
 		}
 		if fixPriority, _ := cmd.Flags().GetString("fix-priority"); fixPriority != "" {
 			f.FixPriority = finding.FixPriority(fixPriority)
+		}
+		if dupOf, _ := cmd.Flags().GetString("duplicate-of"); dupOf != "" {
+			f.DuplicateOf = dupOf
 		}
 
 		if err := store.Update(f); err != nil {
@@ -558,13 +669,23 @@ func init() {
 	findingCmd.AddCommand(findingStatsCmd)
 	findingCmd.AddCommand(findingDeleteCmd)
 
-	findingCreateCmd.Flags().StringP("file", "f", "", "YAML file containing finding")
+	findingCreateCmd.Flags().StringP("file", "f", "", "YAML file path (file mode); in --title flag mode this is the source file the finding refers to. Use '-' to read YAML from stdin.")
+	findingCreateCmd.Flags().String("title", "", "Finding title (triggers flag mode)")
+	findingCreateCmd.Flags().String("severity", "", "Severity: critical, high, medium, low, info")
+	findingCreateCmd.Flags().String("cwe", "", "CWE identifier (e.g. CWE-89)")
+	findingCreateCmd.Flags().Int("line", 0, "Source file line number where the finding occurs (>=1 required)")
+	findingCreateCmd.Flags().String("description", "", "Description of the finding")
+	findingCreateCmd.Flags().String("remediation", "", "Suggested remediation")
+	findingCreateCmd.Flags().String("confidence", "", "Confidence: high, medium, low (default: medium)")
+	findingCreateCmd.Flags().StringSlice("tag", []string{}, "Tags (repeatable)")
+	findingCreateCmd.Flags().String("created-by", "", "Identifier of agent/user creating the finding")
 
-	findingUpdateCmd.Flags().String("status", "", "Update status (open, confirmed, false_positive, fixed)")
+	findingUpdateCmd.Flags().String("status", "", "Update status (open, confirmed, false_positive, fixed, duplicate)")
 	findingUpdateCmd.Flags().String("severity", "", "Update severity")
 	findingUpdateCmd.Flags().String("confidence", "", "Update confidence")
 	findingUpdateCmd.Flags().String("exploitability", "", "Update exploitability (proven, likely, possible, unlikely, unknown)")
 	findingUpdateCmd.Flags().String("fix-priority", "", "Update fix priority (immediate, high, medium, low, defer)")
+	findingUpdateCmd.Flags().String("duplicate-of", "", "Canonical finding ID this is a duplicate of (e.g. FIND-001); typically paired with --status duplicate")
 
 	findingListCmd.Flags().String("severity", "", "Filter by severity")
 	findingListCmd.Flags().String("status", "", "Filter by status")

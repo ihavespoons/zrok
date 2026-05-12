@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -71,7 +72,13 @@ var listCmd = &cobra.Command{
 	Short: "List directory contents",
 	Long: `List the contents of a directory.
 
-Use --recursive to list subdirectories, and --depth to limit depth.`,
+Use --recursive to list subdirectories, and --depth to limit depth.
+
+Paths in the output are always normalized: when the listed directory is
+inside the project root, paths are returned relative to the project root
+(regardless of whether the input was relative or absolute). When the
+listed directory is outside the project, paths are returned relative to
+the input directory.`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		p, err := project.EnsureActive()
@@ -109,6 +116,10 @@ Use --recursive to list subdirectories, and --depth to limit depth.`,
 			exitError("%v", err)
 		}
 
+		// Normalize paths: always project-root-relative when inside project,
+		// otherwise relative to the input dir.
+		normalizeListPaths(result, p.RootPath, dir)
+
 		if jsonOutput {
 			if err := outputJSON(result); err != nil {
 				exitError("failed to encode JSON: %v", err)
@@ -124,6 +135,82 @@ Use --recursive to list subdirectories, and --depth to limit depth.`,
 			fmt.Printf("\nTotal: %d entries\n", result.Total)
 		}
 	},
+}
+
+// normalizeListPaths rewrites entry paths in a ListResult so that paths are
+// project-root-relative when the listed dir is inside the project, or
+// relative to the input dir when outside the project.
+func normalizeListPaths(result *navigate.ListResult, projectRoot, inputDir string) {
+	if result == nil {
+		return
+	}
+
+	// Resolve the input dir to an absolute path.
+	absInput := inputDir
+	if !filepath.IsAbs(absInput) {
+		absInput = filepath.Join(projectRoot, inputDir)
+	}
+	absInput = filepath.Clean(absInput)
+
+	absRoot, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return
+	}
+
+	// Compute input's relation to the project root.
+	relToRoot, err := filepath.Rel(absRoot, absInput)
+	if err != nil {
+		return
+	}
+	insideProject := relToRoot != ".." && !strings.HasPrefix(relToRoot, ".."+string(filepath.Separator))
+
+	if !insideProject {
+		// Keep paths relative to the input dir. The lister already produced
+		// paths joined with the inputDir argument; rewrite them so they are
+		// relative to the input dir (strip the inputDir prefix if present).
+		for i, e := range result.Entries {
+			rel, err := filepath.Rel(inputDir, e.Path)
+			if err == nil && !strings.HasPrefix(rel, "..") {
+				result.Entries[i].Path = rel
+			}
+		}
+		result.Path = inputDir
+		return
+	}
+
+	// Inside project: project-root-relative paths.
+	// The lister constructs entry paths by joining its input path with the
+	// entry name. We rebuild each entry path as (relToRoot)/entry.Name or
+	// recursively reconstructed.
+	for i, e := range result.Entries {
+		// Try multiple resolution strategies. The lister output Path can be
+		// either relative to inputDir or absolute, depending on how it was
+		// invoked. Resolve to absolute, then make relative to root.
+		entryAbs := e.Path
+		if !filepath.IsAbs(entryAbs) {
+			// Lister joins inputDir + name, so if inputDir was relative,
+			// entry path is relative to project root via join; if inputDir
+			// was absolute, entry path is absolute.
+			if filepath.IsAbs(inputDir) {
+				entryAbs = e.Path
+			} else {
+				// inputDir was relative to project root, so e.Path is
+				// already relative to project root.
+				result.Entries[i].Path = filepath.Clean(e.Path)
+				continue
+			}
+		}
+		rel, err := filepath.Rel(absRoot, entryAbs)
+		if err != nil {
+			continue
+		}
+		result.Entries[i].Path = rel
+	}
+	if relToRoot == "." {
+		result.Path = "."
+	} else {
+		result.Path = relToRoot
+	}
 }
 
 // findCmd represents the find command

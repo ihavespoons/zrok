@@ -53,6 +53,23 @@ var ValidExploitabilities = []Exploitability{
 	ExploitabilityUnknown,
 }
 
+// ValidConfidences contains all valid confidence levels
+var ValidConfidences = []Confidence{
+	ConfidenceHigh,
+	ConfidenceMedium,
+	ConfidenceLow,
+}
+
+// IsValidConfidence checks if a confidence is valid
+func IsValidConfidence(c Confidence) bool {
+	for _, valid := range ValidConfidences {
+		if c == valid {
+			return true
+		}
+	}
+	return false
+}
+
 // FixPriority represents the recommended priority for fixing a vulnerability
 type FixPriority string
 
@@ -81,6 +98,7 @@ const (
 	StatusConfirmed     Status = "confirmed"
 	StatusFalsePositive Status = "false_positive"
 	StatusFixed         Status = "fixed"
+	StatusDuplicate     Status = "duplicate"
 )
 
 // ValidStatuses contains all valid statuses
@@ -89,6 +107,7 @@ var ValidStatuses = []Status{
 	StatusConfirmed,
 	StatusFalsePositive,
 	StatusFixed,
+	StatusDuplicate,
 }
 
 // Location represents where a vulnerability was found
@@ -145,6 +164,7 @@ type Finding struct {
 	CreatedAt      time.Time      `yaml:"created_at" json:"created_at"`
 	UpdatedAt      time.Time      `yaml:"updated_at" json:"updated_at"`
 	CreatedBy      string         `yaml:"created_by,omitempty" json:"created_by,omitempty"`
+	DuplicateOf    string         `yaml:"duplicate_of,omitempty" json:"duplicate_of,omitempty"`
 }
 
 // FindingList represents a list of findings with metadata

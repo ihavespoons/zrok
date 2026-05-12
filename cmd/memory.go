@@ -119,7 +119,11 @@ var memoryWriteCmd = &cobra.Command{
 	Short: "Create or update a memory",
 	Long: `Create or update a memory with content.
 
-Provide content via --content flag or --file flag.`,
+Provide content via --content flag or --file flag.
+
+By default, writing a memory with a name that already exists replaces it
+(upsert). Pass --no-overwrite to refuse replacement and error instead;
+useful for callers that want to avoid clobbering existing memories.`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		p, err := project.EnsureActive()
@@ -133,6 +137,7 @@ Provide content via --content flag or --file flag.`,
 		memTypeStr, _ := cmd.Flags().GetString("type")
 		description, _ := cmd.Flags().GetString("description")
 		tagsStr, _ := cmd.Flags().GetStringSlice("tags")
+		noOverwrite, _ := cmd.Flags().GetBool("no-overwrite")
 
 		// Get content from file if specified
 		if file != "" {
@@ -161,6 +166,9 @@ Provide content via --content flag or --file flag.`,
 
 		// Check if exists
 		existing, _ := store.ReadByName(name)
+		if existing != nil && noOverwrite {
+			exitError("memory %q already exists; remove --no-overwrite to replace", name)
+		}
 		mem := &memory.Memory{
 			Name:        name,
 			Type:        memType,
@@ -284,4 +292,5 @@ func init() {
 	memoryWriteCmd.Flags().StringP("type", "t", "context", "Memory type (context, pattern, stack)")
 	memoryWriteCmd.Flags().StringP("description", "d", "", "Memory description")
 	memoryWriteCmd.Flags().StringSlice("tags", []string{}, "Memory tags")
+	memoryWriteCmd.Flags().Bool("no-overwrite", false, "Refuse to replace an existing memory with the same name (default: replace)")
 }
