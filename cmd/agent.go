@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ihavespoons/zrok/internal/agent"
+	"github.com/ihavespoons/zrok/internal/finding"
 	"github.com/ihavespoons/zrok/internal/memory"
 	"github.com/ihavespoons/zrok/internal/project"
 	"github.com/spf13/cobra"
@@ -204,6 +205,28 @@ var agentPromptCmd = &cobra.Command{
 		generator := agent.NewPromptGenerator(p, memStore)
 
 		context, _ := cmd.Flags().GetString("context")
+		findingID, _ := cmd.Flags().GetString("finding")
+
+		// If --finding is supplied, load it and prepend its YAML to the context.
+		if findingID != "" {
+			findingStore := finding.NewStore(p)
+			f, err := findingStore.Read(findingID)
+			if err != nil {
+				exitError("failed to load finding %s: %v", findingID, err)
+			}
+			data, err := yaml.Marshal(f)
+			if err != nil {
+				exitError("failed to marshal finding: %v", err)
+			}
+			findingSection := fmt.Sprintf("## Finding to Investigate\n\nThe following finding (%s) requires deep review:\n\n```yaml\n%s```\n",
+				f.ID, string(data))
+			if context != "" {
+				context = findingSection + "\n" + context
+			} else {
+				context = findingSection
+			}
+		}
+
 		var prompt string
 		if context != "" {
 			prompt, err = generator.GenerateWithContext(config, context)
@@ -289,6 +312,166 @@ var agentGenerateCmd = &cobra.Command{
 	},
 }
 
+// agentVerifyMemoriesCmd checks that all memories referenced by an agent's
+// context_memories list are present in the project's memory store.
+var agentVerifyMemoriesCmd = &cobra.Command{
+	Use:   "verify-memories [agent-name]",
+	Short: "Verify that an agent's expected context memories exist",
+	Long: `Verify that all memories listed in an agent's context_memories field
+have been created in the project's .zrok/memories/ directory.
+
+Use --all to verify every analysis-phase agent at once.
+
+Exit code is 0 if all expected memories are present, 1 otherwise.`,
+	Args: cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		p, err := project.EnsureActive()
+		if err != nil {
+			exitError("%v", err)
+		}
+
+		all, _ := cmd.Flags().GetBool("all")
+		if !all && len(args) == 0 {
+			exitError("provide an agent name or use --all")
+		}
+		if all && len(args) > 0 {
+			exitError("--all cannot be combined with an agent name")
+		}
+
+		memStore := memory.NewStore(p)
+		manager := agent.NewConfigManager(p, "")
+
+		if all {
+			result, err := agent.VerifyAnalysisAgents(manager, memStore)
+			if err != nil {
+				exitError("%v", err)
+			}
+			if jsonOutput {
+				if err := outputJSON(result); err != nil {
+					exitError("failed to encode JSON: %v", err)
+				}
+			} else {
+				printAggregateVerification(result)
+			}
+			if !result.Pass {
+				os.Exit(1)
+			}
+			return
+		}
+
+		name := args[0]
+		cfg, err := manager.Get(name)
+		if err != nil {
+			exitError("%v", err)
+		}
+
+		rpt := agent.VerifyAgentMemories(cfg, memStore)
+		if jsonOutput {
+			if err := outputJSON(rpt); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
+		} else {
+			printAgentVerification(rpt)
+		}
+		if !rpt.Pass {
+			os.Exit(1)
+		}
+	},
+}
+
+// agentRecordTimingCmd is a lightweight hook the orchestrating skill can call
+// to record per-agent execution timings. The data is written to
+// .zrok/run-state.json and later merged into the eval run manifest.
+var agentRecordTimingCmd = &cobra.Command{
+	Use:   "record-timing <agent-name>",
+	Short: "Record start or end timing for an agent invocation",
+	Long: `Record per-agent execution timing into .zrok/run-state.json.
+
+Call with --start before spawning an agent, and --end after it completes.
+The eval scorer merges this data into the run manifest as best-effort timing.
+This command is intended to be invoked by an orchestrating skill or script.`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		p, err := project.EnsureActive()
+		if err != nil {
+			exitError("%v", err)
+		}
+
+		name := args[0]
+		phase, _ := cmd.Flags().GetString("phase")
+		start, _ := cmd.Flags().GetBool("start")
+		end, _ := cmd.Flags().GetBool("end")
+		findingsCreated, _ := cmd.Flags().GetInt("findings-created")
+		memoriesCreated, _ := cmd.Flags().GetInt("memories-created")
+
+		if start == end {
+			exitError("provide exactly one of --start or --end")
+		}
+
+		if start {
+			if err := agent.RecordStart(p, name, phase); err != nil {
+				exitError("%v", err)
+			}
+			if !jsonOutput {
+				fmt.Printf("Recorded start for %s\n", name)
+			}
+		} else {
+			if err := agent.RecordEnd(p, name, phase, findingsCreated, memoriesCreated); err != nil {
+				exitError("%v", err)
+			}
+			if !jsonOutput {
+				fmt.Printf("Recorded end for %s\n", name)
+			}
+		}
+
+		if jsonOutput {
+			_ = outputJSON(map[string]interface{}{"success": true, "name": name})
+		}
+	},
+}
+
+func printAgentVerification(rpt *agent.AgentVerification) {
+	fmt.Printf("%s expects %d memories:\n", rpt.Agent, rpt.Expected)
+	maxName := 0
+	for _, m := range rpt.Memories {
+		if len(m.Name) > maxName {
+			maxName = len(m.Name)
+		}
+	}
+	for _, m := range rpt.Memories {
+		mark := "✗" // ✗
+		if m.Present {
+			mark = "✓" // ✓
+		}
+		pad := strings.Repeat(" ", maxName-len(m.Name)+2)
+		if m.Present {
+			fmt.Printf("  %s %s%s(last updated %s)\n", mark, m.Name, pad, m.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"))
+		} else {
+			fmt.Printf("  %s %s%sMISSING\n", mark, m.Name, pad)
+		}
+	}
+	if rpt.Pass {
+		fmt.Printf("Result: PASS (%d/%d present)\n", rpt.Present, rpt.Expected)
+	} else {
+		fmt.Printf("Result: FAIL (%d missing)\n", rpt.Missing)
+	}
+}
+
+func printAggregateVerification(agg *agent.AggregateVerification) {
+	fmt.Printf("Verifying %d analysis-phase agents...\n\n", agg.TotalAgents)
+	for i := range agg.Agents {
+		printAgentVerification(&agg.Agents[i])
+		fmt.Println()
+	}
+	fmt.Printf("=== Summary ===\n")
+	fmt.Printf("Agents passing: %d/%d\n", agg.PassingCount, agg.TotalAgents)
+	if agg.Pass {
+		fmt.Println("Overall: PASS")
+	} else {
+		fmt.Printf("Overall: FAIL (%d agents missing memories)\n", agg.FailingCount)
+	}
+}
+
 func init() {
 	rootCmd.AddCommand(agentCmd)
 	agentCmd.AddCommand(agentListCmd)
@@ -296,8 +479,19 @@ func init() {
 	agentCmd.AddCommand(agentCreateCmd)
 	agentCmd.AddCommand(agentPromptCmd)
 	agentCmd.AddCommand(agentGenerateCmd)
+	agentCmd.AddCommand(agentVerifyMemoriesCmd)
+	agentCmd.AddCommand(agentRecordTimingCmd)
 
 	agentCreateCmd.Flags().StringP("file", "f", "", "YAML file containing agent configuration")
 
 	agentPromptCmd.Flags().StringP("context", "c", "", "Additional context to include in prompt")
+	agentPromptCmd.Flags().String("finding", "", "Inject a finding (by ID) into the prompt context (used by review-agent)")
+
+	agentVerifyMemoriesCmd.Flags().Bool("all", false, "Verify all analysis-phase agents")
+
+	agentRecordTimingCmd.Flags().String("phase", "", "Phase name (recon, analysis, validation, reporting)")
+	agentRecordTimingCmd.Flags().Bool("start", false, "Record the start time for this agent invocation")
+	agentRecordTimingCmd.Flags().Bool("end", false, "Record the end time for this agent invocation")
+	agentRecordTimingCmd.Flags().Int("findings-created", 0, "Number of findings created by this agent (optional)")
+	agentRecordTimingCmd.Flags().Int("memories-created", 0, "Number of memories created by this agent (optional)")
 }
