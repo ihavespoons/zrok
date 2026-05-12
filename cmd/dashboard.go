@@ -87,6 +87,6 @@ func init() {
 	dashboardCmd.Flags().Bool("no-browser", false, "Don't automatically open browser")
 	dashboardCmd.Flags().Duration("read-header-timeout", dashboard.DefaultReadHeaderTimeout, "HTTP read-header timeout (slowloris mitigation)")
 	dashboardCmd.Flags().Duration("read-timeout", dashboard.DefaultReadTimeout, "HTTP read timeout for full request body")
-	dashboardCmd.Flags().Duration("write-timeout", dashboard.DefaultWriteTimeout, "HTTP write timeout (raise for long SSE sessions)")
+	dashboardCmd.Flags().Duration("write-timeout", dashboard.DefaultWriteTimeout, "HTTP write timeout (0 = no limit, default; set >0 to bound slow-client-read attacks at cost of breaking long SSE sessions)")
 	dashboardCmd.Flags().Duration("idle-timeout", dashboard.DefaultIdleTimeout, "HTTP idle (keep-alive) timeout")
 }

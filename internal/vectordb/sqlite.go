@@ -85,6 +85,14 @@ func (s *SQLiteMetaStore) init() error {
 		CREATE INDEX IF NOT EXISTS idx_chunks_language ON chunks(language);
 		CREATE INDEX IF NOT EXISTS idx_chunks_name ON chunks(name);
 		CREATE INDEX IF NOT EXISTS idx_chunks_vector_idx ON chunks(vector_idx);
+
+		CREATE TABLE IF NOT EXISTS file_hashes (
+			path TEXT PRIMARY KEY,
+			mtime INTEGER NOT NULL,
+			size INTEGER NOT NULL,
+			sha256 TEXT NOT NULL,
+			indexed_at INTEGER NOT NULL
+		);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -366,7 +374,65 @@ func (s *SQLiteMetaStore) FilteredChunkIDs(filter *Filter) (map[int]bool, error)
 
 // Clear removes all data
 func (s *SQLiteMetaStore) Clear() error {
-	_, err := s.db.Exec("DELETE FROM chunks")
+	if _, err := s.db.Exec("DELETE FROM chunks"); err != nil {
+		return err
+	}
+	// Also wipe file-level hash cache so it doesn't survive a forced rebuild
+	// and incorrectly mark every file as "already indexed" on next Update.
+	_, err := s.db.Exec("DELETE FROM file_hashes")
+	return err
+}
+
+// FileHash records the on-disk fingerprint of a file at the time it was
+// indexed. Used by the indexer's fileNeedsUpdate fast-path to skip work for
+// files whose contents have not changed since the last successful index.
+type FileHash struct {
+	Path      string
+	Mtime     int64 // file modtime, Unix nanoseconds
+	Size      int64 // file size in bytes
+	SHA256    string
+	IndexedAt int64 // wall-clock time we indexed, Unix nanoseconds
+}
+
+// GetFileHash returns the stored fingerprint for path, or (nil, nil) if no
+// row exists. A missing row is NOT an error — it just means the file has
+// never been indexed.
+func (s *SQLiteMetaStore) GetFileHash(path string) (*FileHash, error) {
+	row := s.db.QueryRow(
+		"SELECT path, mtime, size, sha256, indexed_at FROM file_hashes WHERE path = ?",
+		path,
+	)
+	var fh FileHash
+	err := row.Scan(&fh.Path, &fh.Mtime, &fh.Size, &fh.SHA256, &fh.IndexedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &fh, nil
+}
+
+// SetFileHash inserts or replaces the fingerprint for fh.Path. Callers
+// invoke this after a successful index of a file so that subsequent Update
+// runs can fast-path-skip it when mtime+size are unchanged.
+func (s *SQLiteMetaStore) SetFileHash(fh *FileHash) error {
+	if fh == nil {
+		return fmt.Errorf("nil FileHash")
+	}
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO file_hashes (path, mtime, size, sha256, indexed_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		fh.Path, fh.Mtime, fh.Size, fh.SHA256, fh.IndexedAt,
+	)
+	return err
+}
+
+// DeleteFileHash removes the fingerprint for path. Called when a file is
+// removed from the index (deleted on disk or otherwise unindexed) so the
+// fast-path doesn't return stale data on re-creation.
+func (s *SQLiteMetaStore) DeleteFileHash(path string) error {
+	_, err := s.db.Exec("DELETE FROM file_hashes WHERE path = ?", path)
 	return err
 }
 

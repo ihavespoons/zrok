@@ -302,6 +302,22 @@ func (s *HNSWStore) Files() ([]string, error) {
 	return s.meta.Files()
 }
 
+// GetFileHash returns the stored file fingerprint or (nil, nil) when absent.
+func (s *HNSWStore) GetFileHash(path string) (*FileHash, error) {
+	return s.meta.GetFileHash(path)
+}
+
+// SetFileHash inserts/replaces a file fingerprint after a successful index.
+func (s *HNSWStore) SetFileHash(fh *FileHash) error {
+	return s.meta.SetFileHash(fh)
+}
+
+// DeleteFileHash removes a file fingerprint (called when a file is deleted
+// or otherwise unindexed).
+func (s *HNSWStore) DeleteFileHash(path string) error {
+	return s.meta.DeleteFileHash(path)
+}
+
 // GetStats returns statistics about the store
 func (s *HNSWStore) GetStats() (*StoreStats, error) {
 	return s.meta.GetStats()

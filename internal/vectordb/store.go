@@ -68,6 +68,16 @@ type Store interface {
 	// Files returns all indexed file paths
 	Files() ([]string, error)
 
+	// GetFileHash returns the stored fingerprint for a file path, or
+	// (nil, nil) when no row exists (file has never been indexed).
+	GetFileHash(path string) (*FileHash, error)
+
+	// SetFileHash inserts or replaces the fingerprint for fh.Path.
+	SetFileHash(fh *FileHash) error
+
+	// DeleteFileHash removes the fingerprint for a file path.
+	DeleteFileHash(path string) error
+
 	// Clear removes all data from the store
 	Clear() error
 

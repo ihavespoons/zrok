@@ -2,12 +2,13 @@ package semantic
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -210,12 +211,31 @@ func (idx *Indexer) Build(ctx context.Context, force bool, progress ProgressCall
 				} else if len(chunks) > 0 {
 					// Insert into store (protected by mutex)
 					storeMu.Lock()
+					insertOK := true
 					for _, ce := range chunks {
 						if err := idx.store.InsertBatch(ce.chunks, ce.embeddings); err != nil {
 							fmt.Printf("Warning: failed to store chunks for %s: %v\n", work.file, err)
+							insertOK = false
 						}
 					}
 					storeMu.Unlock()
+
+					// Record the file-level fingerprint so the next
+					// `zrok index update` can fast-path-skip this file
+					// without reading it. We compute the hash AFTER the
+					// store insert succeeds; if any batch failed we skip,
+					// because storing a fingerprint for a partially-indexed
+					// file would suppress future re-indexing of missing
+					// chunks.
+					if insertOK {
+						if fh, herr := idx.computeFileHash(work.file); herr == nil {
+							storeMu.Lock()
+							idx.recordFileHash(fh)
+							storeMu.Unlock()
+						} else if debugVerbose {
+							fmt.Printf("[DEBUG] failed to compute file hash for %s: %v\n", work.file, herr)
+						}
+					}
 				}
 
 				localFilesProcessed++
@@ -318,12 +338,16 @@ func (idx *Indexer) Update(ctx context.Context, progress ProgressCallback) (int,
 
 	var updated int
 
-	// Remove deleted files
+	// Remove deleted files (and their cached file-hash rows so the sidecar
+	// doesn't grow stale and a future re-add still looks "new").
 	for _, file := range indexedFiles {
 		if !currentSet[file] {
 			if err := idx.store.DeleteByFile(file); err != nil {
 				fmt.Printf("Warning: failed to remove %s: %v\n", file, err)
 			} else {
+				if err := idx.store.DeleteFileHash(file); err != nil {
+					fmt.Printf("Warning: failed to remove file hash for %s: %v\n", file, err)
+				}
 				updated++
 			}
 		}
@@ -337,41 +361,59 @@ func (idx *Indexer) Update(ctx context.Context, progress ProgressCallback) (int,
 		default:
 		}
 
-		needsUpdate := false
-
-		if !indexedSet[file] {
-			// New file
+		// fileNeedsUpdate consults the file-hash sidecar; it handles both
+		// the "never indexed" and "stale fingerprint" cases internally.
+		needsUpdate, fh, err := idx.fileNeedsUpdate(file)
+		if err != nil {
+			// Be conservative on errors: try to re-index, but don't trust
+			// any partially-computed fingerprint.
 			needsUpdate = true
-		} else {
-			// Check if modified
-			needsUpdate, err = idx.fileNeedsUpdate(file)
+			fh = nil
+		}
+
+		if !needsUpdate {
+			// Touch-only edit detected: the sidecar may need its mtime/size
+			// refreshed so we don't re-read on the next Update.
+			if fh != nil {
+				idx.recordFileHash(fh)
+			}
+			continue
+		}
+
+		if progress != nil {
+			progress(&IndexProgress{
+				Phase: "updating",
+				File:  file,
+			})
+		}
+
+		// Remove old chunks for this file (if any). DeleteByFile is a
+		// no-op when there are no rows, so it's safe regardless.
+		if indexedSet[file] {
+			if err := idx.store.DeleteByFile(file); err != nil {
+				fmt.Printf("Warning: failed to remove old chunks for %s: %v\n", file, err)
+			}
+		}
+
+		// Re-index file
+		if err := idx.indexFile(ctx, file); err != nil {
+			fmt.Printf("Warning: failed to index %s: %v\n", file, err)
+			continue
+		}
+		updated++
+
+		// Persist the fingerprint so the next Update fast-paths this file.
+		// Prefer the FileHash already computed by fileNeedsUpdate (avoids
+		// a redundant stat+read); fall back to recomputing if it's nil
+		// (first-time-index branch).
+		if fh == nil {
+			fh, err = idx.computeFileHash(file)
 			if err != nil {
-				needsUpdate = true // Re-index on error
+				fmt.Printf("Warning: failed to compute file hash for %s: %v\n", file, err)
+				continue
 			}
 		}
-
-		if needsUpdate {
-			if progress != nil {
-				progress(&IndexProgress{
-					Phase: "updating",
-					File:  file,
-				})
-			}
-
-			// Remove old chunks for this file
-			if indexedSet[file] {
-				if err := idx.store.DeleteByFile(file); err != nil {
-					fmt.Printf("Warning: failed to remove old chunks for %s: %v\n", file, err)
-				}
-			}
-
-			// Re-index file
-			if err := idx.indexFile(ctx, file); err != nil {
-				fmt.Printf("Warning: failed to index %s: %v\n", file, err)
-			} else {
-				updated++
-			}
-		}
+		idx.recordFileHash(fh)
 	}
 
 	return updated, nil
@@ -734,79 +776,117 @@ func (idx *Indexer) extractAndEmbed(ctx context.Context, file string, extractor 
 	return results, nil
 }
 
-// fileNeedsUpdate checks if a file needs to be re-indexed by comparing the
-// multiset of per-chunk content hashes between the current file and what's
-// stored in the index.
+// fileNeedsUpdate decides whether `file` needs re-indexing by consulting a
+// file-level hash sidecar in the metastore (see vectordb.FileHash). The hot
+// path — files whose (mtime, size) pair is unchanged since they were last
+// indexed — performs a single os.Stat and a single sidecar lookup; the file
+// itself is NEVER read in that case.
 //
-// Semantics:
-//   - stored metadata missing / no stored chunks → returns (true, nil): be
-//     conservative, force a re-index so the file becomes indexed
-//   - file unreadable → returns (true, err): force a re-index attempt
-//     (which will fail visibly downstream)
-//   - any difference in the sorted multiset of ContentHash → (true, nil):
-//     contents have changed (chunk added, removed, or body modified)
-//   - identical multisets → (false, nil): no re-index needed
+// Returned *vectordb.FileHash:
+//   - When needs=false: nil (caller has nothing to record).
+//   - When needs=true and we already computed the sha256 (steps 5/6): a
+//     fully-populated FileHash with the freshly-computed sha256 the caller
+//     can hand to SetFileHash after a successful re-index, avoiding a
+//     redundant stat+read.
+//   - When needs=true and no sha256 was computed (steps 1, 3): nil. The
+//     caller must compute and record it from scratch after re-indexing.
 //
-// Cost note: this re-extracts chunks via the indexer's extractor. For files
-// that DO need update, the downstream indexFile() will extract again — we
-// accept the duplicate work in exchange for a clean, schema-free fix. A
-// future optimization could store a file-level hash alongside chunks, but
-// the vector store schema is outside this stream's boundary.
-func (idx *Indexer) fileNeedsUpdate(file string) (bool, error) {
-	// Get existing chunks from the index
-	stored, err := idx.store.GetByFile(file)
-	if err != nil {
-		// Conservative: re-index on metadata error
-		return true, err
-	}
-	if len(stored) == 0 {
-		// No stored chunks → needs (re-)index
-		return true, nil
-	}
-
-	// Extract chunks from the current file content using the indexer's
-	// extractor (auto/treesitter/lsp/regex, per configuration).
+// Decision tree (matches the spec):
+//  1. os.Stat fails  → (true, nil, err)         // surface error to caller
+//  2. no stored row  → (true, nil, nil)         // first-time index
+//  3. mtime+size match stored → (false, nil, nil)  // fast path, no read
+//  4. mtime or size differs, but freshly-computed sha256 matches stored
+//     → (false, &FileHash{...with new mtime/size, same sha256}, nil)
+//     // touch-only edit; caller may update the sidecar to refresh
+//     // mtime/size and avoid re-reading next time
+//  5. sha256 differs → (true, &FileHash{...freshly computed}, nil)
+func (idx *Indexer) fileNeedsUpdate(file string) (bool, *vectordb.FileHash, error) {
 	fullPath := filepath.Join(idx.project.RootPath, file)
-	if _, err := os.Stat(fullPath); err != nil {
-		// File missing or unreadable → tell caller to re-index (which will
-		// surface the error and let Update() decide policy).
-		return true, err
-	}
-
-	current, err := idx.extractor.Extract(context.Background(), file)
+	fi, err := os.Stat(fullPath)
 	if err != nil {
-		// Couldn't re-extract → be conservative and re-index. The
-		// downstream indexFile() will surface any persistent error.
-		return true, err
-	}
-	if current == nil || len(current.Chunks) == 0 {
-		// Stored chunks exist but current extraction is empty (e.g. file
-		// became empty / unparseable) — that's a real change.
-		return true, nil
+		// Step 1: stat failure — caller decides policy.
+		return true, nil, err
 	}
 
-	// Compare sorted multisets of ContentHash values. Sorting handles
-	// chunk re-ordering across extractor versions and is O(n log n) which
-	// is negligible vs the extraction cost above.
-	storedHashes := make([]string, 0, len(stored))
-	for _, c := range stored {
-		storedHashes = append(storedHashes, c.ContentHash)
+	// Step 2: consult the file-hash sidecar.
+	stored, err := idx.store.GetFileHash(file)
+	if err != nil {
+		// Conservative on metadata error: re-index, but signal the error.
+		return true, nil, err
 	}
-	currentHashes := make([]string, 0, len(current.Chunks))
-	for _, c := range current.Chunks {
-		currentHashes = append(currentHashes, c.ContentHash)
+	if stored == nil {
+		// Never indexed → needs (initial) index.
+		return true, nil, nil
 	}
-	if len(storedHashes) != len(currentHashes) {
-		return true, nil
+
+	// Step 3: fast path — mtime+size match, no read needed.
+	if stored.Mtime == fi.ModTime().UnixNano() && stored.Size == fi.Size() {
+		return false, nil, nil
 	}
-	sort.Strings(storedHashes)
-	sort.Strings(currentHashes)
-	for i := range storedHashes {
-		if storedHashes[i] != currentHashes[i] {
-			return true, nil
-		}
+
+	// Steps 4/5: mtime or size changed; the contents MAY or MAY NOT have
+	// changed (could be a touch, a clobber-with-identical-content, or an
+	// actual edit). Read the file once and hash it to find out.
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		// Couldn't read → caller will surface the error via indexFile.
+		return true, nil, err
 	}
-	return false, nil
+	sum := sha256.Sum256(data)
+	hashHex := hex.EncodeToString(sum[:])
+
+	freshFH := &vectordb.FileHash{
+		Path:      file,
+		Mtime:     fi.ModTime().UnixNano(),
+		Size:      fi.Size(),
+		SHA256:    hashHex,
+		IndexedAt: time.Now().UnixNano(),
+	}
+
+	if hashHex == stored.SHA256 {
+		// Step 4: touch-only edit. Return the fresh FileHash so the caller
+		// can refresh mtime/size in the sidecar and avoid this read next
+		// time.
+		return false, freshFH, nil
+	}
+
+	// Step 5: content really changed.
+	return true, freshFH, nil
+}
+
+// computeFileHash returns a FileHash describing `file` right now. Used by
+// Build()/Watch()/Update() to record a fingerprint after a successful
+// (re-)index of a file when fileNeedsUpdate didn't already compute one
+// (i.e. the "first-time index" branch).
+func (idx *Indexer) computeFileHash(file string) (*vectordb.FileHash, error) {
+	fullPath := filepath.Join(idx.project.RootPath, file)
+	fi, err := os.Stat(fullPath)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256(data)
+	return &vectordb.FileHash{
+		Path:      file,
+		Mtime:     fi.ModTime().UnixNano(),
+		Size:      fi.Size(),
+		SHA256:    hex.EncodeToString(sum[:]),
+		IndexedAt: time.Now().UnixNano(),
+	}, nil
+}
+
+// recordFileHash persists a FileHash if non-nil. Centralized so callers
+// don't litter `if fh != nil { Set... }` blocks.
+func (idx *Indexer) recordFileHash(fh *vectordb.FileHash) {
+	if fh == nil {
+		return
+	}
+	if err := idx.store.SetFileHash(fh); err != nil {
+		fmt.Printf("Warning: failed to persist file hash for %s: %v\n", fh.Path, err)
+	}
 }
 
 // findFiles finds all files to index
@@ -1010,9 +1090,13 @@ func (idx *Indexer) Watch(ctx context.Context) error {
 				// Check if file still exists
 				fullPath := filepath.Join(idx.project.RootPath, f)
 				if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-					// File deleted
+					// File deleted: drop chunks AND the file-hash sidecar
+					// row so a future re-create looks "new" to Update().
 					if err := idx.store.DeleteByFile(f); err != nil {
 						fmt.Printf("Warning: failed to remove %s from index: %v\n", f, err)
+					}
+					if err := idx.store.DeleteFileHash(f); err != nil {
+						fmt.Printf("Warning: failed to remove file hash for %s: %v\n", f, err)
 					}
 				} else {
 					// File created or modified
@@ -1021,6 +1105,14 @@ func (idx *Indexer) Watch(ctx context.Context) error {
 					}
 					if err := idx.indexFile(ctx, f); err != nil {
 						fmt.Printf("Warning: failed to re-index %s: %v\n", f, err)
+						continue
+					}
+					// Refresh the fingerprint so a subsequent `zrok index
+					// update` can fast-path-skip this file.
+					if fh, herr := idx.computeFileHash(f); herr == nil {
+						idx.recordFileHash(fh)
+					} else {
+						fmt.Printf("Warning: failed to compute file hash for %s: %v\n", f, herr)
 					}
 				}
 			}

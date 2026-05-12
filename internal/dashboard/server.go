@@ -45,10 +45,17 @@ type Server struct {
 }
 
 // Default HTTP server timeouts (also referenced by cmd/dashboard.go flag defaults).
+//
+// WriteTimeout defaults to 0 (no limit) because SSE streams are a primary use
+// case for the dashboard, and a bounded WriteTimeout silently truncates them.
+// Slowloris and similar request-side DoS defenses live in ReadHeaderTimeout,
+// ReadTimeout, and IdleTimeout — none of which we relax. Users who want to
+// bound response-side slow-read attacks at the cost of breaking long SSE
+// sessions can set --write-timeout to a positive duration.
 const (
 	DefaultReadHeaderTimeout = 10 * time.Second
 	DefaultReadTimeout       = 30 * time.Second
-	DefaultWriteTimeout      = 60 * time.Second
+	DefaultWriteTimeout      = 0 // 0 = no limit; SSE-friendly. See note above.
 	DefaultIdleTimeout       = 120 * time.Second
 )
 
@@ -138,11 +145,12 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/", s.handleIndex)
 
 	// Use an explicit http.Server with timeouts to mitigate slowloris and
-	// connection-leak DoS vectors. NOTE: WriteTimeout interacts with SSE
-	// (long-lived streams); the keep-alive ticker + per-event write inside
-	// handleSSE prevents the connection from being idle long enough for
-	// IdleTimeout, and individual writes complete well within WriteTimeout.
-	// If users need very long SSE sessions, they can raise --write-timeout.
+	// connection-leak DoS vectors. WriteTimeout defaults to 0 (no limit)
+	// because SSE streams are a primary use case; slowloris defense lives
+	// in ReadHeaderTimeout (request-line + headers must arrive within
+	// that window), ReadTimeout, and IdleTimeout. WriteTimeout would only
+	// guard against response-side slow-read attacks, which are rarer and
+	// fundamentally incompatible with long-lived SSE sessions.
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", s.port),
 		Handler:           mux,
