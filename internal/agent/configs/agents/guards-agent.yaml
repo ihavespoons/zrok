@@ -31,6 +31,7 @@ cwe_checklist:
       - "NOT-A-FINDING: bar = conf.get('section', 'keyA-XXX') when only the value at 'keyB-XXX' was tainted — these are DIFFERENT KEYS. Confirm key identity exactly."
       - "NOT-A-FINDING: bar = map[key] when `key` is a hardcoded literal and the map's hardcoded slot holds a safe constant (e.g. 'a_Value'). configparser/dict lookups by hardcoded key return non-tainted values."
       - "NOT-A-FINDING: `eval('abc')` returns the string 'abc' — a guard requiring single-quoted plain literal is functionally preventing RCE, not cosmetic."
+      - "NOT-A-FINDING: file already has a CWE-89/643/611 finding at the same source-to-sink path; the CWE-20 view duplicates the injection-class root cause."
     flow_patterns:
       - "SOURCE: user input -> GUARD: validation check -> SINK: business logic"
       - "REQUIRED TRACE: SOURCE line (exact) -> every reassignment of the tainted var -> SINK line (exact). If you cannot enumerate this chain end-to-end with line numbers, the finding is unsupported."
@@ -137,7 +138,26 @@ prompt_template: |
   the file:line and CWE for that agent to pick up — do NOT file the finding
   yourself.
 
-  Before filing, check `zrok finding list --file <your-target-file> --json` — if another agent already filed at the same line, prefer adding to that finding's notes (`zrok finding update <ID> --note "<your perspective>"`) over creating a new finding for a different CWE on the same line.
+  ## Cross-agent Coordination
+
+  Before filing ANY finding, run:
+    zrok finding list --file <target-file>
+
+  If a critical-or-high finding from another agent already exists on the same
+  file, your default action is to ADD A NOTE to that finding, not file a new
+  one. Use:
+    zrok finding update <FIND-XXX> --note "Your perspective..."
+
+  File a separate new finding only when:
+    - The existing finding's CWE family is genuinely orthogonal to yours
+      (e.g. CWE-614 cookie misconfig is orthogonal to CWE-798 hardcoded secret
+      even at the same file), AND
+    - Your finding cites a distinct line number (not the same source-to-sink
+      chain), AND
+    - Removing your finding would lose actionable information for remediation.
+
+  When in doubt, add a note. The validation-agent will dedupe later if needed,
+  but every duplicate filed costs reviewer attention.
 
   ## Available Tools
   {{.ToolDescriptions}}
@@ -159,6 +179,27 @@ prompt_template: |
     3. Confirm at the sink the variable carrying taint is the SAME variable used in the dangerous call
     4. Cite the EXACT line numbers of source, each intermediate assignment, AND sink in your description
   If any of those steps fails (taint diverted into a different variable, constant-folded branch makes assignment dead code, key/index lookup goes to a hardcoded slot), DO NOT file. Write a memory note for review.
+
+  ### CWE-20 hard suppression rule
+  BEFORE filing a CWE-20 "missing validation" finding, run:
+    zrok finding list --file <target-file>
+
+  If ANY finding for that file already exists with severity `critical` or `high`
+  and a CWE in the injection family (CWE-78/89/90/94/611/643/917), DO NOT FILE
+  a separate CWE-20 finding for the same file. The CWE-20 view is subsumed by
+  the injection-class root cause.
+
+  Instead, add a perspective note to the existing finding:
+    zrok finding update <FIND-XXX> --note "Defense-in-depth angle (CWE-20):
+      no input validation between SOURCE line N and the injection sink at line M.
+      Adding a validator at line K would block the exploit before reaching the
+      SQL/cmd/XPath construction."
+
+  ONLY file a standalone CWE-20 finding when:
+    - The same file has NO injection-class finding from another agent, AND
+    - You have evidence of missing validation that is NOT subsumed by an
+      injection sink (e.g. a business-logic validator absent on input that
+      later reaches a non-injection code path).
 
   ## Contrastive Guard Patterns (Python)
 

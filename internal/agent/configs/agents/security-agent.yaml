@@ -118,10 +118,13 @@ cwe_checklist:
       - "BAD: hashlib.md5(password), hashlib.sha1(password), hashlib.sha256(password) used directly to store passwords"
       - "BAD: hashlib.new('md5', password), hashlib.new('sha1', password)"
       - "BAD: unsalted hashes or static/global salts"
+      - "BAD: password_hash = hashlib.sha256(password.encode()).hexdigest() — fast hash, password context, no salt or iterations."
       - "GOOD: bcrypt.hashpw(password, bcrypt.gensalt())"
       - "GOOD: argon2.PasswordHasher().hash(password) (argon2-cffi)"
       - "GOOD: passlib.hash.argon2.hash(password) / passlib.hash.bcrypt.hash(password)"
       - "GOOD: hashlib.scrypt or hashlib.pbkdf2_hmac with high iteration count (>=600k for SHA-256)"
+      - "NOT-A-FINDING: hashlib.new('sha384').update(b'Sensitive value') — generic data, not a password. SHA-384 is fine for non-password integrity."
+      - "NOT-A-FINDING: hashlib.sha512(arbitrary_data) — no password context."
     flow_patterns:
       - "SOURCE: user password -> GUARD: hashing algorithm -> SINK: password storage"
     negative_pattern: |
@@ -226,7 +229,26 @@ prompt_template: |
   the file:line and CWE for that agent to pick up — do NOT file the finding
   yourself.
 
-  Before filing, check `zrok finding list --file <your-target-file> --json` — if another agent already filed at the same line, prefer adding to that finding's notes (`zrok finding update <ID> --note "<your perspective>"`) over creating a new finding for a different CWE on the same line.
+  ## Cross-agent Coordination
+
+  Before filing ANY finding, run:
+    zrok finding list --file <target-file>
+
+  If a critical-or-high finding from another agent already exists on the same
+  file, your default action is to ADD A NOTE to that finding, not file a new
+  one. Use:
+    zrok finding update <FIND-XXX> --note "Your perspective..."
+
+  File a separate new finding only when:
+    - The existing finding's CWE family is genuinely orthogonal to yours
+      (e.g. CWE-614 cookie misconfig is orthogonal to CWE-798 hardcoded secret
+      even at the same file), AND
+    - Your finding cites a distinct line number (not the same source-to-sink
+      chain), AND
+    - Removing your finding would lose actionable information for remediation.
+
+  When in doubt, add a note. The validation-agent will dedupe later if needed,
+  but every duplicate filed costs reviewer attention.
 
   ## Available Tools
   {{.ToolDescriptions}}
@@ -241,6 +263,24 @@ prompt_template: |
   {{if .FewShotExamples}}
   {{.FewShotExamples}}
   {{end}}
+  ### CWE-916 evidence requirements
+  A "password hash with insufficient effort" finding requires BOTH:
+    1. The hash IS being applied to a password/credential, evidenced by ONE of:
+       - Surrounding variable names contain `password`, `passwd`, `pwd`,
+         `secret`, `credential`, `passphrase` (case-insensitive)
+       - A nearby comment or docstring mentions password storage / authentication
+       - The hashed output is written to a user record, auth DB, or credential store
+    2. AND the hash function is fast (no salt + iteration), evidenced by ONE of:
+       - hashlib.md5/sha1/sha256/sha384/sha512 used directly (without bcrypt /
+         argon2 / scrypt / pbkdf2_hmac wrapping)
+       - A custom HMAC chain with no `iterations` parameter
+       - Direct use of `hashlib.new('any_fast_algorithm')` without KDF wrapping
+
+  If condition (1) is NOT met (the hash applies to arbitrary "Sensitive value"
+  or non-credential data), this is NOT a CWE-916 finding — it may be CWE-327
+  (broken/risky crypto) if the algorithm is weak (MD5/SHA-1), or it may be no
+  finding at all (SHA-256+ is acceptable for general integrity use).
+
   ## Analysis Approach
   1. Read auth_patterns and api_endpoints memories first
   2. Map authentication boundaries from those memories
