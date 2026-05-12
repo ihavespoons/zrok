@@ -1,12 +1,14 @@
 package dashboard
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -28,15 +30,27 @@ var templateFiles embed.FS
 
 // Server represents the dashboard HTTP server
 type Server struct {
-	project      *project.Project
-	port         int
-	findingStore *finding.Store
-	memoryStore  *memory.Store
-	agentManager *agent.ConfigManager
-	templates    *template.Template
-	sseClients   map[chan SSEEvent]bool
-	sseMu        sync.RWMutex
+	project           *project.Project
+	port              int
+	findingStore      *finding.Store
+	memoryStore       *memory.Store
+	agentManager      *agent.ConfigManager
+	templates         *template.Template
+	sseClients        map[chan SSEEvent]bool
+	sseMu             sync.RWMutex
+	readHeaderTimeout time.Duration
+	readTimeout       time.Duration
+	writeTimeout      time.Duration
+	idleTimeout       time.Duration
 }
+
+// Default HTTP server timeouts (also referenced by cmd/dashboard.go flag defaults).
+const (
+	DefaultReadHeaderTimeout = 10 * time.Second
+	DefaultReadTimeout       = 30 * time.Second
+	DefaultWriteTimeout      = 60 * time.Second
+	DefaultIdleTimeout       = 120 * time.Second
+)
 
 // SSEEvent represents a server-sent event
 type SSEEvent struct {
@@ -47,12 +61,16 @@ type SSEEvent struct {
 // NewServer creates a new dashboard server
 func NewServer(p *project.Project, port int) *Server {
 	s := &Server{
-		project:      p,
-		port:         port,
-		findingStore: finding.NewStore(p),
-		memoryStore:  memory.NewStore(p),
-		agentManager: agent.NewConfigManager(p, ""),
-		sseClients:   make(map[chan SSEEvent]bool),
+		project:           p,
+		port:              port,
+		findingStore:      finding.NewStore(p),
+		memoryStore:       memory.NewStore(p),
+		agentManager:      agent.NewConfigManager(p, ""),
+		sseClients:        make(map[chan SSEEvent]bool),
+		readHeaderTimeout: DefaultReadHeaderTimeout,
+		readTimeout:       DefaultReadTimeout,
+		writeTimeout:      DefaultWriteTimeout,
+		idleTimeout:       DefaultIdleTimeout,
 	}
 
 	// Parse templates with custom functions
@@ -69,6 +87,15 @@ func NewServer(p *project.Project, port int) *Server {
 	s.templates, err = template.New("").Funcs(funcs).ParseFS(templateFiles, "templates/*.html")
 	if err != nil {
 		panic(fmt.Sprintf("failed to parse templates: %v", err))
+	}
+
+	// The memory store no longer auto-reindexes on construction (raced with
+	// concurrent writes and leaked past Close). The dashboard's memory
+	// search UI depends on the bleve index being current, so trigger a
+	// best-effort reindex here. Failures fall through; searchWithBleve
+	// itself falls back to substring matching on error.
+	if rerr := s.memoryStore.Reindex(context.Background()); rerr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: dashboard memory reindex failed: %v\n", rerr)
 	}
 
 	return s
@@ -110,10 +137,51 @@ func (s *Server) Start() error {
 	// Index page
 	mux.HandleFunc("/", s.handleIndex)
 
-	return http.ListenAndServe(fmt.Sprintf(":%d", s.port), mux)
+	// Use an explicit http.Server with timeouts to mitigate slowloris and
+	// connection-leak DoS vectors. NOTE: WriteTimeout interacts with SSE
+	// (long-lived streams); the keep-alive ticker + per-event write inside
+	// handleSSE prevents the connection from being idle long enough for
+	// IdleTimeout, and individual writes complete well within WriteTimeout.
+	// If users need very long SSE sessions, they can raise --write-timeout.
+	srv := &http.Server{
+		Addr:              fmt.Sprintf(":%d", s.port),
+		Handler:           mux,
+		ReadHeaderTimeout: s.readHeaderTimeout,
+		ReadTimeout:       s.readTimeout,
+		WriteTimeout:      s.writeTimeout,
+		IdleTimeout:       s.idleTimeout,
+	}
+	return srv.ListenAndServe()
 }
 
-// Broadcast sends an event to all SSE clients
+// SetTimeouts overrides the default HTTP server timeouts. Zero values keep
+// the existing setting. Must be called before Start().
+func (s *Server) SetTimeouts(readHeader, read, write, idle time.Duration) {
+	if readHeader > 0 {
+		s.readHeaderTimeout = readHeader
+	}
+	if read > 0 {
+		s.readTimeout = read
+	}
+	if write > 0 {
+		s.writeTimeout = write
+	}
+	if idle > 0 {
+		s.idleTimeout = idle
+	}
+}
+
+// Broadcast sends an event to all SSE clients.
+//
+// Concurrency invariant: this function holds sseMu.RLock for the entire iterate-and-send
+// loop, and the send is non-blocking (select+default). The SSE handler's cleanup acquires
+// sseMu.Lock to delete the channel from the map BEFORE calling close(client). Because
+// delete-from-map happens under the write lock while Broadcast holds the read lock, no
+// broadcaster can observe a closed channel: once the handler enters its cleanup path it
+// must wait for all in-flight broadcasts to release the read lock before deleting and
+// then closing. Do NOT "improve" this by collecting channel refs and releasing the lock
+// before sending — that would re-introduce a close-vs-send race ("send on closed channel"
+// panic).
 func (s *Server) Broadcast(event SSEEvent) {
 	s.sseMu.RLock()
 	defer s.sseMu.RUnlock()

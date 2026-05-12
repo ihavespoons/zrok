@@ -128,6 +128,7 @@ Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
 			if err := yaml.Unmarshal(data, &f); err != nil {
 				exitError("failed to parse finding: %v", err)
 			}
+			applyFlagOverrides(cmd, &f)
 		default:
 			data, err := os.ReadFile(yamlFile)
 			if err != nil {
@@ -136,6 +137,7 @@ Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
 			if err := yaml.Unmarshal(data, &f); err != nil {
 				exitError("failed to parse finding: %v", err)
 			}
+			applyFlagOverrides(cmd, &f)
 		}
 
 		// Validate ownership: if --created-by names a known agent with a
@@ -271,6 +273,21 @@ func validateOwnsCWEs(p *project.Project, f *finding.Finding, strict bool) error
 		"warning: %s is not in %s's owns_cwes %v; finding created anyway. Pass --strict to reject out-of-scope findings.\n",
 		f.CWE, f.CreatedBy, cfg.Specialization.OwnsCWEs)
 	return nil
+}
+
+// applyFlagOverrides applies CLI flag values onto a finding parsed from
+// stdin/file YAML. Only flags that the user explicitly passed are applied
+// (detected via cobra's Flags().Changed) — defaults do not silently overwrite
+// YAML-supplied values. Currently this handles --created-by; other flags
+// (--severity, --cwe, --confidence, --tag) are left to the YAML to keep the
+// override surface small and well-defined. Document this precedence in the
+// --created-by help text below.
+func applyFlagOverrides(cmd *cobra.Command, f *finding.Finding) {
+	if cmd.Flags().Changed("created-by") {
+		if v, err := cmd.Flags().GetString("created-by"); err == nil {
+			f.CreatedBy = v
+		}
+	}
 }
 
 // buildFindingFromFlags constructs a Finding from CLI flags.
@@ -822,7 +839,7 @@ func init() {
 	findingCreateCmd.Flags().String("remediation", "", "Suggested remediation")
 	findingCreateCmd.Flags().String("confidence", "", "Confidence: high, medium, low (default: medium)")
 	findingCreateCmd.Flags().StringSlice("tag", []string{}, "Tags (repeatable)")
-	findingCreateCmd.Flags().String("created-by", "", "Identifier of agent/user creating the finding")
+	findingCreateCmd.Flags().String("created-by", "", "Identifier of agent/user creating the finding. In stdin/-f YAML modes, this CLI flag overrides any created_by: in the YAML when explicitly passed.")
 	findingCreateCmd.Flags().Bool("strict", false, "Reject findings whose CWE is outside the --created-by agent's owns_cwes")
 	findingCreateCmd.Flags().Bool("quiet", false, "Suppress the informational same-file hint on stderr")
 

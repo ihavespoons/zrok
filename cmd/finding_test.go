@@ -9,6 +9,7 @@ import (
 
 	"github.com/ihavespoons/zrok/internal/finding"
 	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/spf13/cobra"
 )
 
 func setupFindingTestProject(t *testing.T) (*project.Project, func()) {
@@ -359,6 +360,69 @@ func TestPrintSameFileHintMultipleOthers(t *testing.T) {
 	// Header should reference 2 existing findings.
 	if !strings.Contains(out, "2 existing finding") {
 		t.Errorf("hint header should say '2 existing finding(s)'. output:\n%s", out)
+	}
+}
+
+// makeCreateCmd builds a cobra.Command with the same flag set as
+// findingCreateCmd. Use this to test flag-processing helpers in isolation
+// without exec'ing the full Run func (which calls project.EnsureActive and
+// os.Exit on error).
+func makeCreateCmd(t *testing.T) *cobra.Command {
+	t.Helper()
+	c := &cobra.Command{Use: "create"}
+	c.Flags().StringP("file", "f", "", "")
+	c.Flags().String("title", "", "")
+	c.Flags().String("severity", "", "")
+	c.Flags().String("cwe", "", "")
+	c.Flags().Int("line", 0, "")
+	c.Flags().String("description", "", "")
+	c.Flags().String("remediation", "", "")
+	c.Flags().String("confidence", "", "")
+	c.Flags().StringSlice("tag", []string{}, "")
+	c.Flags().String("created-by", "", "")
+	c.Flags().Bool("strict", false, "")
+	c.Flags().Bool("quiet", false, "")
+	return c
+}
+
+// TestApplyFlagOverridesCreatedByEmptyYAML: when YAML omits created_by and
+// --created-by is passed, the CLI value is applied.
+func TestApplyFlagOverridesCreatedByEmptyYAML(t *testing.T) {
+	c := makeCreateCmd(t)
+	if err := c.Flags().Set("created-by", "injection-agent"); err != nil {
+		t.Fatalf("set flag: %v", err)
+	}
+	f := &finding.Finding{Title: "x"} // CreatedBy unset (as if YAML omitted it)
+	applyFlagOverrides(c, f)
+	if f.CreatedBy != "injection-agent" {
+		t.Errorf("CreatedBy=%q, want %q", f.CreatedBy, "injection-agent")
+	}
+}
+
+// TestApplyFlagOverridesCreatedByOverridesYAML: an explicitly-passed
+// --created-by overrides a created_by: value supplied in the YAML.
+func TestApplyFlagOverridesCreatedByOverridesYAML(t *testing.T) {
+	c := makeCreateCmd(t)
+	if err := c.Flags().Set("created-by", "bar"); err != nil {
+		t.Fatalf("set flag: %v", err)
+	}
+	f := &finding.Finding{Title: "x", CreatedBy: "foo"} // foo from YAML
+	applyFlagOverrides(c, f)
+	if f.CreatedBy != "bar" {
+		t.Errorf("CreatedBy=%q, want %q (CLI overrides YAML)", f.CreatedBy, "bar")
+	}
+}
+
+// TestApplyFlagOverridesCreatedByUnsetPreservesYAML: when --created-by is NOT
+// passed (its default empty string is in effect), an existing YAML value is
+// preserved — the empty default must not silently wipe it.
+func TestApplyFlagOverridesCreatedByUnsetPreservesYAML(t *testing.T) {
+	c := makeCreateCmd(t)
+	// Do NOT Set the flag — it stays at default and Changed("created-by") is false.
+	f := &finding.Finding{Title: "x", CreatedBy: "yaml-value"}
+	applyFlagOverrides(c, f)
+	if f.CreatedBy != "yaml-value" {
+		t.Errorf("CreatedBy=%q, want %q (YAML preserved when flag unset)", f.CreatedBy, "yaml-value")
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -733,29 +734,78 @@ func (idx *Indexer) extractAndEmbed(ctx context.Context, file string, extractor 
 	return results, nil
 }
 
-// fileNeedsUpdate checks if a file needs to be re-indexed
+// fileNeedsUpdate checks if a file needs to be re-indexed by comparing the
+// multiset of per-chunk content hashes between the current file and what's
+// stored in the index.
+//
+// Semantics:
+//   - stored metadata missing / no stored chunks → returns (true, nil): be
+//     conservative, force a re-index so the file becomes indexed
+//   - file unreadable → returns (true, err): force a re-index attempt
+//     (which will fail visibly downstream)
+//   - any difference in the sorted multiset of ContentHash → (true, nil):
+//     contents have changed (chunk added, removed, or body modified)
+//   - identical multisets → (false, nil): no re-index needed
+//
+// Cost note: this re-extracts chunks via the indexer's extractor. For files
+// that DO need update, the downstream indexFile() will extract again — we
+// accept the duplicate work in exchange for a clean, schema-free fix. A
+// future optimization could store a file-level hash alongside chunks, but
+// the vector store schema is outside this stream's boundary.
 func (idx *Indexer) fileNeedsUpdate(file string) (bool, error) {
-	// Get existing chunks
-	chunks, err := idx.store.GetByFile(file)
-	if err != nil || len(chunks) == 0 {
-		return true, err
-	}
-
-	// Read current file content
-	fullPath := filepath.Join(idx.project.RootPath, file)
-	content, err := os.ReadFile(fullPath)
+	// Get existing chunks from the index
+	stored, err := idx.store.GetByFile(file)
 	if err != nil {
+		// Conservative: re-index on metadata error
+		return true, err
+	}
+	if len(stored) == 0 {
+		// No stored chunks → needs (re-)index
+		return true, nil
+	}
+
+	// Extract chunks from the current file content using the indexer's
+	// extractor (auto/treesitter/lsp/regex, per configuration).
+	fullPath := filepath.Join(idx.project.RootPath, file)
+	if _, err := os.Stat(fullPath); err != nil {
+		// File missing or unreadable → tell caller to re-index (which will
+		// surface the error and let Update() decide policy).
 		return true, err
 	}
 
-	// Simple check: compare content hash of first chunk
-	// A more thorough check would re-extract and compare all chunks
-	currentHash := chunk.GenerateContentHash(string(content))
+	current, err := idx.extractor.Extract(context.Background(), file)
+	if err != nil {
+		// Couldn't re-extract → be conservative and re-index. The
+		// downstream indexFile() will surface any persistent error.
+		return true, err
+	}
+	if current == nil || len(current.Chunks) == 0 {
+		// Stored chunks exist but current extraction is empty (e.g. file
+		// became empty / unparseable) — that's a real change.
+		return true, nil
+	}
 
-	// If any chunk's hash doesn't match, needs update
-	// (This is a simplification - we're just checking if file changed)
-	_ = currentHash // TODO: implement proper change detection
-
+	// Compare sorted multisets of ContentHash values. Sorting handles
+	// chunk re-ordering across extractor versions and is O(n log n) which
+	// is negligible vs the extraction cost above.
+	storedHashes := make([]string, 0, len(stored))
+	for _, c := range stored {
+		storedHashes = append(storedHashes, c.ContentHash)
+	}
+	currentHashes := make([]string, 0, len(current.Chunks))
+	for _, c := range current.Chunks {
+		currentHashes = append(currentHashes, c.ContentHash)
+	}
+	if len(storedHashes) != len(currentHashes) {
+		return true, nil
+	}
+	sort.Strings(storedHashes)
+	sort.Strings(currentHashes)
+	for i := range storedHashes {
+		if storedHashes[i] != currentHashes[i] {
+			return true, nil
+		}
+	}
 	return false, nil
 }
 

@@ -30,8 +30,13 @@ The dashboard provides:
 
 		port, _ := cmd.Flags().GetInt("port")
 		noBrowser, _ := cmd.Flags().GetBool("no-browser")
+		readHeaderTimeout, _ := cmd.Flags().GetDuration("read-header-timeout")
+		readTimeout, _ := cmd.Flags().GetDuration("read-timeout")
+		writeTimeout, _ := cmd.Flags().GetDuration("write-timeout")
+		idleTimeout, _ := cmd.Flags().GetDuration("idle-timeout")
 
 		server := dashboard.NewServer(p, port)
+		server.SetTimeouts(readHeaderTimeout, readTimeout, writeTimeout, idleTimeout)
 
 		url := fmt.Sprintf("http://localhost:%d", port)
 
@@ -80,4 +85,8 @@ func init() {
 
 	dashboardCmd.Flags().IntP("port", "p", 8080, "Port to run dashboard on")
 	dashboardCmd.Flags().Bool("no-browser", false, "Don't automatically open browser")
+	dashboardCmd.Flags().Duration("read-header-timeout", dashboard.DefaultReadHeaderTimeout, "HTTP read-header timeout (slowloris mitigation)")
+	dashboardCmd.Flags().Duration("read-timeout", dashboard.DefaultReadTimeout, "HTTP read timeout for full request body")
+	dashboardCmd.Flags().Duration("write-timeout", dashboard.DefaultWriteTimeout, "HTTP write timeout (raise for long SSE sessions)")
+	dashboardCmd.Flags().Duration("idle-timeout", dashboard.DefaultIdleTimeout, "HTTP idle (keep-alive) timeout")
 }

@@ -1,23 +1,48 @@
 package memory
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ihavespoons/zrok/internal/project"
 	"gopkg.in/yaml.v3"
 )
 
-// Store handles memory CRUD operations
+// Store handles memory CRUD operations.
+//
+// Concurrency: Create/Update/Delete and Reindex serialize via reindexMu so a
+// long-running rebuild cannot race with point writes. Close() blocks until any
+// in-flight Reindex finishes (or its context is cancelled by the caller).
 type Store struct {
 	basePath    string
 	searchIndex *SearchIndex
+
+	// reindexMu serializes a full-index rebuild against single-doc updates.
+	// Held in write mode by Reindex, read mode by Create/Update/Delete.
+	reindexMu sync.RWMutex
+
+	// closeOnce guards Close from running twice.
+	closeOnce sync.Once
+	// closed is set after Close completes; new Reindex calls fail fast.
+	closedMu sync.Mutex
+	closed   bool
+	// reindexWG tracks in-flight Reindex calls so Close can wait them out.
+	reindexWG sync.WaitGroup
 }
 
-// NewStore creates a new memory store for the given project
+// NewStore creates a new memory store for the given project.
+//
+// Unlike older versions of this function, NewStore does NOT launch a
+// background reindex goroutine. Callers that need full-text search must call
+// Reindex(ctx) explicitly (e.g. `zrok memory reindex` or before
+// memory.Search). If the on-disk index is detected as empty but YAML
+// memories exist, a one-line warning is emitted to stderr suggesting an
+// explicit reindex.
 func NewStore(p *project.Project) *Store {
 	basePath := p.GetMemoriesPath()
 
@@ -33,30 +58,100 @@ func NewStore(p *project.Project) *Store {
 		searchIndex: searchIndex,
 	}
 
-	// Reindex existing memories if search index was created
+	// Detect missing/empty index when YAML memories exist; warn the user to
+	// run an explicit reindex. We intentionally do NOT spawn a goroutine
+	// here: doing so races against concurrent Create/Update calls and leaks
+	// past Close. The reindex must be triggered explicitly.
 	if searchIndex != nil {
-		go store.reindexAll()
+		docs, derr := searchIndex.DocCount()
+		if derr == nil && docs == 0 {
+			// Cheap probe: does the YAML store have anything?
+			if hasAny := store.hasAnyMemoriesOnDisk(); hasAny {
+				fmt.Fprintln(os.Stderr,
+					"Notice: memory search index is empty but memories exist on disk. "+
+						"Run `zrok memory reindex` to rebuild the index.")
+			}
+		}
 	}
 
 	return store
 }
 
-// reindexAll rebuilds the search index from all existing memories
-func (s *Store) reindexAll() {
+// hasAnyMemoriesOnDisk is a low-cost check that returns true if any .yaml
+// memory file is present under any type subdirectory. Used to gate the
+// "empty index" warning so fresh projects stay quiet.
+func (s *Store) hasAnyMemoriesOnDisk() bool {
+	for _, t := range ValidMemoryTypes {
+		typeDir := filepath.Join(s.basePath, GetTypeDir(t))
+		entries, err := os.ReadDir(typeDir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".yaml") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Reindex rebuilds the search index from the on-disk YAML memories. It is
+// cancellable via ctx: long projects can hand in a deadlined context. While
+// Reindex is running, point writes (Create/Update/Delete) wait on
+// reindexMu's read lock — so the index never observes a partial rebuild.
+//
+// If the search index is unavailable, Reindex returns nil (no-op): callers
+// fall back to substring search regardless.
+func (s *Store) Reindex(ctx context.Context) error {
 	if s.searchIndex == nil {
-		return
+		return nil
+	}
+
+	// Fail fast if the store has already been closed.
+	s.closedMu.Lock()
+	if s.closed {
+		s.closedMu.Unlock()
+		return fmt.Errorf("memory store is closed")
+	}
+	s.reindexWG.Add(1)
+	s.closedMu.Unlock()
+	defer s.reindexWG.Done()
+
+	// Early-out if the caller's context is already done.
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	all, err := s.List("")
 	if err != nil {
-		return
+		return fmt.Errorf("failed to list memories for reindex: %w", err)
 	}
 
-	_ = s.searchIndex.Reindex(all.Memories) // Best effort reindex
+	// Check cancellation again before doing the expensive Batch.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	// Take the write lock so no Create/Update is in flight during the
+	// batch rebuild. Reindex on bleve replaces existing docs by ID, so this
+	// is safe; we just don't want a Create to fire between List and Batch.
+	s.reindexMu.Lock()
+	defer s.reindexMu.Unlock()
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	return s.searchIndex.Reindex(all.Memories)
 }
 
 // Create creates a new memory
 func (s *Store) Create(mem *Memory) error {
+	// Hold the read lock so a Reindex cannot overlap a single-doc write.
+	s.reindexMu.RLock()
+	defer s.reindexMu.RUnlock()
+
 	// Validate
 	if mem.Name == "" {
 		return fmt.Errorf("memory name is required")
@@ -118,6 +213,9 @@ func (s *Store) ReadByName(name string) (*Memory, error) {
 
 // Update updates an existing memory
 func (s *Store) Update(mem *Memory) error {
+	s.reindexMu.RLock()
+	defer s.reindexMu.RUnlock()
+
 	// Check if exists
 	existing, err := s.Read(mem.Name, mem.Type)
 	if err != nil {
@@ -142,6 +240,9 @@ func (s *Store) Update(mem *Memory) error {
 
 // Delete deletes a memory
 func (s *Store) Delete(name string, memType MemoryType) error {
+	s.reindexMu.RLock()
+	defer s.reindexMu.RUnlock()
+
 	path := s.getPath(name, memType)
 	if err := os.Remove(path); err != nil {
 		if os.IsNotExist(err) {
@@ -160,6 +261,9 @@ func (s *Store) Delete(name string, memType MemoryType) error {
 
 // DeleteByName deletes a memory by name, searching all types
 func (s *Store) DeleteByName(name string) error {
+	s.reindexMu.RLock()
+	defer s.reindexMu.RUnlock()
+
 	for _, t := range ValidMemoryTypes {
 		path := s.getPath(name, t)
 		if _, err := os.Stat(path); err == nil {
@@ -332,26 +436,39 @@ func (s *Store) searchSimple(query string) (*MemoryList, error) {
 	}, nil
 }
 
-// Close closes the store and its resources
+// Close closes the store and its resources.
+//
+// Close marks the store as closed (so further Reindex calls fail fast) and
+// then blocks until any in-flight Reindex completes before closing the
+// underlying bleve index. Callers that want to bound the wait should cancel
+// the Reindex context themselves.
 func (s *Store) Close() error {
-	if s.searchIndex != nil {
-		return s.searchIndex.Close()
-	}
-	return nil
+	var closeErr error
+	s.closeOnce.Do(func() {
+		s.closedMu.Lock()
+		s.closed = true
+		s.closedMu.Unlock()
+
+		// Wait for any in-flight Reindex to drain. Callers can bound this
+		// by cancelling the context they passed to Reindex.
+		s.reindexWG.Wait()
+
+		if s.searchIndex != nil {
+			closeErr = s.searchIndex.Close()
+		}
+	})
+	return closeErr
 }
 
-// RebuildIndex rebuilds the search index from scratch
+// RebuildIndex rebuilds the search index from scratch.
+//
+// Deprecated: use Reindex(ctx) for cancellable rebuilds. RebuildIndex calls
+// Reindex with a background context.
 func (s *Store) RebuildIndex() error {
 	if s.searchIndex == nil {
 		return fmt.Errorf("search index not initialized")
 	}
-
-	all, err := s.List("")
-	if err != nil {
-		return err
-	}
-
-	return s.searchIndex.Reindex(all.Memories)
+	return s.Reindex(context.Background())
 }
 
 // save writes a memory to disk

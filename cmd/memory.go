@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -253,8 +254,26 @@ var memorySearchCmd = &cobra.Command{
 			exitError("%v", err)
 		}
 
+		// Cap user-supplied query length to bound bleve work on the
+		// search-side; the index itself has a 5s timeout, but rejecting
+		// obviously-pathological inputs at the CLI is cleaner and gives
+		// the user a clear error.
+		const maxMemorySearchQueryLen = 1024
+		query := args[0]
+		if len(query) > maxMemorySearchQueryLen {
+			exitError("search query too long: %d bytes (max %d)", len(query), maxMemorySearchQueryLen)
+		}
+
 		store := memory.NewStore(p)
-		result, err := store.Search(args[0])
+		// Ensure the bleve index reflects the on-disk YAML before searching.
+		// NewStore no longer auto-reindexes (the former goroutine raced
+		// against concurrent Create and leaked past Close); we trigger it
+		// explicitly here. If reindex fails, search falls back to substring
+		// matching, so this is best-effort.
+		if rerr := store.Reindex(cmd.Context()); rerr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: reindex before search failed: %v\n", rerr)
+		}
+		result, err := store.Search(query)
 		if err != nil {
 			exitError("%v", err)
 		}
@@ -277,6 +296,38 @@ var memorySearchCmd = &cobra.Command{
 	},
 }
 
+// memoryReindexCmd represents the memory reindex command
+var memoryReindexCmd = &cobra.Command{
+	Use:   "reindex",
+	Short: "Rebuild the memory search index",
+	Long: `Rebuild the bleve full-text search index from the on-disk memory YAML files.
+
+Run this after restoring memories from backup, after a manual edit, or when
+the dashboard/search prints "memory search index is empty but memories exist
+on disk."`,
+	Run: func(cmd *cobra.Command, args []string) {
+		p, err := project.EnsureActive()
+		if err != nil {
+			exitError("%v", err)
+		}
+
+		store := memory.NewStore(p)
+		defer func() { _ = store.Close() }()
+
+		if err := store.Reindex(context.Background()); err != nil {
+			exitError("reindex failed: %v", err)
+		}
+
+		if jsonOutput {
+			if err := outputJSON(map[string]interface{}{"success": true, "action": "reindex"}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
+		} else {
+			fmt.Println("Memory search index rebuilt.")
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(memoryCmd)
 	memoryCmd.AddCommand(memoryListCmd)
@@ -284,6 +335,7 @@ func init() {
 	memoryCmd.AddCommand(memoryWriteCmd)
 	memoryCmd.AddCommand(memoryDeleteCmd)
 	memoryCmd.AddCommand(memorySearchCmd)
+	memoryCmd.AddCommand(memoryReindexCmd)
 
 	memoryListCmd.Flags().StringP("type", "t", "", "Filter by type (context, pattern, stack)")
 

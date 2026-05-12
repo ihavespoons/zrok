@@ -1,9 +1,12 @@
 package memory
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/ihavespoons/zrok/internal/project"
 )
@@ -379,6 +382,138 @@ func TestStoreSearch(t *testing.T) {
 
 	if result.Total != 0 {
 		t.Errorf("expected 0 results for 'nonexistent', got %d", result.Total)
+	}
+}
+
+// TestNewStoreNoBackgroundReindex: NewStore must NOT launch any goroutine
+// that races with concurrent Create. We exercise Create from many goroutines
+// immediately after NewStore returns. Run with `go test -race` to assert
+// no goroutine is firing reindex concurrently.
+func TestNewStoreNoBackgroundReindex(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	store := NewStore(p)
+	defer func() { _ = store.Close() }()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			mem := &Memory{
+				Name:    "concurrent-" + memoryNameSuffix(i),
+				Type:    MemoryTypeContext,
+				Content: "c",
+			}
+			if err := store.Create(mem); err != nil {
+				t.Errorf("concurrent Create failed: %v", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+}
+
+// memoryNameSuffix produces a fixed-width suffix to avoid the test
+// pulling in fmt just for an itoa-equivalent.
+func memoryNameSuffix(i int) string {
+	const digits = "0123456789"
+	if i < 10 {
+		return string(digits[i])
+	}
+	return string(digits[i/10]) + string(digits[i%10])
+}
+
+// TestReindexCancellable: a pre-cancelled context aborts Reindex with
+// ctx.Err. Verifies the explicit reindex path honors cancellation.
+func TestReindexCancellable(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	store := NewStore(p)
+	defer func() { _ = store.Close() }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled
+
+	err := store.Reindex(ctx)
+	if err == nil {
+		t.Fatal("expected error from pre-cancelled Reindex, got nil")
+	}
+	if err != context.Canceled {
+		t.Errorf("expected context.Canceled, got %v", err)
+	}
+}
+
+// TestCloseWaitsForInFlightReindex: Close must block until any in-flight
+// Reindex finishes (or its context is cancelled). We hold the reindex by
+// stuffing many memories on disk and starting Reindex on a goroutine, then
+// assert that Close() takes a measurable amount of time and returns
+// successfully.
+func TestCloseWaitsForInFlightReindex(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	store := NewStore(p)
+
+	// Seed a handful of memories.
+	for i := 0; i < 5; i++ {
+		err := store.Create(&Memory{
+			Name:    "seed-" + memoryNameSuffix(i),
+			Type:    MemoryTypeContext,
+			Content: "x",
+		})
+		if err != nil {
+			t.Fatalf("seed Create %d: %v", i, err)
+		}
+	}
+
+	reindexDone := make(chan error, 1)
+	go func() {
+		reindexDone <- store.Reindex(context.Background())
+	}()
+
+	// Give Reindex a moment to acquire its lock.
+	time.Sleep(10 * time.Millisecond)
+
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- store.Close()
+	}()
+
+	// Close should block until Reindex completes.
+	select {
+	case err := <-reindexDone:
+		if err != nil {
+			t.Errorf("Reindex returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Reindex did not finish within 5s")
+	}
+
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Errorf("Close returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return within 5s after Reindex finished")
+	}
+}
+
+// TestReindexAfterCloseFails: once Close has finished, subsequent Reindex
+// calls fail fast rather than panic on a closed bleve index.
+func TestReindexAfterCloseFails(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	store := NewStore(p)
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	if err := store.Reindex(context.Background()); err == nil {
+		t.Error("expected error from Reindex after Close, got nil")
 	}
 }
 

@@ -3,6 +3,7 @@ package chunk
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -156,7 +157,10 @@ func (e *Extractor) ExtractAll(ctx context.Context) (*ChunkList, error) {
 	}, nil
 }
 
-// extractTreeSitter extracts chunks using tree-sitter parsing
+// extractTreeSitter extracts chunks using tree-sitter parsing.
+//
+// If the parser skips the file (e.g. for size reasons via SkippedFileError),
+// this returns an empty ChunkList with no error so the indexer can continue.
 func (e *Extractor) extractTreeSitter(relPath, fullPath string) (*ChunkList, error) {
 	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
 
@@ -166,6 +170,12 @@ func (e *Extractor) extractTreeSitter(relPath, fullPath string) (*ChunkList, err
 
 	tsSymbols, err := e.tsParser.ExtractSymbols(fullPath, relPath)
 	if err != nil {
+		// Non-fatal skip (e.g. file too large): return empty chunk list so the
+		// indexer keeps going. The parser already logged a warning to stderr.
+		var skipped *treesitter.SkippedFileError
+		if errors.As(err, &skipped) {
+			return &ChunkList{Chunks: nil, File: relPath, Total: 0}, nil
+		}
 		return nil, err
 	}
 
@@ -173,7 +183,8 @@ func (e *Extractor) extractTreeSitter(relPath, fullPath string) (*ChunkList, err
 		fmt.Printf("[TREESITTER] Got %d symbols: %s\n", len(tsSymbols), relPath)
 	}
 
-	// Read file for splitting large chunks
+	// Read file for splitting large chunks. The parser's size cap already
+	// passed, so this read is bounded by the same limit.
 	content, err := os.ReadFile(fullPath)
 	if err != nil {
 		return nil, err
