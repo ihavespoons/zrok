@@ -1,14 +1,27 @@
 package memory
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/mapping"
 )
+
+// searchTimeout bounds bleve query execution so that pathological or
+// adversarial queries cannot pin a CPU. NewMatchQuery with fuzziness=1 is
+// bounded (Levenshtein distance 1, no user-controlled regex), so the
+// dominant risk is corpus-size * fanout rather than query compilation; a
+// 5s cap is generous for any realistic memory store.
+//
+// A complementary length cap on user-supplied query strings is enforced at
+// the CLI layer (cmd/memory.go) so internal callers (e.g. Reindex,
+// programmatic searches) remain unconstrained.
+const searchTimeout = 5 * time.Second
 
 // SearchIndex manages the bleve full-text search index for memories
 type SearchIndex struct {
@@ -115,7 +128,12 @@ func (s *SearchIndex) Delete(name string) error {
 	return s.index.Delete(name)
 }
 
-// Search performs a full-text search on the index
+// Search performs a full-text search on the index.
+//
+// Bounded execution: the bleve search runs under a context with a hard
+// timeout (searchTimeout). This prevents CPU exhaustion from pathological
+// queries even though NewMatchQuery with fuzziness=1 has no user-controlled
+// regex compilation.
 func (s *SearchIndex) Search(query string, limit int) ([]SearchResult, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -134,8 +152,12 @@ func (s *SearchIndex) Search(query string, limit int) ([]SearchResult, error) {
 	searchRequest.Fields = []string{"name", "type", "content", "description"}
 	searchRequest.Highlight = bleve.NewHighlight()
 
-	// Execute search
-	searchResult, err := s.index.Search(searchRequest)
+	// Execute search with a hard timeout to prevent runaway CPU on
+	// pathological inputs.
+	ctx, cancel := context.WithTimeout(context.Background(), searchTimeout)
+	defer cancel()
+
+	searchResult, err := s.index.SearchInContext(ctx, searchRequest)
 	if err != nil {
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
@@ -194,8 +216,11 @@ func (s *SearchIndex) SearchByType(query string, memType MemoryType, limit int) 
 	searchRequest.Fields = []string{"name", "type", "content", "description"}
 	searchRequest.Highlight = bleve.NewHighlight()
 
-	// Execute search
-	searchResult, err := s.index.Search(searchRequest)
+	// Execute search with a hard timeout (see Search).
+	ctx, cancel := context.WithTimeout(context.Background(), searchTimeout)
+	defer cancel()
+
+	searchResult, err := s.index.SearchInContext(ctx, searchRequest)
 	if err != nil {
 		return nil, fmt.Errorf("search failed: %w", err)
 	}

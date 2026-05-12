@@ -182,11 +182,16 @@ func (p *OpenAIProvider) embedBatchInternal(ctx context.Context, texts []string)
 	}
 
 	if result.Error != nil {
-		return nil, fmt.Errorf("OpenAI API error: %s (%s)", result.Error.Message, result.Error.Type)
+		// Redact API key in case the upstream echoed the Authorization header
+		// into the error message (some hostile/buggy servers do).
+		msg := redactSecret(result.Error.Message, p.apiKey)
+		return nil, fmt.Errorf("OpenAI API error: %s (%s)", msg, result.Error.Type)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OpenAI API error (status %d): %s", resp.StatusCode, string(body))
+		// Redact API key from raw response body before including in error.
+		safeBody := redactSecret(string(body), p.apiKey)
+		return nil, fmt.Errorf("OpenAI API error (status %d): %s", resp.StatusCode, safeBody)
 	}
 
 	// Convert to float32 and ensure order matches input
