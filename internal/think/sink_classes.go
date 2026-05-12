@@ -107,10 +107,16 @@ var sinkClasses = map[string]SinkClass{
 		Name:        "ldap",
 		Description: "LDAP injection sinks (CWE-90)",
 		Patterns: []string{
+			// ldap2-style module-level functions.
 			`ldap[23]?\.(search|search_s|search_ext|search_ext_s)\b`,
 			`ldap[23]?\.simple_bind(_s)?\b`,
+			// Generic method shapes; common ldap3 idiom is
+			// `conn.search(...)` on a Connection-typed object.
 			`\.search_s\s*\(`,
-			`\.simple_bind_s\s*\(`,
+			`\.simple_bind(?:_s)?\s*\(`,
+			// ldap3 Connection-style writes that take filter/dn args:
+			// `.add(...)` / `.modify(...)` / `.modify_dn(...)`.
+			`(?:Connection|conn|connection|client)\.(?:search|search_s|add|modify|modify_dn|delete|compare)\s*\(`,
 		},
 	},
 	"redirect": {
@@ -142,6 +148,16 @@ var sinkClasses = map[string]SinkClass{
 			`Markup\s*\(`,
 			`\|safe\b`,
 			`dangerouslySetInnerHTML\b`,
+			// f-string with interpolation: matches `f'...{...}'` or
+			// `f"...{...}"`. The brace is the load-bearing part: a
+			// plain f-literal without `{}` has no interpolation and
+			// isn't an XSS vector. We allow escaped chars (\') inside
+			// the literal because OWASP fixtures use \'-quoted
+			// f-strings: `f'bar is \'{bar}\''`.
+			`\bf["'](?:\\.|[^\\{])*\{`,
+			// .format() string template; broad but useful when taint
+			// flows in. The source pattern is what restricts noise.
+			`["'](?:\\.|[^"'\\\n])*\{[^}\n]*\}(?:\\.|[^"'\\\n])*["']\s*\.format\s*\(`,
 		},
 	},
 	"pathtrav": {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ihavespoons/zrok/internal/finding"
 	"github.com/ihavespoons/zrok/internal/project"
 )
 
@@ -531,5 +532,94 @@ func TestExtractAfter(t *testing.T) {
 	}
 	if got := extractAfter(desc, "SINK:"); got != "cur.execute" {
 		t.Errorf("extractAfter SINK: got %q", got)
+	}
+}
+
+// F3 — extractAfter must handle the "line N <expr>" preamble that review
+// agents commonly write. Previous behavior stopped at the first space and
+// returned "line", which caused --from-finding to produce a useless source
+// regex.
+func TestExtractAfter_LinePreamble(t *testing.T) {
+	desc := strings.Join([]string{
+		"SOURCE: line 31 request.form.getlist('BenchmarkTest00205') -> PATH: ...",
+		"SINK: line 53 xml.dom.minidom.parseString(bar, parser).",
+	}, "\n")
+	if got := extractAfter(desc, "SOURCE:"); got != "request.form.getlist" {
+		t.Errorf("extractAfter SOURCE with 'line N' preamble: got %q want request.form.getlist", got)
+	}
+	if got := extractAfter(desc, "SINK:"); got != "xml.dom.minidom.parseString" {
+		t.Errorf("extractAfter SINK with 'line N' preamble: got %q want xml.dom.minidom.parseString", got)
+	}
+}
+
+func TestInferSourceFromFinding_WrapperCall(t *testing.T) {
+	f := &finding.Finding{
+		Description: `SOURCE: line 34 wrapped.get_form_parameter("BenchmarkTest00284") -> PATH: bar=param -> SINK: line 47 cur.execute(sql). VERDICT: unguarded.`,
+	}
+	pat := inferSourceFromFinding(f)
+	re, err := regexp.Compile("(?i)" + pat)
+	if err != nil {
+		t.Fatalf("compile inferred source pattern %q: %v", pat, err)
+	}
+	// Must match the actual fixture line.
+	if !re.MatchString(`param = wrapped.get_form_parameter("BenchmarkTest00284")`) {
+		t.Errorf("inferred source pattern %q did not match wrapped.get_form_parameter call", pat)
+	}
+	// The default request alternation must remain so the same pattern still
+	// matches plain request.form.get sites in other files.
+	if !re.MatchString(`x = request.form.get("y")`) {
+		t.Errorf("inferred source pattern %q dropped default request.form.get", pat)
+	}
+}
+
+func TestInferSourceFromFinding_WrapperMentionWithoutLiteral(t *testing.T) {
+	f := &finding.Finding{
+		Description: `Uses a request wrapper helper to read POST params. SINK: cur.execute(sql).`,
+	}
+	pat := inferSourceFromFinding(f)
+	re, err := regexp.Compile("(?i)" + pat)
+	if err != nil {
+		t.Fatalf("compile inferred source pattern %q: %v", pat, err)
+	}
+	if !re.MatchString(`param = wrapped.get_form_parameter("X")`) {
+		t.Errorf("wrapper-mention fallback did not match wrapped.get_form_parameter; pat=%q", pat)
+	}
+	if !re.MatchString(`v = some_obj.get_cookie_parameter("X")`) {
+		t.Errorf("wrapper-mention fallback did not match get_cookie_parameter; pat=%q", pat)
+	}
+}
+
+func TestInferSourceFromFinding_HeaderAndUnquotePlus(t *testing.T) {
+	// No SOURCE: label, no wrapper hint: the default alternation must still
+	// match request.headers.get and urllib.parse.unquote_plus(request....).
+	f := &finding.Finding{
+		Description: `Unauthenticated header read flows into a sensitive sink.`,
+	}
+	pat := inferSourceFromFinding(f)
+	re, err := regexp.Compile("(?i)" + pat)
+	if err != nil {
+		t.Fatalf("compile inferred source pattern %q: %v", pat, err)
+	}
+	if !re.MatchString(`param = request.headers.get("X")`) {
+		t.Errorf("default source pattern missed request.headers.get; pat=%q", pat)
+	}
+	if !re.MatchString(`param = urllib.parse.unquote_plus(request.cookies.get("X"))`) {
+		t.Errorf("default source pattern missed urllib.parse.unquote_plus(request....); pat=%q", pat)
+	}
+}
+
+func TestInferSourceFromFinding_SourceLabelLiteralTakesEffect(t *testing.T) {
+	// When SOURCE: gives an explicit call, the resulting pattern must match
+	// that literal call site in the file under analysis.
+	f := &finding.Finding{
+		Description: `SOURCE: request.form.getlist("X") -> SINK: yaml.load.`,
+	}
+	pat := inferSourceFromFinding(f)
+	re, err := regexp.Compile("(?i)" + pat)
+	if err != nil {
+		t.Fatalf("compile inferred source pattern %q: %v", pat, err)
+	}
+	if !re.MatchString(`values = request.form.getlist("X")`) {
+		t.Errorf("source-label literal did not match; pat=%q", pat)
 	}
 }

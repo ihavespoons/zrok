@@ -616,14 +616,67 @@ func uniqueFiles(matches []navigate.SearchMatch) map[string]bool {
 }
 
 // inferSourceFromFinding tries to extract a source pattern from a finding's
-// description. We look for "SOURCE:" lines and fall back to common request-
-// access hints.
+// description. We look for "SOURCE:" lines first; if that yields a literal
+// call expression we use it, then layer in common wrappers (request.headers,
+// urllib.parse.unquote_plus(request....), `wrapped.get_*_parameter`) so the
+// resulting pattern matches what the OWASP fixtures actually do.
 func inferSourceFromFinding(f *finding.Finding) string {
+	// Default request-source alternation. Always includes headers and the
+	// common urllib.parse.unquote_plus wrapper since both appear verbatim
+	// in OWASP benchmark fixtures and would otherwise miss.
+	defaultRequestSrc := `request\.(form|args|cookies|headers|json|values)\.get|request\.data|urllib\.parse\.unquote_plus\s*\(\s*request\.`
+
+	var parts []string
 	if pat := extractAfter(f.Description, "SOURCE:"); pat != "" {
-		return regexCleanup(pat)
+		parts = append(parts, regexCleanup(pat))
 	}
-	// Common Python/Flask hints.
-	return `request\.(form|args|cookies|headers|json|values)\.get|request\.data`
+
+	// Heuristic: when the finding mentions a request-wrapper (a common
+	// OWASP pattern such as `wrapped.get_form_parameter("X")`), add that
+	// wrapper call shape to the source alternation. We look for the
+	// literal token in the description as well as the words "wrapper"
+	// or "wrapped", because review-agents sometimes summarize the
+	// indirection without quoting the exact call.
+	if pat := extractWrapperCall(f.Description); pat != "" {
+		parts = append(parts, pat)
+	}
+
+	parts = append(parts, defaultRequestSrc)
+	return strings.Join(uniqueNonEmpty(parts), "|")
+}
+
+// extractWrapperCall returns a regex fragment matching any wrapper-style
+// request accessor mentioned in `text` (e.g.
+// `wrapped.get_form_parameter("X")` -> `wrapped\.get_form_parameter`).
+// When `text` mentions "wrapper"/"wrapped" without an explicit call, it
+// returns the generic `\w+\.get_(form|query|cookie|header)_parameter`
+// alternation so the source matcher still finds the typical OWASP wrapper.
+//
+// Returns "" when no wrapper hint is found.
+func extractWrapperCall(text string) string {
+	wrapperCallRE := regexp.MustCompile(`\b([A-Za-z_]\w*)\.(get_(?:form|query|cookie|header)_parameter)\b`)
+	if m := wrapperCallRE.FindStringSubmatch(text); m != nil {
+		return regexp.QuoteMeta(m[1]) + `\.` + regexp.QuoteMeta(m[2])
+	}
+	lower := strings.ToLower(text)
+	if strings.Contains(lower, "wrapper") || strings.Contains(lower, "wrapped") {
+		return `\w+\.get_(form|query|cookie|header)_parameter`
+	}
+	return ""
+}
+
+// uniqueNonEmpty preserves order and drops empty / duplicate entries.
+func uniqueNonEmpty(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
 }
 
 // inferSinkFromFinding tries to extract a sink pattern from a finding's
@@ -656,19 +709,35 @@ func inferSinkFromFinding(f *finding.Finding) string {
 	return DefaultSinkPattern()
 }
 
-// extractAfter returns the first non-empty token after the given label on
+// extractAfter returns the first call-shape token after the given label on
 // any line that begins (after trim) with that label.
+//
+// Agents write SOURCE/SINK labels in two common shapes:
+//   - "SOURCE: request.form.get(\"x\") at app.py:10"  -> "request.form.get"
+//   - "SOURCE: line 31 request.form.getlist(...) -> PATH: ..." -> "request.form.getlist"
+//
+// The second form has a `line N` preamble before the call. We use a regex to
+// pull the first dotted-identifier token (one or more `.`-separated identifiers)
+// from the post-label text, which handles both shapes. When no dotted token
+// is present we fall back to the first whitespace-delimited token, preserving
+// behavior for legacy single-token labels.
+var labelCallRE = regexp.MustCompile(`([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)+)`)
+
 func extractAfter(text, label string) string {
 	for _, ln := range strings.Split(text, "\n") {
 		trimmed := strings.TrimSpace(ln)
-		if strings.HasPrefix(trimmed, label) {
-			rest := strings.TrimSpace(strings.TrimPrefix(trimmed, label))
-			// Take the first call-shape token, e.g. "cur.execute(sql)" -> "cur.execute".
-			if idx := strings.IndexAny(rest, "( "); idx > 0 {
-				rest = rest[:idx]
-			}
-			return rest
+		if !strings.HasPrefix(trimmed, label) {
+			continue
 		}
+		rest := strings.TrimSpace(strings.TrimPrefix(trimmed, label))
+		if m := labelCallRE.FindString(rest); m != "" {
+			return m
+		}
+		// Fallback: first whitespace/paren-delimited token.
+		if idx := strings.IndexAny(rest, "( "); idx > 0 {
+			rest = rest[:idx]
+		}
+		return rest
 	}
 	return ""
 }
