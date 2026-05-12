@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -217,5 +219,185 @@ func TestFindingDuplicateOfAndNotesPersist(t *testing.T) {
 	}
 	if len(loaded.Notes) != 1 || loaded.Notes[0].Text != "looks like a dup" {
 		t.Errorf("Notes not preserved: %+v", loaded.Notes)
+	}
+}
+
+// makeFinding is a helper to create a finding via the store and return it.
+func makeFinding(t *testing.T, store *finding.Store, file string, line int, cwe, sev, createdBy string) *finding.Finding {
+	t.Helper()
+	f := &finding.Finding{
+		Title:       "t-" + file,
+		Severity:    finding.Severity(sev),
+		Confidence:  finding.ConfidenceHigh,
+		CWE:         cwe,
+		Description: "test",
+		CreatedBy:   createdBy,
+		Location: finding.Location{
+			File:      file,
+			LineStart: line,
+		},
+	}
+	if err := store.Create(f); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	return f
+}
+
+// TestPrintSameFileHintNoOthers: no other findings at the same file => no hint.
+func TestPrintSameFileHintNoOthers(t *testing.T) {
+	p, cleanup := setupFindingTestProject(t)
+	defer cleanup()
+
+	store := finding.NewStore(p)
+	f := makeFinding(t, store, "a.py", 10, "CWE-89", "high", "injection-agent")
+
+	var buf bytes.Buffer
+	printSameFileHint(store, f, &buf)
+	if buf.Len() != 0 {
+		t.Errorf("expected no hint when no other findings at same file, got:\n%s", buf.String())
+	}
+}
+
+// TestPrintSameFileHintOneOther: a second finding at same file => hint listing
+// the first by ID/CWE/severity/agent.
+func TestPrintSameFileHintOneOther(t *testing.T) {
+	p, cleanup := setupFindingTestProject(t)
+	defer cleanup()
+
+	store := finding.NewStore(p)
+	first := makeFinding(t, store, "a.py", 10, "CWE-89", "high", "injection-agent")
+	second := makeFinding(t, store, "a.py", 12, "CWE-20", "high", "guards-agent")
+
+	var buf bytes.Buffer
+	printSameFileHint(store, second, &buf)
+
+	out := buf.String()
+	if out == "" {
+		t.Fatal("expected hint output, got empty")
+	}
+	if !strings.Contains(out, first.ID) {
+		t.Errorf("hint did not include existing finding ID %q. output:\n%s", first.ID, out)
+	}
+	if !strings.Contains(out, "CWE-89") {
+		t.Errorf("hint did not include CWE-89. output:\n%s", out)
+	}
+	if !strings.Contains(out, "high") {
+		t.Errorf("hint did not include severity. output:\n%s", out)
+	}
+	if !strings.Contains(out, "injection-agent") {
+		t.Errorf("hint did not include creator. output:\n%s", out)
+	}
+	if !strings.Contains(out, "a.py") {
+		t.Errorf("hint did not include the file. output:\n%s", out)
+	}
+	// Should NOT include the just-created finding's own ID in the listing.
+	// The example update command may include another ID though, so check the
+	// list portion specifically.
+	lines := strings.Split(out, "\n")
+	for _, ln := range lines {
+		// listing lines start with two spaces and a FIND-
+		if strings.HasPrefix(ln, "  FIND-") {
+			if strings.Contains(ln, second.ID) {
+				t.Errorf("hint listed the just-created finding %s in its own list:\n%s", second.ID, out)
+			}
+		}
+	}
+}
+
+// TestPrintSameFileHintFiltersSelf: even when only the just-created finding
+// exists at this file, no hint is printed (it must be filtered out).
+func TestPrintSameFileHintFiltersSelf(t *testing.T) {
+	p, cleanup := setupFindingTestProject(t)
+	defer cleanup()
+
+	store := finding.NewStore(p)
+	only := makeFinding(t, store, "solo.py", 10, "CWE-89", "high", "injection-agent")
+
+	var buf bytes.Buffer
+	printSameFileHint(store, only, &buf)
+	if buf.Len() != 0 {
+		t.Errorf("expected no hint when the only same-file finding is the just-created one, got:\n%s", buf.String())
+	}
+}
+
+// TestPrintSameFileHintEmptyFile: empty location.file => no hint, no panic.
+func TestPrintSameFileHintEmptyFile(t *testing.T) {
+	p, cleanup := setupFindingTestProject(t)
+	defer cleanup()
+
+	store := finding.NewStore(p)
+	f := &finding.Finding{ID: "FIND-XYZ"}
+	var buf bytes.Buffer
+	printSameFileHint(store, f, &buf)
+	if buf.Len() != 0 {
+		t.Errorf("expected no hint for empty file, got: %s", buf.String())
+	}
+}
+
+// TestPrintSameFileHintMultipleOthers: multiple existing findings at the
+// same file all appear in the hint listing.
+func TestPrintSameFileHintMultipleOthers(t *testing.T) {
+	p, cleanup := setupFindingTestProject(t)
+	defer cleanup()
+
+	store := finding.NewStore(p)
+	a := makeFinding(t, store, "multi.py", 10, "CWE-89", "high", "injection-agent")
+	b := makeFinding(t, store, "multi.py", 20, "CWE-79", "medium", "xss-agent")
+	c := makeFinding(t, store, "multi.py", 30, "CWE-22", "high", "path-agent")
+
+	var buf bytes.Buffer
+	printSameFileHint(store, c, &buf)
+	out := buf.String()
+	for _, id := range []string{a.ID, b.ID} {
+		if !strings.Contains(out, id) {
+			t.Errorf("expected hint to include %s. output:\n%s", id, out)
+		}
+	}
+	if strings.Contains(out, "  "+c.ID+" ") {
+		t.Errorf("hint should not list the just-created finding %s. output:\n%s", c.ID, out)
+	}
+	// Header should reference 2 existing findings.
+	if !strings.Contains(out, "2 existing finding") {
+		t.Errorf("hint header should say '2 existing finding(s)'. output:\n%s", out)
+	}
+}
+
+// TestCreateCmdHintGatedByQuietAndJSON: the create command itself is hard to
+// run end-to-end without spawning a subprocess (it calls os.Exit on error
+// and uses project.EnsureActive). The behavior we need to assert is that
+// the hint helper is gated correctly. We exercise the gating logic by
+// invoking printSameFileHint conditionally based on the same flags the
+// command checks, then assert the gating semantics.
+func TestCreateCmdHintGatedByQuietAndJSON(t *testing.T) {
+	p, cleanup := setupFindingTestProject(t)
+	defer cleanup()
+
+	store := finding.NewStore(p)
+	_ = makeFinding(t, store, "gate.py", 10, "CWE-89", "high", "injection-agent")
+	second := makeFinding(t, store, "gate.py", 20, "CWE-79", "high", "xss-agent")
+
+	cases := []struct {
+		name       string
+		jsonOutput bool
+		quiet      bool
+		wantHint   bool
+	}{
+		{"default emits hint", false, false, true},
+		{"--json suppresses hint", true, false, false},
+		{"--quiet suppresses hint", false, true, false},
+		{"--json --quiet suppresses hint", true, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			// Mirror the gating in the create command:
+			if !tc.jsonOutput && !tc.quiet {
+				printSameFileHint(store, second, &buf)
+			}
+			gotHint := buf.Len() > 0
+			if gotHint != tc.wantHint {
+				t.Errorf("hint emitted=%v, want %v; output:\n%s", gotHint, tc.wantHint, buf.String())
+			}
+		})
 	}
 }

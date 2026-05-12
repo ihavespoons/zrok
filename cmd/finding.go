@@ -151,6 +151,8 @@ Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
 			exitError("%v", err)
 		}
 
+		quiet, _ := cmd.Flags().GetBool("quiet")
+
 		if jsonOutput {
 			if err := outputJSON(map[string]interface{}{
 				"success": true,
@@ -164,7 +166,73 @@ Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
 			fmt.Printf("Title: %s\n", f.Title)
 			fmt.Printf("Severity: %s\n", f.Severity)
 		}
+
+		// Informational hint when other findings already exist at the same
+		// file. Suppressed under --json (preserves clean structured output)
+		// and --quiet. Never blocks creation.
+		if !jsonOutput && !quiet {
+			printSameFileHint(store, &f, os.Stderr)
+		}
 	},
+}
+
+// printSameFileHint writes an informational hint to w when one or more
+// findings (other than the just-created one) exist at the same
+// location.file. The hint is purely informational and never returns an
+// error: failures listing findings are swallowed silently so creation
+// stays a success-path operation.
+func printSameFileHint(store *finding.Store, f *finding.Finding, w io.Writer) {
+	if f == nil || f.Location.File == "" {
+		return
+	}
+	result, err := store.List(&finding.FilterOptions{File: f.Location.File})
+	if err != nil || result == nil {
+		return
+	}
+	// Filter out the just-created finding by ID.
+	var others []finding.Finding
+	for _, existing := range result.Findings {
+		if existing.ID == f.ID {
+			continue
+		}
+		others = append(others, existing)
+	}
+	if len(others) == 0 {
+		return
+	}
+
+	_, _ = fmt.Fprintf(w, "hint: %d existing finding(s) at this file (%s):\n",
+		len(others), f.Location.File)
+	const maxListed = 5
+	listed := others
+	truncated := 0
+	if len(listed) > maxListed {
+		truncated = len(listed) - maxListed
+		listed = listed[:maxListed]
+	}
+	for _, ex := range listed {
+		sev := string(ex.Severity)
+		if sev == "" {
+			sev = "?"
+		}
+		cwe := ex.CWE
+		if cwe == "" {
+			cwe = "no-CWE"
+		}
+		createdBy := ex.CreatedBy
+		if createdBy == "" {
+			createdBy = "unknown"
+		}
+		_, _ = fmt.Fprintf(w, "  %s [%s] %s (%s)\n", ex.ID, sev, cwe, createdBy)
+	}
+	if truncated > 0 {
+		_, _ = fmt.Fprintf(w, "  ... and %d more\n", truncated)
+	}
+	// Use the first existing finding's ID in the example command.
+	exampleID := others[0].ID
+	_, _ = fmt.Fprintf(w, "Consider whether the new finding adds new information or should be a\n")
+	_, _ = fmt.Fprintf(w, "--note on the existing finding via:\n")
+	_, _ = fmt.Fprintf(w, "  zrok finding update %s --note \"<your perspective>\"\n", exampleID)
 }
 
 // validateOwnsCWEs checks that f.CWE is within the owning agent's owns_cwes list.
@@ -756,6 +824,7 @@ func init() {
 	findingCreateCmd.Flags().StringSlice("tag", []string{}, "Tags (repeatable)")
 	findingCreateCmd.Flags().String("created-by", "", "Identifier of agent/user creating the finding")
 	findingCreateCmd.Flags().Bool("strict", false, "Reject findings whose CWE is outside the --created-by agent's owns_cwes")
+	findingCreateCmd.Flags().Bool("quiet", false, "Suppress the informational same-file hint on stderr")
 
 	findingUpdateCmd.Flags().String("status", "", "Update status (open, confirmed, false_positive, fixed, duplicate)")
 	findingUpdateCmd.Flags().String("severity", "", "Update severity")
