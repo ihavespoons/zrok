@@ -188,7 +188,7 @@ func findGuardsBetween(r *navigate.Reader, path string, sources, sinks []int) []
 	type window struct{ lo, hi int }
 	var windows []window
 	for _, s := range sources {
-		var pick int = -1
+		pick := -1
 		for _, sk := range sinks {
 			if sk > s {
 				pick = sk

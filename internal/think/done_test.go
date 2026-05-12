@@ -25,8 +25,8 @@ func TestAnalyzeDone_UnknownAgent(t *testing.T) {
 func TestAnalyzeDone_ScoresFindings(t *testing.T) {
 	p, _ := writeTempProject(t)
 	store := finding.NewStore(p)
-	// One finding for each injection-agent owned CWE (CWE-89, 78, 94, 643, 917).
-	for _, cwe := range []string{"CWE-89", "CWE-78", "CWE-94", "CWE-643", "CWE-917"} {
+	// One finding for each injection-agent owned CWE (78, 89, 90, 94, 611, 643, 917).
+	for _, cwe := range []string{"CWE-78", "CWE-89", "CWE-90", "CWE-94", "CWE-611", "CWE-643", "CWE-917"} {
 		if err := store.Create(&finding.Finding{
 			Title:    "x",
 			Severity: finding.SeverityMedium,

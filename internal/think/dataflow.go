@@ -18,8 +18,14 @@ import (
 type DataflowOptions struct {
 	// Source is a regex/literal pattern locating untrusted-data origins.
 	Source string
-	// Sink is a regex/literal pattern locating security-sensitive operations.
+	// Sink is an explicit regex/literal pattern locating security-sensitive
+	// operations. When non-empty it OVERRIDES SinkClasses and the default
+	// sink set.
 	Sink string
+	// SinkClasses narrows the default sink mix to one or more named classes
+	// (e.g. "deserialization", "xxe", "ldap"). Use `ListSinkClasses()` to
+	// enumerate. Ignored when Sink is set.
+	SinkClasses []string
 	// File limits analysis to a single file (project-relative path).
 	File string
 	// FromFinding loads source/sink from an existing finding (FIND-XXX).
@@ -54,11 +60,23 @@ type FlowStep struct {
 type DataflowReport struct {
 	Source       string          `json:"source"`
 	Sink         string          `json:"sink"`
+	SinkClasses  []string        `json:"sink_classes,omitempty"`
 	File         string          `json:"file,omitempty"`
 	FromFinding  string          `json:"from_finding,omitempty"`
 	FilesScanned int             `json:"files_scanned"`
 	Chains       []DataflowChain `json:"chains"`
+	Summary      DataflowSummary `json:"summary"`
 	Notes        []string        `json:"notes,omitempty"`
+}
+
+// DataflowSummary tallies the chains found in a report by verdict.
+type DataflowSummary struct {
+	Sources    int `json:"sources"`
+	Sinks      int `json:"sinks"`
+	Chains     int `json:"chains"`
+	Unguarded  int `json:"unguarded"`
+	Guarded    int `json:"guarded"`
+	Uncertain  int `json:"uncertain"`
 }
 
 // guardPatterns lists call-name fragments that indicate a defensive guard
@@ -115,15 +133,36 @@ func AnalyzeDataflow(p *project.Project, opts DataflowOptions) (*DataflowReport,
 		}
 	}
 
+	// Resolve the sink pattern when none was given explicitly.
+	// Precedence: explicit Sink > named SinkClasses > default class mix.
+	var unknownClasses []string
+	resolvedClasses := opts.SinkClasses
+	if opts.Sink == "" {
+		var pat string
+		pat, unknownClasses = BuildSinkPatternFromClasses(opts.SinkClasses)
+		opts.Sink = pat
+		if len(opts.SinkClasses) == 0 {
+			resolvedClasses = DefaultSinkClasses()
+		}
+	}
+
 	if opts.Source == "" || opts.Sink == "" {
+		if len(unknownClasses) > 0 {
+			return nil, fmt.Errorf("no valid sink classes resolved (unknown: %s); use --sink, --sink-class <name>, or --from-finding",
+				strings.Join(unknownClasses, ", "))
+		}
 		return nil, fmt.Errorf("source and sink patterns are required (use --source/--sink or --from-finding)")
 	}
 
 	report := &DataflowReport{
 		Source:      opts.Source,
 		Sink:        opts.Sink,
+		SinkClasses: resolvedClasses,
 		File:        opts.File,
 		FromFinding: opts.FromFinding,
+	}
+	for _, u := range unknownClasses {
+		report.Notes = append(report.Notes, fmt.Sprintf("unknown sink class: %q (see ListSinkClasses)", u))
 	}
 
 	srcRE, err := regexp.Compile("(?i)" + opts.Source)
@@ -171,23 +210,39 @@ func AnalyzeDataflow(p *project.Project, opts DataflowOptions) (*DataflowReport,
 		if !filepath.IsAbs(fullPath) {
 			fullPath = filepath.Join(p.RootPath, relPath)
 		}
-		chains, err := traceFile(fullPath, relPath, srcRE, sinkRE, opts.MaxChains)
+		chains, fileSrc, fileSink, err := traceFile(fullPath, relPath, srcRE, sinkRE, opts.MaxChains)
 		if err != nil {
 			report.Notes = append(report.Notes, fmt.Sprintf("%s: %v", relPath, err))
 			continue
 		}
 		report.Chains = append(report.Chains, chains...)
+		report.Summary.Sources += fileSrc
+		report.Summary.Sinks += fileSink
 	}
+
+	for _, c := range report.Chains {
+		switch c.Verdict {
+		case "guarded":
+			report.Summary.Guarded++
+		case "guard-uncertain":
+			report.Summary.Uncertain++
+		default:
+			report.Summary.Unguarded++
+		}
+	}
+	report.Summary.Chains = len(report.Chains)
 
 	return report, nil
 }
 
 // traceFile walks one file and emits chains pairing each source occurrence
-// with the next sink occurrence after it.
-func traceFile(fullPath, relPath string, srcRE, sinkRE *regexp.Regexp, maxChains int) ([]DataflowChain, error) {
+// with the next sink occurrence after it. It also returns the total source
+// and sink line counts seen in the file (after filtering imports), so the
+// caller can populate report-level Summary tallies.
+func traceFile(fullPath, relPath string, srcRE, sinkRE *regexp.Regexp, maxChains int) ([]DataflowChain, int, int, error) {
 	f, err := os.Open(fullPath)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	defer func() { _ = f.Close() }()
 
@@ -198,11 +253,18 @@ func traceFile(fullPath, relPath string, srcRE, sinkRE *regexp.Regexp, maxChains
 		lines = append(lines, scanner.Text())
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 
 	var srcLines, sinkLines []int
 	for i, line := range lines {
+		// C2: skip import lines when selecting source/sink candidates.
+		// `import X` and `from X import Y` are never the actual data-flow
+		// site; matching them confuses callers who then re-read the file
+		// to find the real call.
+		if isImportLine(line) {
+			continue
+		}
 		if srcRE.MatchString(line) {
 			srcLines = append(srcLines, i)
 		}
@@ -259,8 +321,7 @@ func traceFile(fullPath, relPath string, srcRE, sinkRE *regexp.Regexp, maxChains
 		}
 
 		// Also check source and sink lines themselves for inline guards
-		// (e.g. parameterized cur.execute(sql, params) — '?' placeholder
-		// is hard to regex, but call-shape hints help).
+		// (e.g. shlex.quote(arg) right in the call site).
 		if guardPatterns.MatchString(lines[sinkIdx]) {
 			chain.Guards = append(chain.Guards, FlowStep{
 				Line: sinkIdx + 1,
@@ -269,20 +330,43 @@ func traceFile(fullPath, relPath string, srcRE, sinkRE *regexp.Regexp, maxChains
 			})
 		}
 
-		// Verdict.
-		switch {
-		case len(chain.Guards) == 0:
-			chain.Verdict = "unguarded"
-			chain.Confidence = "medium"
-			chain.Reasoning = "no guard-like call found between source and sink"
-		case len(chain.Guards) > 0 && containsEffectiveGuard(chain.Guards):
+		// C3: parameterized-call-at-sink detection. A sink call with >=2
+		// top-level positional args is treated as guarded ("parameterized
+		// call at sink"). A sink call with exactly 1 arg that contains an
+		// f-string or string concatenation is treated as unguarded
+		// regardless of other guard-shaped calls. Otherwise we fall back
+		// to the legacy guard-list verdict.
+		paramVerdict, paramReason := classifySinkArgs(lines[sinkIdx], sinkRE)
+		switch paramVerdict {
+		case "guarded":
 			chain.Verdict = "guarded"
-			chain.Confidence = "low"
-			chain.Reasoning = fmt.Sprintf("%d guard-like call(s) found; verify each is effective for this CWE", len(chain.Guards))
+			chain.Confidence = "medium"
+			chain.Reasoning = paramReason
+			// Surface the sink line as a guard for transparency.
+			chain.Guards = append(chain.Guards, FlowStep{
+				Line: sinkIdx + 1,
+				Code: strings.TrimSpace(lines[sinkIdx]),
+				Kind: "guard",
+			})
+		case "unguarded":
+			chain.Verdict = "unguarded"
+			chain.Confidence = "high"
+			chain.Reasoning = paramReason
 		default:
-			chain.Verdict = "guard-uncertain"
-			chain.Confidence = "low"
-			chain.Reasoning = "guard-shaped calls present but effectiveness unclear; manual review needed"
+			switch {
+			case len(chain.Guards) == 0:
+				chain.Verdict = "unguarded"
+				chain.Confidence = "medium"
+				chain.Reasoning = "no guard-like call found between source and sink"
+			case len(chain.Guards) > 0 && containsEffectiveGuard(chain.Guards):
+				chain.Verdict = "guarded"
+				chain.Confidence = "low"
+				chain.Reasoning = fmt.Sprintf("%d guard-like call(s) found; verify each is effective for this CWE", len(chain.Guards))
+			default:
+				chain.Verdict = "guard-uncertain"
+				chain.Confidence = "low"
+				chain.Reasoning = "guard-shaped calls present but effectiveness unclear; manual review needed"
+			}
 		}
 
 		chains = append(chains, chain)
@@ -291,7 +375,223 @@ func traceFile(fullPath, relPath string, srcRE, sinkRE *regexp.Regexp, maxChains
 		}
 	}
 
-	return chains, nil
+	return chains, len(srcLines), len(sinkLines), nil
+}
+
+// isImportLine reports whether a line is a Python-style import statement
+// (`import X` or `from X import Y`). Whitespace at the start is ignored.
+func isImportLine(line string) bool {
+	t := strings.TrimSpace(line)
+	return strings.HasPrefix(t, "import ") || strings.HasPrefix(t, "from ")
+}
+
+// sqlSinkRE recognizes SQL-execute-shaped sinks where a 2nd positional or
+// keyword argument is the parameter-binding (the actual guard against SQLi).
+// We use this to scope the "2+ args → guarded" heuristic. Non-SQL sinks
+// (yaml.load(x, Loader=...), subprocess.run(cmd, shell=True),
+// flask.redirect(url, code=302), etc.) naturally take kwargs and would be
+// false-positive-guarded under a generic rule.
+var sqlSinkRE = regexp.MustCompile(`(?i)\b(cur|cursor|conn|connection|db|session)\.execute(many)?\b|\bsqlalchemy\.text\b|\bsession\.execute\b`)
+
+// classifySinkArgs inspects the sink line's argument list. It returns:
+//
+//   - "guarded", reason: when the sink call is SQL-shaped AND has >=2
+//     top-level args (parameterized call at sink — binding is the guard).
+//   - "unguarded", reason: when the sink call has exactly 1 top-level arg
+//     and that arg is an f-string or contains string concatenation. This
+//     rule applies to ALL sink classes (an f-string at any sink is a
+//     definite injection signal).
+//   - "", "": when the heuristic cannot decide; the caller should fall back
+//     to legacy guard-list verdict.
+//
+// The "2+ args → guarded" branch is intentionally scoped to SQL sinks: many
+// non-SQL APIs (yaml.load, subprocess.run, flask.redirect) take kwargs that
+// have nothing to do with binding parameters, so a generic 2-arg rule would
+// produce confident-but-wrong "guarded" verdicts. Known limitation: this
+// heuristic does NOT introspect kwargs (e.g. `yaml.load(bar, Loader=...)`
+// is treated as 1-arg-or-unknown rather than parameterized).
+//
+// Argument parsing walks the substring after the first `(` belonging to the
+// sink call, counting commas at paren/bracket/brace depth 1 only, treating
+// quoted strings (including triple-quoted) as opaque. This avoids miscounting
+// commas inside f-strings or nested calls.
+func classifySinkArgs(line string, sinkRE *regexp.Regexp) (string, string) {
+	loc := sinkRE.FindStringIndex(line)
+	if loc == nil {
+		return "", ""
+	}
+	// Find the opening paren of the sink call (the first '(' at or after the
+	// match end).
+	rest := line[loc[1]:]
+	openIdx := strings.Index(rest, "(")
+	if openIdx < 0 {
+		return "", ""
+	}
+	body, ok := extractCallBody(rest[openIdx:])
+	if !ok {
+		return "", ""
+	}
+	args := splitTopLevelArgs(body)
+	// Drop trailing empty arg from a trailing comma.
+	if n := len(args); n > 0 && strings.TrimSpace(args[n-1]) == "" {
+		args = args[:n-1]
+	}
+	matchedSnippet := line[loc[0]:loc[1]]
+	isSQL := sqlSinkRE.MatchString(matchedSnippet)
+	if isSQL && len(args) >= 2 {
+		return "guarded", "parameterized call at sink (>=2 args; binding is the guard)"
+	}
+	if len(args) == 1 {
+		arg := args[0]
+		if looksLikeFString(arg) || hasStringConcat(arg) {
+			return "unguarded", "sink called with a single concatenated/f-string argument"
+		}
+	}
+	return "", ""
+}
+
+// extractCallBody takes a substring starting at '(' and returns the contents
+// between that paren and its matching ')'. It tracks string literals so
+// embedded parens inside quotes don't confuse depth tracking. The second
+// result is false when no matching ')' is found on this line (likely a
+// multi-line call; we conservatively decline to classify).
+func extractCallBody(s string) (string, bool) {
+	if len(s) == 0 || s[0] != '(' {
+		return "", false
+	}
+	depth := 0
+	var i int
+	for i = 0; i < len(s); i++ {
+		c := s[i]
+		switch c {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return s[1:i], true
+			}
+		case '"', '\'':
+			// Skip string literal. Supports triple-quoted forms.
+			end := skipStringLiteral(s, i)
+			if end < 0 {
+				return "", false
+			}
+			i = end
+		}
+	}
+	return "", false
+}
+
+// skipStringLiteral returns the index of the closing quote, or -1 if the
+// string is unterminated on this line. Handles triple-quoted strings and
+// simple backslash escapes inside single-line strings.
+func skipStringLiteral(s string, start int) int {
+	if start >= len(s) {
+		return -1
+	}
+	q := s[start]
+	// Triple-quoted?
+	if start+2 < len(s) && s[start+1] == q && s[start+2] == q {
+		i := start + 3
+		for i+2 < len(s) {
+			if s[i] == q && s[i+1] == q && s[i+2] == q {
+				return i + 2
+			}
+			i++
+		}
+		return -1
+	}
+	for i := start + 1; i < len(s); i++ {
+		if s[i] == '\\' { // escape
+			i++
+			continue
+		}
+		if s[i] == q {
+			return i
+		}
+	}
+	return -1
+}
+
+// splitTopLevelArgs splits a comma-separated argument list at depth-0 commas
+// only. Parens, brackets, and braces increase depth; string literals are
+// treated as opaque.
+func splitTopLevelArgs(body string) []string {
+	var args []string
+	depth := 0
+	start := 0
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		switch c {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		case '"', '\'':
+			end := skipStringLiteral(body, i)
+			if end < 0 {
+				// Unterminated; treat rest as one arg fragment.
+				return append(args, body[start:])
+			}
+			i = end
+		case ',':
+			if depth == 0 {
+				args = append(args, body[start:i])
+				start = i + 1
+			}
+		}
+	}
+	args = append(args, body[start:])
+	return args
+}
+
+// looksLikeFString returns true if the arg starts with an f-string prefix
+// (Python f"..." / f'...' / rf"..." / fr'...').
+func looksLikeFString(arg string) bool {
+	t := strings.TrimSpace(arg)
+	if len(t) < 2 {
+		return false
+	}
+	// Strip leading prefix characters (f, r, b, u, in any order).
+	lower := strings.ToLower(t)
+	prefixEnd := 0
+	for prefixEnd < len(lower) && strings.ContainsRune("frbu", rune(lower[prefixEnd])) {
+		prefixEnd++
+		if prefixEnd > 3 {
+			break
+		}
+	}
+	if prefixEnd == 0 || prefixEnd >= len(t) {
+		return false
+	}
+	if t[prefixEnd] != '"' && t[prefixEnd] != '\'' {
+		return false
+	}
+	// Must contain an 'f' in the prefix to qualify as an f-string.
+	return strings.ContainsAny(lower[:prefixEnd], "f")
+}
+
+// hasStringConcat returns true if the arg contains a top-level `+` outside
+// of string literals. This is a heuristic for `"prefix " + user_var`.
+func hasStringConcat(arg string) bool {
+	for i := 0; i < len(arg); i++ {
+		c := arg[i]
+		if c == '"' || c == '\'' {
+			end := skipStringLiteral(arg, i)
+			if end < 0 {
+				return false
+			}
+			i = end
+			continue
+		}
+		if c == '+' {
+			return true
+		}
+	}
+	return false
 }
 
 // containsEffectiveGuard returns true if any guard looks substantive
@@ -328,28 +628,32 @@ func inferSourceFromFinding(f *finding.Finding) string {
 
 // inferSinkFromFinding tries to extract a sink pattern from a finding's
 // description. We look for "SINK:" lines and fall back to CWE-specific hints.
+// When no CWE-specific class is known, we return the default sink mix so
+// callers running `--from-finding` get reasonable coverage out of the box.
 func inferSinkFromFinding(f *finding.Finding) string {
 	if pat := extractAfter(f.Description, "SINK:"); pat != "" {
 		return regexCleanup(pat)
 	}
-	// Fallback by CWE.
-	switch strings.ToUpper(f.CWE) {
-	case "CWE-89":
-		return `cur\.execute|cursor\.execute|sqlalchemy\.text|db\.session\.execute`
-	case "CWE-78":
-		return `os\.system|subprocess\.|exec\.Command|child_process`
-	case "CWE-94":
-		return `\beval\(|\bexec\(|compile\(|Function\(`
-	case "CWE-643":
-		return `lxml\.etree\.XPath|elementpath\.select|\.xpath\(`
-	case "CWE-79":
-		return `render_template_string|Markup\(|\|safe\b|dangerouslySetInnerHTML`
-	case "CWE-601":
-		return `flask\.redirect|return\s+redirect`
-	case "CWE-22":
-		return `open\(|os\.path\.join|send_from_directory`
+	// Fallback by CWE — reuse the named sink classes so additions there
+	// (e.g. new deserialization formats) automatically flow through.
+	cweToClass := map[string]string{
+		"CWE-89":  "sqli",
+		"CWE-78":  "cmdi",
+		"CWE-94":  "codeexec",
+		"CWE-502": "deserialization",
+		"CWE-611": "xxe",
+		"CWE-643": "xpath",
+		"CWE-90":  "ldap",
+		"CWE-79":  "xss",
+		"CWE-601": "redirect",
+		"CWE-22":  "pathtrav",
 	}
-	return `cur\.execute|os\.system|subprocess\.|\beval\(|\bexec\(`
+	if cls, ok := cweToClass[strings.ToUpper(f.CWE)]; ok {
+		if pat := SinkClassPattern(cls); pat != "" {
+			return pat
+		}
+	}
+	return DefaultSinkPattern()
 }
 
 // extractAfter returns the first non-empty token after the given label on
@@ -385,8 +689,15 @@ func regexCleanup(s string) string {
 func RenderDataflowText(r *DataflowReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## Dataflow Analysis\n\n")
+	// Summary first so callers piping to less|head see the headline.
+	fmt.Fprintf(&b, "Summary: %d sources, %d sinks, %d chains (%d unguarded / %d guarded / %d uncertain)\n\n",
+		r.Summary.Sources, r.Summary.Sinks, r.Summary.Chains,
+		r.Summary.Unguarded, r.Summary.Guarded, r.Summary.Uncertain)
 	fmt.Fprintf(&b, "Source pattern: %s\n", r.Source)
 	fmt.Fprintf(&b, "Sink pattern:   %s\n", r.Sink)
+	if len(r.SinkClasses) > 0 {
+		fmt.Fprintf(&b, "Sink classes:   %s\n", strings.Join(r.SinkClasses, ", "))
+	}
 	if r.File != "" {
 		fmt.Fprintf(&b, "File:           %s\n", r.File)
 	}

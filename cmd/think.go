@@ -227,22 +227,54 @@ var thinkDataflowCmd = &cobra.Command{
 	Long: `Trace source-to-sink data flow within files of the project.
 
 Flags:
-  --source <regex>    Source pattern (e.g. "request\\.form\\.get").
-  --sink <regex>      Sink pattern (e.g. "cur\\.execute").
-  --file <path>       Limit analysis to one file (project-relative).
-  --from-finding ID   Load source/sink/file from finding FIND-XXX.
-  --max-chains N      Cap reported chains per file (default 8).
+  --source <regex>         Source pattern (e.g. "request\\.form\\.get").
+  --sink <regex>           Sink pattern. Overrides --sink-class when set.
+  --sink-class <names>     Comma-separated sink class names (e.g.
+                           "deserialization,xxe,ldap"). Run
+                           "zrok think dataflow --list-sink-classes" to
+                           see available classes. Default: a mix covering
+                           sqli/cmdi/codeexec/deserialization/xxe/xpath/
+                           ldap/redirect/template/xss.
+  --list-sink-classes      Print available sink classes and their
+                           patterns, then exit.
+  --file <path>            Limit analysis to one file (project-relative).
+  --from-finding ID        Load source/sink/file from finding FIND-XXX.
+                           The sink class is inferred from the finding's
+                           CWE when --sink is not given.
+  --max-chains N           Cap reported chains per file (default 8).
 
 The algorithm is intentionally simple: regex-based, intra-file, linear
 between source and sink lines, with guard-shaped calls reported between
 them. Use it to flag candidates, not to prove safety.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if listClasses, _ := cmd.Flags().GetBool("list-sink-classes"); listClasses {
+			classes := think.ListSinkClasses()
+			defaults := map[string]bool{}
+			for _, n := range think.DefaultSinkClasses() {
+				defaults[n] = true
+			}
+			fmt.Println("Available sink classes:")
+			for _, c := range classes {
+				marker := "  "
+				if defaults[c.Name] {
+					marker = "* "
+				}
+				fmt.Printf("%s%-16s %s\n", marker, c.Name, c.Description)
+				for _, p := range c.Patterns {
+					fmt.Printf("    %s\n", p)
+				}
+			}
+			fmt.Println("\n* = included in the default mix.")
+			return
+		}
+
 		p, err := project.EnsureActive()
 		if err != nil {
 			exitError("%v", err)
 		}
 		source, _ := cmd.Flags().GetString("source")
 		sink, _ := cmd.Flags().GetString("sink")
+		sinkClasses, _ := cmd.Flags().GetStringSlice("sink-class")
 		file, _ := cmd.Flags().GetString("file")
 		fromFinding, _ := cmd.Flags().GetString("from-finding")
 		max, _ := cmd.Flags().GetInt("max-chains")
@@ -250,6 +282,7 @@ them. Use it to flag candidates, not to prove safety.`,
 		report, err := think.AnalyzeDataflow(p, think.DataflowOptions{
 			Source:      source,
 			Sink:        sink,
+			SinkClasses: sinkClasses,
 			File:        file,
 			FromFinding: fromFinding,
 			MaxChains:   max,
@@ -309,7 +342,9 @@ func init() {
 	thinkValidateCmd.Flags().Int("context", 10, "Lines of code context around the finding line")
 
 	thinkDataflowCmd.Flags().String("source", "", "Source pattern (regex; e.g. 'request\\.form\\.get')")
-	thinkDataflowCmd.Flags().String("sink", "", "Sink pattern (regex; e.g. 'cur\\.execute')")
+	thinkDataflowCmd.Flags().String("sink", "", "Sink pattern (regex; overrides --sink-class)")
+	thinkDataflowCmd.Flags().StringSlice("sink-class", nil, "Comma-separated sink class names (e.g. 'deserialization,xxe'; see --list-sink-classes)")
+	thinkDataflowCmd.Flags().Bool("list-sink-classes", false, "Print available sink classes and exit")
 	thinkDataflowCmd.Flags().String("file", "", "Limit analysis to one file (project-relative)")
 	thinkDataflowCmd.Flags().String("from-finding", "", "Load source/sink/file from a finding (FIND-XXX)")
 	thinkDataflowCmd.Flags().Int("max-chains", 8, "Cap reported chains per file")
