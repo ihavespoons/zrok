@@ -170,6 +170,36 @@ prompt_template: |
      "
      ```
 
+  ## Per-Agent Target Handoff
+
+  After creating the 6 required shared memories, write one ADDITIONAL memory
+  per applicable analysis agent. Naming convention:
+    zrok memory write <agent>_targets --type context --content "..."
+
+  Where `<agent>` is the agent's short name (injection, security, content,
+  guards, config, references, architecture, ssrf, logging, dependencies,
+  concurrency, resource_exhaustion).
+
+  The `_targets` memory contains a PRIORITIZED LIST of concrete leads for that
+  agent. Each lead has the format:
+
+    - file:line — short description of why this is a target for <agent>'s
+      owned CWEs. Specifically what to look for (sink shape, function name).
+
+  Example (`injection_targets`):
+    - cmd/finding.go:762 — exec.Command("git", "diff", baseRef+"...HEAD"). Check
+      whether baseRef can be controlled to inject git flags (missing -- sentinel
+      = CWE-78 argument injection).
+    - internal/agent/prompt.go:83 — text/template.Parse(config.PromptTemplate)
+      on YAML loaded from project. Malicious YAML can inject template directives
+      (CWE-94 template injection).
+
+  Skip writing a `_targets` memory for an agent if you found zero relevant leads.
+  Cap each target list at 8 entries.
+
+  The analysis agents are required to address every entry in their _targets
+  memory (file it, or write a skipped-with-reason note).
+
   ## Project Context
   {{.ProjectContext}}
 
