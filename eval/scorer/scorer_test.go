@@ -153,6 +153,95 @@ func TestCompareToBaseline_Fail(t *testing.T) {
 	}
 }
 
+func TestCWEMatches_NonStrictParentChild(t *testing.T) {
+	// Non-strict: CWE-330 (parent) should match CWE-338 (child) bidirectionally.
+	if !cweMatches("CWE-330", "CWE-338") {
+		t.Error("CWE-330 should match CWE-338 under non-strict matching")
+	}
+	if !cweMatches("CWE-338", "CWE-330") {
+		t.Error("CWE-338 should match CWE-330 (reverse direction)")
+	}
+}
+
+func TestCWEMatches_AsymmetricEntry(t *testing.T) {
+	// CWE-22 lists CWE-23 as a child; CWE-23 might not reciprocally list
+	// CWE-22. The matcher must still find the relationship in either order.
+	if !cweMatches("CWE-22", "CWE-23") {
+		t.Error("CWE-22 should match CWE-23")
+	}
+	if !cweMatches("CWE-23", "CWE-22") {
+		t.Error("CWE-23 should match CWE-22 (asymmetric lookup)")
+	}
+}
+
+func TestCWEMatches_Identity(t *testing.T) {
+	if !cweMatches("CWE-89", "CWE-89") {
+		t.Error("CWE-89 should match itself")
+	}
+	// CWE not in the equivalence table should still match itself.
+	if !cweMatches("CWE-999999", "CWE-999999") {
+		t.Error("unknown CWE should still match itself")
+	}
+}
+
+func TestCWEMatches_UnrelatedNoMatch(t *testing.T) {
+	if cweMatches("CWE-89", "CWE-79") {
+		t.Error("CWE-89 (SQLi) should not match CWE-79 (XSS)")
+	}
+	if cweMatches("CWE-78", "CWE-89") {
+		t.Error("CWE-78 (cmd injection) should not match CWE-89 (SQLi)")
+	}
+}
+
+func TestCWEMatches_CaseInsensitive(t *testing.T) {
+	if !cweMatches("cwe-89", "CWE-89") {
+		t.Error("lowercase cwe-89 should match CWE-89")
+	}
+	if !cweMatches("Cwe-330", "cwe-338") {
+		t.Error("mixed case CWE strings should match under equivalence table")
+	}
+}
+
+func TestCWEMatches_EmptyInput(t *testing.T) {
+	if cweMatches("", "CWE-89") {
+		t.Error("empty CWE should not match anything")
+	}
+	if cweMatches("CWE-89", "") {
+		t.Error("empty CWE should not match anything (reverse)")
+	}
+}
+
+func TestMatchScore_StrictModeRejectsChildCWE(t *testing.T) {
+	// Strict mode: oracle says CWE-330, finding says CWE-338, files differ.
+	// CWE component must contribute 0.
+	vuln := Vulnerability{ID: "V1", CWE: "CWE-330", File: "rand.py", LineStart: 10, Title: "weak random"}
+	finding := RunFinding{CWE: "CWE-338", Location: Location{File: "other.py", LineStart: 100}, Title: "weak prng"}
+	cfg := MatchingConfig{LineTolerance: 15, CWEExactMatch: true, TitleSimilarityThreshold: 0.3}
+
+	score, _ := matchScore(vuln, finding, cfg)
+	// With nothing else matching and CWE strict-mismatched, score should be 0
+	// (or at most the small title-similarity contribution if any).
+	if score >= 0.4 {
+		t.Errorf("strict mode should not award CWE score for child CWE, got %.2f", score)
+	}
+}
+
+func TestMatchScore_NonStrictModeAcceptsChildCWE(t *testing.T) {
+	// Non-strict mode: oracle says CWE-330, finding says CWE-338. CWE
+	// component should now contribute 0.4 because of the equivalence table.
+	vuln := Vulnerability{ID: "V1", CWE: "CWE-330", File: "rand.py", LineStart: 10, Title: "weak random"}
+	finding := RunFinding{CWE: "CWE-338", Location: Location{File: "other.py", LineStart: 100}, Title: "weak prng"}
+	cfg := MatchingConfig{LineTolerance: 15, CWEExactMatch: false, TitleSimilarityThreshold: 0.3}
+
+	score, method := matchScore(vuln, finding, cfg)
+	if score < 0.4 {
+		t.Errorf("non-strict mode should award CWE score for parent/child, got %.2f", score)
+	}
+	if method != "cwe" {
+		t.Errorf("expected method 'cwe', got %q", method)
+	}
+}
+
 func TestTitleSimilarity(t *testing.T) {
 	tests := []struct {
 		a, b string

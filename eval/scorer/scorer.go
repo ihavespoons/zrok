@@ -288,9 +288,18 @@ func matchScore(vuln Vulnerability, f RunFinding, cfg MatchingConfig) (float64, 
 	score := 0.0
 	method := ""
 
-	// CWE match (strongest signal)
+	// CWE match (strongest signal). When cwe_exact_match is true (legacy /
+	// backward-compatible behavior), require literal string equality. When
+	// false, use the parent/child equivalence table so that, e.g., an oracle
+	// labelled CWE-330 still matches an agent finding labelled CWE-338.
 	if vuln.CWE != "" && f.CWE != "" {
-		if strings.EqualFold(vuln.CWE, f.CWE) {
+		var cweHit bool
+		if cfg.CWEExactMatch {
+			cweHit = strings.EqualFold(vuln.CWE, f.CWE)
+		} else {
+			cweHit = cweMatches(vuln.CWE, f.CWE)
+		}
+		if cweHit {
 			score += 0.4
 			method = "cwe"
 		}

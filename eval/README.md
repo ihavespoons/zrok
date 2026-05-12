@@ -51,6 +51,16 @@ eval/generate-owasp-ground-truth.sh
 | **Confirmed FP** | Findings that match known false-positive test cases (OWASP only) |
 | **Per-vuln detection rate** | How often each vulnerability is found across runs |
 
+### CWE matching
+
+By default the scorer treats well-known CWE parent/child relationships as
+equivalent (for example an agent finding tagged `CWE-338` matches an oracle
+vulnerability tagged `CWE-330`). This avoids penalising recall when the agent
+files a more specific child CWE than the oracle's parent. Set
+`cwe_exact_match: true` in the ground-truth manifest's `matching:` block to
+disable the equivalence table and require literal CWE string equality. The
+equivalence table lives in `eval/scorer/cwe_relations.go`.
+
 ## Scorer CLI
 
 ```bash
