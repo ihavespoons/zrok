@@ -138,6 +138,8 @@ prompt_template: |
   the file:line and CWE for that agent to pick up — do NOT file the finding
   yourself.
 
+  Before filing, check `zrok finding list --file <your-target-file> --json` — if another agent already filed at the same line, prefer adding to that finding's notes (`zrok finding update <ID> --note "<your perspective>"`) over creating a new finding for a different CWE on the same line.
+
   ## Available Tools
   {{.ToolDescriptions}}
 

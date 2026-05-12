@@ -27,8 +27,13 @@ cwe_checklist:
       - "BAD: trusting a substring check like `if '..' not in path` for traversal defense (still bypassable)"
       - "BAD: relying on client-side validation only"
       - "GOOD: pydantic models, marshmallow schemas, or explicit type+range checks at the boundary"
+      - "NOT-A-FINDING: bar = lst[0] where lst = ['safe', param, 'moresafe'] and then lst.pop(0). After pop(0), lst[0] == param — but if subsequent ops break the alias (re-assign lst, slice into a new list, pop again) the sink may not see taint. WALK THE ACTUAL OPS; do not file based on the initial taint alone."
+      - "NOT-A-FINDING: bar = conf.get('section', 'keyA-XXX') when only the value at 'keyB-XXX' was tainted — these are DIFFERENT KEYS. Confirm key identity exactly."
+      - "NOT-A-FINDING: bar = map[key] when `key` is a hardcoded literal and the map's hardcoded slot holds a safe constant (e.g. 'a_Value'). configparser/dict lookups by hardcoded key return non-tainted values."
+      - "NOT-A-FINDING: `eval('abc')` returns the string 'abc' — a guard requiring single-quoted plain literal is functionally preventing RCE, not cosmetic."
     flow_patterns:
       - "SOURCE: user input -> GUARD: validation check -> SINK: business logic"
+      - "REQUIRED TRACE: SOURCE line (exact) -> every reassignment of the tainted var -> SINK line (exact). If you cannot enumerate this chain end-to-end with line numbers, the finding is unsupported."
     negative_pattern: |
       from pydantic import BaseModel, conint
       class Req(BaseModel):
@@ -132,6 +137,8 @@ prompt_template: |
   the file:line and CWE for that agent to pick up — do NOT file the finding
   yourself.
 
+  Before filing, check `zrok finding list --file <your-target-file> --json` — if another agent already filed at the same line, prefer adding to that finding's notes (`zrok finding update <ID> --note "<your perspective>"`) over creating a new finding for a different CWE on the same line.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
@@ -145,6 +152,14 @@ prompt_template: |
   {{if .FewShotExamples}}
   {{.FewShotExamples}}
   {{end}}
+  ### CWE-20 / "missing validation" evidence requirements
+  Before filing a CWE-20 "missing validation" finding, you MUST:
+    1. Identify the SPECIFIC source line that introduces taint (e.g. `param = request.form.get(...)`)
+    2. Trace the taint forward through every reassignment until the sink
+    3. Confirm at the sink the variable carrying taint is the SAME variable used in the dangerous call
+    4. Cite the EXACT line numbers of source, each intermediate assignment, AND sink in your description
+  If any of those steps fails (taint diverted into a different variable, constant-folded branch makes assignment dead code, key/index lookup goes to a hardcoded slot), DO NOT file. Write a memory note for review.
+
   ## Contrastive Guard Patterns (Python)
 
   These examples are written for Python (the dominant language in the OWASP
@@ -205,6 +220,41 @@ prompt_template: |
   ALLOWED = {"app.example.com", "auth.example.com"}
   if urlparse(url).netloc in ALLOWED:
       return redirect(url)
+  ```
+
+  ### CWE-20: "no validation" vs "validation absent but taint also absent"
+
+  ```python
+  # TRUE POSITIVE - genuine "no validation"
+  # SOURCE: line 1, raw tainted value
+  uid = request.args.get("uid")        # line 1: taint enters
+  # No type/range/format check
+  row = db.execute(f"SELECT * FROM u WHERE id={uid}")  # line 3: same var at sink
+  # Trace: uid (L1) -> uid (L3, unchanged) -> SINK. File CWE-20 (and refer the
+  # SQLi to injection-agent via memory).
+  ```
+
+  ```python
+  # FALSE POSITIVE - "validation absent but taint also absent"
+  # The variable read at the sink is NOT the tainted one.
+  conf = configparser.ConfigParser()
+  conf.read("settings.ini")
+  param = request.args.get("p")        # line 3: taint enters here, into `param`
+  conf["sect"]["keyB-8812"] = param    # line 4: taint stored under keyB-8812
+  bar = conf["sect"]["keyA-7701"]      # line 5: reads a DIFFERENT key — `bar` is NOT tainted
+  do_thing(bar)                        # line 6: sink uses non-tainted value
+  # Trace breaks at L5: lookup key 'keyA-7701' != stored key 'keyB-8812'.
+  # DO NOT file CWE-20 on `do_thing(bar)`. Optional: write a memory note flagging
+  # the unrelated `param` taint write for review.
+  ```
+
+  ```python
+  # FALSE POSITIVE - guard looks cosmetic but actually prevents RCE
+  if bar.startswith("'") and bar.endswith("'") and "'" not in bar[1:-1]:
+      eval(bar)  # bar is a single-quoted plain literal — eval('abc') returns 'abc'
+  # The guard restricts `bar` to a plain string literal; eval cannot execute code.
+  # DO NOT file "weak guard / missing validation". File only if the guard can be
+  # bypassed to inject expressions (e.g. allows backslash escapes, concatenation).
   ```
 
   ## Analysis Approach
