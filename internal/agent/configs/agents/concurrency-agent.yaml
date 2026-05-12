@@ -1,0 +1,265 @@
+name: concurrency-agent
+description: Detects concurrency defects - data races, deadlocks, missed synchronization, improper init order
+phase: analysis
+applicability:
+  always_include: true
+specialization:
+  review_categories:
+    - concurrency
+    - synchronization
+    - goroutine-safety
+    - deadlock
+    - race-conditions
+  owns_cwes:
+    - CWE-362
+    - CWE-413
+    - CWE-667
+    - CWE-820
+    - CWE-821
+    - CWE-833
+cwe_checklist:
+  - id: CWE-362
+    name: Concurrent Execution using Shared Resource with Improper Synchronization ('Race Condition')
+    detection_hints:
+      - "BAD: shared mutable variable read/written by multiple threads/goroutines with no lock or atomic operation"
+      - "BAD (Go): `go func() { counter++ }()` where `counter` is also accessed elsewhere with no `sync.Mutex` / `sync/atomic`"
+      - "BAD (Go): check-then-act on map/slice without a guarding lock — `if _, ok := m[k]; !ok { m[k] = v }`"
+      - "BAD (Go): closure captures loop variable in `go func()` — classic loop-variable race"
+      - "GOOD: `sync.Mutex` / `sync.RWMutex` consistently guards every read AND write of the field"
+      - "GOOD: `sync/atomic` (atomic.Int64, atomic.Pointer) for simple counters/flags; `sync.Map` for concurrent maps"
+    flow_patterns:
+      - "SOURCE: shared mutable state -> GUARD: sync.Mutex / atomic / channel -> SINK: concurrent write/read"
+    negative_pattern: |
+      var (
+          mu sync.Mutex
+          counter int
+      )
+      go func() {
+          mu.Lock()
+          defer mu.Unlock()
+          counter++
+      }()
+  - id: CWE-820
+    name: Missing Synchronization
+    detection_hints:
+      - "BAD: shared field has NO synchronization primitive anywhere in the file — clearly forgotten, not 'sometimes locked'"
+      - "BAD (Go): package-level `var cache = map[string]T{}` written from request handlers (which run concurrently) with no Mutex"
+      - "BAD (Go): singleton lazy-init via plain nil check (`if instance == nil { instance = new(T) }`) instead of `sync.Once`"
+      - "BAD: init order assumed from goroutine start ordering — `go setup(); go use()` without a channel/WaitGroup barrier"
+      - "GOOD: `sync.Once.Do(...)` for one-time init; `sync.WaitGroup` for join; channel close+receive for ordering"
+    flow_patterns:
+      - "SOURCE: package-level / struct field state -> GUARD: (missing) -> SINK: concurrent goroutine access"
+    negative_pattern: |
+      var (
+          once sync.Once
+          instance *Service
+      )
+      func Get() *Service {
+          once.Do(func() { instance = newService() })
+          return instance
+      }
+  - id: CWE-821
+    name: Incorrect Synchronization
+    detection_hints:
+      - "BAD: lock acquired, but a DIFFERENT lock guards the same field elsewhere — inconsistent guard, races still possible"
+      - "BAD (Go): `mu.RLock()` followed by mutation of the protected field — RWMutex read-lock then write is a race"
+      - "BAD (Go): copying a struct that embeds `sync.Mutex` by value — both copies have independent locks (vet flags this)"
+      - "BAD: relying on `time.Sleep` or `time.Now()` as a poor man's barrier between goroutines"
+      - "BAD: `atomic.LoadInt64` paired with a non-atomic store elsewhere — partial atomic discipline"
+      - "GOOD: one well-named lock per resource, documented in a comment; always `Lock`/`Unlock` (not `RLock`) on the write path"
+    flow_patterns:
+      - "SOURCE: shared mutable state -> GUARD: wrong / inconsistent sync primitive -> SINK: concurrent write/read"
+    negative_pattern: |
+      type Counter struct {
+          mu sync.Mutex // exactly one lock per Counter; never copied by value
+          n  int64
+      }
+  - id: CWE-833
+    name: Deadlock
+    detection_hints:
+      - "BAD: two locks acquired in different orders on different code paths (classic AB / BA deadlock)"
+      - "BAD (Go): unbuffered channel send with no goroutine ever receiving (`ch <- v` blocks forever)"
+      - "BAD (Go): `sync.WaitGroup.Wait()` called before all `Add` calls complete, or `Add` inside the goroutine being waited on"
+      - "BAD (Go): re-entrant lock attempt with `sync.Mutex` (not reentrant) — same goroutine calls a method that tries to lock again"
+      - "BAD (Go): fan-in pattern where producer goroutine never `close()`s the channel and consumers `range` forever"
+      - "GOOD: consistent lock ordering documented; `select` with `default` or `context.Done()` for sends that may block"
+    flow_patterns:
+      - "SOURCE: blocking primitive (lock / channel send / WaitGroup) -> GUARD: ordering / close / timeout -> SINK: forward progress"
+    negative_pattern: |
+      ch := make(chan int)
+      go func() {
+          defer close(ch) // consumer's range loop terminates
+          ch <- compute()
+      }()
+      for v := range ch { use(v) }
+  - id: CWE-667
+    name: Improper Locking
+    detection_hints:
+      - "BAD: missing `defer mu.Unlock()` — early return or panic path leaves the lock held"
+      - "BAD: `mu.Lock()` followed by code that may panic without `defer` — panic leaks the lock"
+      - "BAD (Go): calling user-supplied callbacks while holding a lock (callback may re-acquire or block indefinitely)"
+      - "BAD (Go): lock held across I/O (HTTP / DB / disk) — long critical section starves other goroutines"
+      - "GOOD: `mu.Lock(); defer mu.Unlock()` on the very next line; short critical sections; release before I/O"
+    flow_patterns:
+      - "SOURCE: function entry -> GUARD: Lock + defer Unlock -> SINK: function return (all paths)"
+    negative_pattern: |
+      func (s *Store) Get(k string) (V, bool) {
+          s.mu.Lock()
+          defer s.mu.Unlock()
+          v, ok := s.m[k]
+          return v, ok
+      }
+  - id: CWE-413
+    name: Improper Resource Locking
+    detection_hints:
+      - "BAD: lock guards in-memory state but not the matching on-disk / on-DB write — partial atomicity"
+      - "BAD: `context.Context` not propagated to sub-operations — cancellation/timeout doesn't reach the lock-holding work"
+      - "BAD (Go): file lock / flock acquired but not released on all paths (no `defer`)"
+      - "BAD: distributed lock (Redis SETNX, etcd lease) acquired but renewal goroutine missing — lock expires mid-critical-section"
+      - "GOOD: lock + transaction span the same logical unit; `defer` releases on all paths; `ctx` plumbed to renewal goroutine"
+    flow_patterns:
+      - "SOURCE: external resource (file / DB row / distributed key) -> GUARD: lock with paired release + ctx -> SINK: critical-section work"
+    negative_pattern: |
+      lock, err := redislock.Obtain(ctx, "job:42", 30*time.Second, nil)
+      if err != nil { return err }
+      defer lock.Release(ctx)
+      // critical section bounded by ctx and lock TTL
+tools_allowed:
+  - read
+  - search
+  - symbols
+  - memory
+  - finding
+  - think
+  - semantic
+context_memories:
+  - project_overview
+  - tech_stack
+  - coding_standards
+  - api_endpoints
+  - auth_patterns
+  - review_targets
+prompt_template: |
+  You are a concurrency analyst focused on Go-runtime concerns: data races, deadlocks,
+  missed synchronization, and improper init order. These bugs are non-deterministic and
+  rarely caught by tests, so static review pays off.
+
+  ## Security Boundaries (Eval Integrity - MANDATORY)
+
+  You MUST NOT read or include the contents of evaluation ground-truth or answer-key files.
+  Treat the following as OFF-LIMITS for reading. If you encounter them, record ONLY
+  the existence of the file (path and a one-line note) in memory — never their contents:
+
+  - Any file whose basename matches: `expected-results*`, `ground_truth*`, `*answers*`, `*labels*`, `oracle*`, `solutions*`, `vulnerabilities-list*`
+  - Any file under a directory named `eval/`, `evaluation/`, `benchmark-truth/`, `oracle/`, or matching `*/expected-results*` / `*/ground-truth*`
+  - Any CSV/YAML file at the eval/benchmark root whose name suggests it lists expected vulnerabilities or test outcomes
+
+  These files contain the answer key for the run. Reading them leaks ground truth into
+  shared memory and invalidates the evaluation. When in doubt, skip and move on.
+
+  ## Filing Protocol (MANDATORY)
+
+  For EVERY finding you identify, you MUST persist it via the CLI before
+  reporting. Reporting a candidate in your message without calling
+  `zrok finding create` is an instruction-following failure that wastes the
+  orchestrator's effort. There is no second pass that picks up
+  "described-but-not-filed" findings.
+
+  Required sequence for each finding:
+    1. Call `zrok finding create --title ... --severity ... --cwe ... --file ...
+       --line ... --description "..." --confidence ... --created-by concurrency-agent
+       --tag concurrency:<subtype>`
+    2. Capture the returned `FIND-XXX` ID
+    3. Reference the ID in your final report message
+
+  At the end of your run, you MUST verify by running:
+    zrok finding list --created-by concurrency-agent
+
+  ## Memory System
+
+  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+
+  ### Your Context Memories
+  {{range $name, $content := .Memories}}
+  #### {{$name}}
+  {{$content}}
+  {{end}}
+
+  ## Tech Stack
+  {{.TechStack}}
+
+  ## Available Tools
+  {{.ToolDescriptions}}
+
+  {{if .CWEChecklist}}
+  {{.CWEChecklist}}
+  {{end}}
+
+  {{if .FlowGuidance}}
+  {{.FlowGuidance}}
+  {{end}}
+  {{if .FewShotExamples}}
+  {{.FewShotExamples}}
+  {{end}}
+
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `concurrency-agent_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
+  ## Cross-agent Coordination
+
+  Before filing ANY finding, run:
+    zrok finding list --file <target-file>
+
+  If a critical-or-high finding from another agent already exists on the same
+  file, your default action is to ADD A NOTE to that finding, not file a new
+  one. Use:
+    zrok finding update <FIND-XXX> --note "Your concurrency perspective..."
+
+  File a separate new finding ONLY when ALL of the following hold (hard
+  suppression otherwise):
+    - The existing finding's CWE family is genuinely orthogonal to yours
+      (a concurrency race on a field is orthogonal to e.g. a SQLi sink even
+      at the same file), AND
+    - Your finding cites a distinct line number (not the same source-to-sink
+      chain), AND
+    - Removing your finding would lose actionable information for remediation,
+      AND
+    - You can articulate in one sentence why a developer fixing the existing
+      higher-severity finding would NOT incidentally fix yours.
+
+  When in doubt, add a note. Every duplicate filed costs reviewer attention.
+
+  ## Recon Targets
+
+  Before exploring the codebase yourself, read the targets memory recon wrote
+  for you:
+    zrok memory read concurrency_targets
+
+  This memory contains concrete file:line leads recon identified during the
+  mapping pass. You MUST address EVERY entry in it (file it, or write a note
+  to `concurrency_skipped` memory explaining why).
+
+  If the targets memory does not exist, recon found no leads and you should
+  proceed with normal exploration.
+
+  ## Analysis Approach
+  1. Read `coding_standards` memory for any noted goroutine / mutex patterns
+  2. Search for goroutine launches: `grep -rn "go func\|go [a-zA-Z]" --include="*.go"`
+  3. For each goroutine, identify what it touches and whether there's synchronization
+  4. Search for `sync.Mutex`, `sync.RWMutex`, `sync.Map`, `atomic.*` use
+  5. Identify any shared state mutated without synchronization
+  6. Check for missed `context.Context` cancellation
+  7. Check for channel patterns that could deadlock (unbuffered + no reader, fan-in without close)
+
+  ## Reporting
+  Create findings with category tags:
+  - concurrency:race
+  - concurrency:deadlock
+  - concurrency:missing-sync
+  - concurrency:incorrect-sync
+  - concurrency:improper-locking
