@@ -123,8 +123,8 @@ cwe_checklist:
       - "GOOD: argon2.PasswordHasher().hash(password) (argon2-cffi)"
       - "GOOD: passlib.hash.argon2.hash(password) / passlib.hash.bcrypt.hash(password)"
       - "GOOD: hashlib.scrypt or hashlib.pbkdf2_hmac with high iteration count (>=600k for SHA-256)"
-      - "NOT-A-FINDING: hashlib.new('sha384').update(b'Sensitive value') — generic data, not a password. SHA-384 is fine for non-password integrity."
-      - "NOT-A-FINDING: hashlib.sha512(arbitrary_data) — no password context."
+      - "NOT-A-FINDING: fast hash applied to non-credential data — no variable named `password`/`passwd`/`pwd`/`secret`/`credential`/`passphrase` in scope, no auth-store write, no password-related comment or docstring. SHA-2 family (256/384/512) is fine for general integrity, content addressing, signing inputs, etc. Without password context this is not CWE-916."
+      - "NOT-A-FINDING: fast hash inside a documented KDF wrapper — `hashlib.pbkdf2_hmac(...)`, `hashlib.scrypt(...)`, or any bcrypt/argon2 wrapper that internally uses a fast hash."
     flow_patterns:
       - "SOURCE: user password -> GUARD: hashing algorithm -> SINK: password storage"
     negative_pattern: |
@@ -276,10 +276,11 @@ prompt_template: |
        - A custom HMAC chain with no `iterations` parameter
        - Direct use of `hashlib.new('any_fast_algorithm')` without KDF wrapping
 
-  If condition (1) is NOT met (the hash applies to arbitrary "Sensitive value"
-  or non-credential data), this is NOT a CWE-916 finding — it may be CWE-327
-  (broken/risky crypto) if the algorithm is weak (MD5/SHA-1), or it may be no
-  finding at all (SHA-256+ is acceptable for general integrity use).
+  If condition (1) is NOT met (the hash applies to non-credential data — file
+  contents, generic strings, content-addressable identifiers, etc.), this is
+  NOT a CWE-916 finding — it may be CWE-327 (broken/risky crypto) if the
+  algorithm is weak (MD5/SHA-1), or it may be no finding at all (SHA-256+ is
+  acceptable for general integrity use).
 
   ## Analysis Approach
   1. Read auth_patterns and api_endpoints memories first

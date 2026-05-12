@@ -27,11 +27,10 @@ cwe_checklist:
       - "BAD: trusting a substring check like `if '..' not in path` for traversal defense (still bypassable)"
       - "BAD: relying on client-side validation only"
       - "GOOD: pydantic models, marshmallow schemas, or explicit type+range checks at the boundary"
-      - "NOT-A-FINDING: bar = lst[0] where lst = ['safe', param, 'moresafe'] and then lst.pop(0). After pop(0), lst[0] == param — but if subsequent ops break the alias (re-assign lst, slice into a new list, pop again) the sink may not see taint. WALK THE ACTUAL OPS; do not file based on the initial taint alone."
-      - "NOT-A-FINDING: bar = conf.get('section', 'keyA-XXX') when only the value at 'keyB-XXX' was tainted — these are DIFFERENT KEYS. Confirm key identity exactly."
-      - "NOT-A-FINDING: bar = map[key] when `key` is a hardcoded literal and the map's hardcoded slot holds a safe constant (e.g. 'a_Value'). configparser/dict lookups by hardcoded key return non-tainted values."
-      - "NOT-A-FINDING: `eval('abc')` returns the string 'abc' — a guard requiring single-quoted plain literal is functionally preventing RCE, not cosmetic."
-      - "NOT-A-FINDING: file already has a CWE-89/643/611 finding at the same source-to-sink path; the CWE-20 view duplicates the injection-class root cause."
+      - "NOT-A-FINDING: aliasing / index drift — the sink variable does NOT hold the tainted value because a list/dict/object operation between source and sink rebinds it (slice, pop, dict lookup by different key, attribute reassignment). Walk every assignment literally; do not file based on the initial taint alone."
+      - "NOT-A-FINDING: short-circuit or constant-folded branch — the path that assigns tainted input to the sink variable is unreachable at runtime because the controlling condition evaluates to a constant. Verify the branch actually executes before filing."
+      - "NOT-A-FINDING: type-narrowing guard — a guard that restricts input to a non-executable shape (numeric range, fixed-format token, plain string literal with no metacharacters) genuinely prevents the sink from executing attacker logic, even if the check looks superficial. Only file if the guard can be bypassed to inject expressions."
+      - "NOT-A-FINDING: the same file already has a critical/high finding from another agent (CWE-89/643/611/94/78/90) at the same source-to-sink path; the CWE-20 view is subsumed by the injection-class root cause — add a perspective note instead."
     flow_patterns:
       - "SOURCE: user input -> GUARD: validation check -> SINK: business logic"
       - "REQUIRED TRACE: SOURCE line (exact) -> every reassignment of the tainted var -> SINK line (exact). If you cannot enumerate this chain end-to-end with line numbers, the finding is unsupported."
@@ -278,24 +277,24 @@ prompt_template: |
   ```python
   # FALSE POSITIVE - "validation absent but taint also absent"
   # The variable read at the sink is NOT the tainted one.
-  conf = configparser.ConfigParser()
-  conf.read("settings.ini")
-  param = request.args.get("p")        # line 3: taint enters here, into `param`
-  conf["sect"]["keyB-8812"] = param    # line 4: taint stored under keyB-8812
-  bar = conf["sect"]["keyA-7701"]      # line 5: reads a DIFFERENT key — `bar` is NOT tainted
-  do_thing(bar)                        # line 6: sink uses non-tainted value
-  # Trace breaks at L5: lookup key 'keyA-7701' != stored key 'keyB-8812'.
-  # DO NOT file CWE-20 on `do_thing(bar)`. Optional: write a memory note flagging
-  # the unrelated `param` taint write for review.
+  cache = {}
+  param = request.args.get("p")    # line 2: taint enters here, into `param`
+  cache["written_key"] = param     # line 3: taint stored under "written_key"
+  bar = cache["read_key"]          # line 4: reads a DIFFERENT key — `bar` is NOT tainted
+  do_thing(bar)                    # line 5: sink uses non-tainted value
+  # Trace breaks at L4: lookup key != stored key.
+  # DO NOT file CWE-20 on `do_thing(bar)`. The same shape applies to configparser,
+  # environment dicts, or any keyed lookup where the read key is a constant.
   ```
 
   ```python
-  # FALSE POSITIVE - guard looks cosmetic but actually prevents RCE
-  if bar.startswith("'") and bar.endswith("'") and "'" not in bar[1:-1]:
-      eval(bar)  # bar is a single-quoted plain literal — eval('abc') returns 'abc'
-  # The guard restricts `bar` to a plain string literal; eval cannot execute code.
-  # DO NOT file "weak guard / missing validation". File only if the guard can be
-  # bypassed to inject expressions (e.g. allows backslash escapes, concatenation).
+  # FALSE POSITIVE - guard looks superficial but actually prevents the sink
+  # A guard that constrains input to a non-executable SHAPE neutralizes the sink
+  # even if it isn't the "canonical" defense for that CWE.
+  if re.fullmatch(r"\d+", value):
+      eval(value)  # value is digits only — eval("42") returns the int 42
+  # DO NOT file "weak/missing validation". File only if the guard can be bypassed
+  # to inject expressions (e.g. permits operators, identifiers, or escape chars).
   ```
 
   ## Analysis Approach

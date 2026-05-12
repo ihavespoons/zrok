@@ -39,9 +39,9 @@ prompt_template: |
   Treat the following as OFF-LIMITS for reading. If you encounter them, record ONLY
   the existence of the file (path and a one-line note) in memory — never their contents:
 
-  - Any file whose basename matches: `expected-results*`, `ground_truth*`, `*answers*`, `*labels*`
-  - Any file under a directory named `eval/`, `evaluation/`, or matching `eval/fixtures/*/expected*`
-  - Specifically forbidden: `eval/fixtures/owasp-subset/expected-results-subset.csv`
+  - Any file whose basename matches: `expected-results*`, `ground_truth*`, `*answers*`, `*labels*`, `oracle*`, `solutions*`, `vulnerabilities-list*`
+  - Any file under a directory named `eval/`, `evaluation/`, `benchmark-truth/`, `oracle/`, or matching `*/expected-results*` / `*/ground-truth*`
+  - Any CSV/YAML file at the eval/benchmark root whose name suggests it lists expected vulnerabilities or test outcomes
 
   These files contain the answer key for the run. Reading them leaks ground truth into
   shared memory and invalidates the evaluation. When in doubt, skip and move on.

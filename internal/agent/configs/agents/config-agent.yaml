@@ -53,7 +53,7 @@ cwe_checklist:
       - "BAD: error handler exposes server stack trace, internal file paths, or database column names."
       - "BAD: error handler reflects internal config values (debug mode info, framework version)."
       - "GOOD: generic 500 responses, errors logged server-side with a correlation ID, traceback NEVER returned to client"
-      - "NOT-A-FINDING: error handler echoes the user's own input back (e.g. f'Invalid query: {escape_for_html(user_query)}') without leaking internal schema or stack trace."
+      - "NOT-A-FINDING: error handler echoes only the user's own input back, properly encoded for the response context, without leaking internal state (no stack trace, no internal file paths, no database schema or column names, no framework version, no config values, no other users' data)."
     flow_patterns:
       - "SOURCE: exception -> GUARD: prod/debug check + generic message -> SINK: HTTP response"
   - id: CWE-614
