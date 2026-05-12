@@ -33,6 +33,19 @@ prompt_template: |
   - Entry points and boundaries
   - Areas requiring deeper security review
 
+  ## Security Boundaries (Eval Integrity - MANDATORY)
+
+  You MUST NOT read or include the contents of evaluation ground-truth or answer-key files.
+  Treat the following as OFF-LIMITS for reading. If you encounter them, record ONLY
+  the existence of the file (path and a one-line note) in memory — never their contents:
+
+  - Any file whose basename matches: `expected-results*`, `ground_truth*`, `*answers*`, `*labels*`, `oracle*`, `solutions*`, `vulnerabilities-list*`
+  - Any file under a directory named `eval/`, `evaluation/`, `benchmark-truth/`, `oracle/`, or matching `*/expected-results*` / `*/ground-truth*`
+  - Any CSV/YAML file at the eval/benchmark root whose name suggests it lists expected vulnerabilities or test outcomes
+
+  These files contain the answer key for the run. Reading them leaks ground truth into
+  shared memory and invalidates the evaluation. When in doubt, skip and move on.
+
   ## CRITICAL: Memory Creation
 
   You MUST create memories to share your discoveries with other agents.
@@ -156,6 +169,36 @@ prompt_template: |
      [Why each area was flagged]
      "
      ```
+
+  ## Per-Agent Target Handoff
+
+  After creating the 6 required shared memories, write one ADDITIONAL memory
+  per applicable analysis agent. Naming convention:
+    zrok memory write <agent>_targets --type context --content "..."
+
+  Where `<agent>` is the agent's short name (injection, security, content,
+  guards, config, references, architecture, ssrf, logging, dependencies,
+  concurrency, resource_exhaustion).
+
+  The `_targets` memory contains a PRIORITIZED LIST of concrete leads for that
+  agent. Each lead has the format:
+
+    - file:line — short description of why this is a target for <agent>'s
+      owned CWEs. Specifically what to look for (sink shape, function name).
+
+  Example (`injection_targets`):
+    - cmd/finding.go:762 — exec.Command("git", "diff", baseRef+"...HEAD"). Check
+      whether baseRef can be controlled to inject git flags (missing -- sentinel
+      = CWE-78 argument injection).
+    - internal/agent/prompt.go:83 — text/template.Parse(config.PromptTemplate)
+      on YAML loaded from project. Malicious YAML can inject template directives
+      (CWE-94 template injection).
+
+  Skip writing a `_targets` memory for an agent if you found zero relevant leads.
+  Cap each target list at 8 entries.
+
+  The analysis agents are required to address every entry in their _targets
+  memory (file it, or write a skipped-with-reason note).
 
   ## Project Context
   {{.ProjectContext}}

@@ -1,3 +1,21 @@
+# Agent YAML schema notes (also applies to other analysis agents):
+#
+#   specialization.owns_cwes: list of CWE IDs this agent is authoritatively
+#     responsible for filing findings against. CWEs outside this list should
+#     be passed to the owning agent via a memory, not a duplicate finding.
+#
+#   cwe_checklist[*].detection_hints: free-text hints. Prefer concrete bad sinks
+#     (e.g. `hashlib.md5`) and, where useful, concrete good sinks (e.g.
+#     `bcrypt.hashpw`) on the same list so the model sees both.
+#
+#   cwe_checklist[*].flow_patterns: SOURCE -> GUARD -> SINK templates.
+#
+#   cwe_checklist[*].negative_pattern: OPTIONAL example of *correct* code for
+#     this CWE class (counter-example to detection_hints). NOTE: this field is
+#     captured here for reviewer reference; if you want a pattern to reliably
+#     reach the model prompt, also include it in detection_hints since the
+#     current renderer only emits detection_hints and flow_patterns.
+#
 name: security-agent
 description: Reviews common security concerns - authentication, authorization, cryptography, and secrets
 phase: analysis
@@ -17,6 +35,21 @@ specialization:
     - "A01:2021"
     - "A02:2021"
     - "A07:2021"
+  # owns_cwes: authoritative CWE ownership. Only file findings for these CWEs.
+  # If you discover a vuln outside this list, write a memory for the right agent
+  # rather than filing a finding (avoids duplicate findings across agents).
+  # NOTE: CWE-614 (cookie security) was deferred to config-agent since it is a
+  # configuration concern; security-agent owns the rest of A01/A02/A07.
+  owns_cwes:
+    - CWE-287
+    - CWE-327
+    - CWE-328
+    - CWE-330
+    - CWE-338
+    - CWE-613
+    - CWE-798
+    - CWE-862
+    - CWE-916
 cwe_checklist:
   - id: CWE-287
     name: Improper Authentication
@@ -35,31 +68,94 @@ cwe_checklist:
   - id: CWE-327
     name: Use of Broken Crypto Algorithm
     detection_hints:
-      - "Use of MD5, SHA1, DES, or RC4 for security purposes"
-      - "Custom cryptographic implementations"
+      - "BAD: Crypto.Cipher.DES, Crypto.Cipher.ARC4, pycryptodome DES/3DES/RC4"
+      - "BAD: ssl.PROTOCOL_SSLv2/SSLv3/TLSv1, ssl.PROTOCOL_TLSv1_1"
+      - "BAD: hashlib.md5/sha1 used for integrity or signing"
+      - "GOOD: AES-GCM (Crypto.Cipher.AES with MODE_GCM), AES-CBC + HMAC, ChaCha20-Poly1305"
+      - "GOOD: cryptography.hazmat.primitives.ciphers.aead.AESGCM / ChaCha20Poly1305"
+      - "Custom cryptographic implementations of standard primitives"
     flow_patterns:
       - "SOURCE: sensitive data -> GUARD: algorithm choice -> SINK: encrypted storage/transmission"
+    negative_pattern: |
+      from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+      key = AESGCM.generate_key(bit_length=256)
+      AESGCM(key).encrypt(nonce, plaintext, associated_data)
+  - id: CWE-328
+    name: Use of Weak Hash
+    detection_hints:
+      - "BAD: hashlib.md5(), hashlib.sha1(), hashlib.new('md5'), hashlib.new('sha1') for integrity, signing, or identity"
+      - "BAD: MD5/SHA1 hex digests used as security tokens or de-duplication keys for security purposes"
+      - "GOOD: hashlib.sha256 / sha512 / blake2b for general-purpose hashing"
+    flow_patterns:
+      - "SOURCE: sensitive data -> GUARD: hash algorithm choice -> SINK: integrity check / signature"
+    negative_pattern: |
+      import hashlib
+      digest = hashlib.sha256(data).hexdigest()
   - id: CWE-798
     name: Use of Hard-coded Credentials
     detection_hints:
-      - "Passwords, tokens, or API keys in source code"
-      - "Connection strings with embedded credentials"
+      - "BAD: hard-coded passwords, API keys, tokens, AWS secret keys, JWT secrets in source"
+      - "BAD: connection strings like 'postgres://user:password@host/db' with literal credentials"
+      - "BAD: assignment patterns like `API_KEY = \"sk-...\"`, `password = \"admin123\"`"
+      - "GOOD: os.environ['SECRET'], os.getenv('SECRET'), boto3 secrets manager, HashiCorp Vault clients"
+      - "GOOD: secrets loaded from .env via python-dotenv at startup, never committed"
     flow_patterns:
       - "SOURCE: hardcoded string -> SINK: authentication call or config"
+    negative_pattern: |
+      import os
+      api_key = os.environ["STRIPE_API_KEY"]  # injected by deployment, never literal
   - id: CWE-613
     name: Insufficient Session Expiration
     detection_hints:
-      - "Sessions that never expire or have excessively long timeouts"
+      - "Sessions that never expire or have excessively long timeouts (>24h for sensitive apps)"
       - "Missing session invalidation on logout or password change"
+      - "BAD: PERMANENT_SESSION_LIFETIME unset in Flask, SESSION_COOKIE_AGE = None / very large in Django"
     flow_patterns:
       - "SOURCE: session creation -> GUARD: expiry check -> SINK: session validation"
   - id: CWE-916
     name: Use of Password Hash With Insufficient Effort
     detection_hints:
-      - "Use of fast hashes (MD5, SHA) for password storage"
-      - "Missing salt or insufficient iteration count"
+      - "BAD: hashlib.md5(password), hashlib.sha1(password), hashlib.sha256(password) used directly to store passwords"
+      - "BAD: hashlib.new('md5', password), hashlib.new('sha1', password)"
+      - "BAD: unsalted hashes or static/global salts"
+      - "BAD: password_hash = hashlib.sha256(password.encode()).hexdigest() — fast hash, password context, no salt or iterations."
+      - "GOOD: bcrypt.hashpw(password, bcrypt.gensalt())"
+      - "GOOD: argon2.PasswordHasher().hash(password) (argon2-cffi)"
+      - "GOOD: passlib.hash.argon2.hash(password) / passlib.hash.bcrypt.hash(password)"
+      - "GOOD: hashlib.scrypt or hashlib.pbkdf2_hmac with high iteration count (>=600k for SHA-256)"
+      - "NOT-A-FINDING: fast hash applied to non-credential data — no variable named `password`/`passwd`/`pwd`/`secret`/`credential`/`passphrase` in scope, no auth-store write, no password-related comment or docstring. SHA-2 family (256/384/512) is fine for general integrity, content addressing, signing inputs, etc. Without password context this is not CWE-916."
+      - "NOT-A-FINDING: fast hash inside a documented KDF wrapper — `hashlib.pbkdf2_hmac(...)`, `hashlib.scrypt(...)`, or any bcrypt/argon2 wrapper that internally uses a fast hash."
     flow_patterns:
       - "SOURCE: user password -> GUARD: hashing algorithm -> SINK: password storage"
+    negative_pattern: |
+      from argon2 import PasswordHasher
+      ph = PasswordHasher()
+      stored = ph.hash(user_password)
+  - id: CWE-338
+    name: Use of Cryptographically Weak PRNG
+    detection_hints:
+      - "BAD: random.random(), random.randint(), random.choice(), random.normalvariate(), random.uniform()"
+      - "BAD: random.SystemRandom is fine but plain `random` module functions are NOT for tokens/keys/IDs"
+      - "BAD: numpy.random.* used to generate security-relevant values"
+      - "GOOD: secrets.token_hex(n), secrets.token_urlsafe(n), secrets.token_bytes(n)"
+      - "GOOD: secrets.choice(alphabet), secrets.randbelow(n)"
+      - "GOOD: os.urandom(n) for raw bytes"
+    flow_patterns:
+      - "SOURCE: random module call -> SINK: token / key / session ID / password reset link"
+    negative_pattern: |
+      import secrets
+      reset_token = secrets.token_urlsafe(32)
+  - id: CWE-330
+    name: Use of Insufficiently Random Values
+    detection_hints:
+      - "BAD: timestamp-based IDs/tokens (time.time(), datetime.now().isoformat()) for security values"
+      - "BAD: uuid.uuid1() (MAC + timestamp, predictable); also random.random/randint/choice as in CWE-338"
+      - "GOOD: uuid.uuid4() (random), secrets.token_*, os.urandom()"
+    flow_patterns:
+      - "SOURCE: weak randomness source -> SINK: session ID / nonce / IV / salt"
+    negative_pattern: |
+      import secrets
+      nonce = secrets.token_bytes(16)
 tools_allowed:
   - read
   - search
@@ -70,11 +166,36 @@ tools_allowed:
   - semantic
 context_memories:
   - project_overview
-  - auth_boundaries
   - auth_patterns
   - api_endpoints
 prompt_template: |
   You are a security analyst focused on common security concerns that repeatedly cause issues.
+
+  ## Filing Protocol (MANDATORY)
+
+  For EVERY finding you identify, you MUST persist it via the CLI before
+  reporting. Reporting a candidate in your message without calling
+  `zrok finding create` is an instruction-following failure that wastes the
+  orchestrator's effort. There is no second pass that picks up
+  "described-but-not-filed" findings.
+
+  Required sequence for each finding:
+    1. Call `zrok finding create --title ... --severity ... --cwe ... --file ...
+       --line ... --description "..." --confidence ... --created-by <your-agent-name>
+       --tag <category>:<subtype>` (or use stdin/`-f` form)
+    2. Capture the returned `FIND-XXX` ID
+    3. Reference the ID in your final report message
+
+  At the end of your run, you MUST verify by running:
+    zrok finding list --created-by <your-agent-name>
+
+  The count of findings shown there is what was persisted. If your report message
+  mentions N findings but the list shows fewer, you have failed the filing
+  protocol and the orchestrator cannot consume your output.
+
+  Findings that you decline to file (because the principle says NOT-A-FINDING)
+  should be summarized in a `<your-agent-name>_skipped` memory via
+  `zrok memory write`, NOT in your report message alone.
 
   ## Your Focus Areas (Repeat Offenders)
 
@@ -112,33 +233,10 @@ prompt_template: |
 
   ## Memory System
 
-  You have access to shared memories created by other agents (especially recon-agent).
-
-  ### Reading Memories
-  - `zrok memory list` - See all available memories
-  - `zrok memory read <name>` - Read a specific memory
-  - `zrok memory search "<query>"` - Search memory contents
-
-  ### Important Memories to Read
-  - **auth_patterns**: How authentication/authorization is implemented
-  - **auth_boundaries**: Where auth decisions are made
-  - **api_endpoints**: Entry points to analyze
-
-  ### Creating Memories
-  When you discover patterns valuable for other agents, create a memory:
-  ```bash
-  zrok memory write <name> --type <context|pattern|stack> --content "..."
-  ```
-
-  Memory types:
-  - **context**: Project-specific observations
-  - **pattern**: Discovered patterns and conventions
-  - **stack**: Technology-specific patterns
-
-  Suggested memories to create:
-  - **auth_findings_summary**: Summary of auth-related discoveries
-  - **crypto_patterns**: Cryptographic implementations found
-  - **secrets_locations**: Where secrets are used (for audit)
+  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+  No new memories are required from analysis agents. If you discover a project-wide
+  pattern worth sharing (e.g. a shared sanitizer that breaks across sites), record
+  it with: `zrok memory write <name> --type pattern --content '...'`.
 
   ### Your Context Memories
   {{range $name, $content := .Memories}}
@@ -149,21 +247,90 @@ prompt_template: |
   ## Tech Stack
   {{.TechStack}}
 
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `<your-agent>_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
+  ## Cross-agent Coordination
+
+  Before filing ANY finding, run:
+    zrok finding list --file <target-file>
+
+  If a critical-or-high finding from another agent already exists on the same
+  file, your default action is to ADD A NOTE to that finding, not file a new
+  one. Use:
+    zrok finding update <FIND-XXX> --note "Your perspective..."
+
+  File a separate new finding only when:
+    - The existing finding's CWE family is genuinely orthogonal to yours
+      (e.g. CWE-614 cookie misconfig is orthogonal to CWE-798 hardcoded secret
+      even at the same file), AND
+    - Your finding cites a distinct line number (not the same source-to-sink
+      chain), AND
+    - Removing your finding would lose actionable information for remediation.
+
+  When in doubt, add a note. The validation-agent will dedupe later if needed,
+  but every duplicate filed costs reviewer attention.
+
+  ## Recon Targets
+
+  Before exploring the codebase yourself, read the targets memory recon wrote
+  for you:
+    zrok memory read security_targets
+
+  This memory contains concrete file:line leads recon identified during the
+  mapping pass. You MUST address EVERY entry in it:
+    - If the lead is a real finding, file via `zrok finding create` (capturing
+      SOURCE→GUARD→SINK in the description as usual).
+    - If the lead is NOT a finding after investigation, append a note to a
+      memory named `security_skipped` explaining why (constant taint,
+      effective guard, off-scope CWE).
+    - If the lead requires another agent's CWE, write a `security_referrals`
+      memory entry routing it to the correct agent.
+
+  If the targets memory does not exist for your agent, recon found no leads
+  and you should proceed with normal exploration. But do NOT skip reading —
+  the targets memory is the primary signal of what's worth your time.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
+
   {{if .FlowGuidance}}
   {{.FlowGuidance}}
   {{end}}
   {{if .FewShotExamples}}
   {{.FewShotExamples}}
   {{end}}
+  ### CWE-916 evidence requirements
+  A "password hash with insufficient effort" finding requires BOTH:
+    1. The hash IS being applied to a password/credential, evidenced by ONE of:
+       - Surrounding variable names contain `password`, `passwd`, `pwd`,
+         `secret`, `credential`, `passphrase` (case-insensitive)
+       - A nearby comment or docstring mentions password storage / authentication
+       - The hashed output is written to a user record, auth DB, or credential store
+    2. AND the hash function is fast (no salt + iteration), evidenced by ONE of:
+       - hashlib.md5/sha1/sha256/sha384/sha512 used directly (without bcrypt /
+         argon2 / scrypt / pbkdf2_hmac wrapping)
+       - A custom HMAC chain with no `iterations` parameter
+       - Direct use of `hashlib.new('any_fast_algorithm')` without KDF wrapping
+
+  If condition (1) is NOT met (the hash applies to non-credential data — file
+  contents, generic strings, content-addressable identifiers, etc.), this is
+  NOT a CWE-916 finding — it may be CWE-327 (broken/risky crypto) if the
+  algorithm is weak (MD5/SHA-1), or it may be no finding at all (SHA-256+ is
+  acceptable for general integrity use).
+
   ## Analysis Approach
   1. Read auth_patterns and api_endpoints memories first
-  2. Map authentication boundaries
+  2. Map authentication boundaries from those memories
   3. Trace authorization checks
   4. Review cryptographic implementations
   5. Search for hardcoded secrets

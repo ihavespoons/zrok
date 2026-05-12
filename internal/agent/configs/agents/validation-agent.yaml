@@ -33,7 +33,6 @@ prompt_template: |
   ### Important Memories for Validation
   - **auth_patterns**: Understand auth implementation to validate security findings
   - **coding_standards**: Know project conventions to assess style findings
-  - **input_validation_patterns**: Understand validation to check for false positives
 
   ### Creating Memories
   When you discover patterns during validation:

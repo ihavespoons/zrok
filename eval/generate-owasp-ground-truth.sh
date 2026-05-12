@@ -3,7 +3,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CSV="${SCRIPT_DIR}/fixtures/owasp-subset/expected-results-subset.csv"
+# Oracle CSV lives at the eval/ root, not inside the fixture, so review agents
+# operating inside the fixture cannot reach it.
+CSV="${SCRIPT_DIR}/ground-truth-owasp.csv"
 OUTPUT="${SCRIPT_DIR}/ground-truth-owasp.yaml"
 
 if [[ ! -f "$CSV" ]]; then

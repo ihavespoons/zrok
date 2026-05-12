@@ -29,8 +29,12 @@ cp -r "$BENCHMARK_DIR/helpers/"* "$SUBSET_DIR/helpers/" 2>/dev/null || true
 cp -r "$BENCHMARK_DIR/testfiles/"* "$SUBSET_DIR/testfiles/" 2>/dev/null || true
 
 # Build subset
-> "$SUBSET_DIR/expected-results-subset.csv"
-echo "# test name, category, real vulnerability, cwe" >> "$SUBSET_DIR/expected-results-subset.csv"
+# Oracle is written OUTSIDE the fixture root so agents reviewing the fixture
+# cannot reach it. The fixture path is what recon-agent sees; the oracle path
+# is for the scorer only.
+ORACLE="$(cd "$SUBSET_DIR/../.." && pwd)/ground-truth-owasp.csv"
+> "$ORACLE"
+echo "# test name, category, real vulnerability, cwe" >> "$ORACLE"
 
 TOTAL=0
 for cat in "${CATEGORIES[@]}"; do
@@ -45,7 +49,7 @@ for cat in "${CATEGORIES[@]}"; do
         test_file="$BENCHMARK_DIR/testcode/${test_name}.py"
         if [[ -f "$test_file" ]]; then
             cp "$test_file" "$SUBSET_DIR/testcode/"
-            echo "${test_name},${category},${is_vuln},${cwe}" >> "$SUBSET_DIR/expected-results-subset.csv"
+            echo "${test_name},${category},${is_vuln},${cwe}" >> "$ORACLE"
             count=$((count + 1))
             TOTAL=$((TOTAL + 1))
         fi
@@ -62,7 +66,7 @@ for cat in "${CATEGORIES[@]}"; do
         test_file="$BENCHMARK_DIR/testcode/${test_name}.py"
         if [[ -f "$test_file" ]]; then
             cp "$test_file" "$SUBSET_DIR/testcode/"
-            echo "${test_name},${category},${is_vuln},${cwe}" >> "$SUBSET_DIR/expected-results-subset.csv"
+            echo "${test_name},${category},${is_vuln},${cwe}" >> "$ORACLE"
             count=$((count + 1))
             TOTAL=$((TOTAL + 1))
         fi
@@ -91,4 +95,4 @@ if [[ -d "$BENCHMARK_DIR/templates" ]]; then
 fi
 
 echo "Created subset with $TOTAL test cases in $SUBSET_DIR"
-echo "Expected results: $SUBSET_DIR/expected-results-subset.csv"
+echo "Expected results: $ORACLE"

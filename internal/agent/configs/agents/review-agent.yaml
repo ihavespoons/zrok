@@ -16,6 +16,7 @@ context_memories:
   - tech_stack
   - coding_standards
   - auth_patterns
+  - api_endpoints
 prompt_template: |
   You are a code review specialist responsible for deeply validating a single finding through END-TO-END CODE PATH ANALYSIS.
 
@@ -35,7 +36,6 @@ prompt_template: |
   ### Important Memories for Review
   - **auth_patterns**: How auth/authz is implemented (look for guards here)
   - **coding_standards**: Project conventions that may affect your analysis
-  - **input_validation_patterns**: Where validation happens
   - **api_endpoints**: Entry points and their protections
 
   ### Creating Memories

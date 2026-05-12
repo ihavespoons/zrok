@@ -191,10 +191,15 @@ func (p *HuggingFaceProvider) embedBatchInternal(ctx context.Context, texts []st
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(body, &errResp) == nil && errResp.Error != "" {
+			// Redact API key in case the upstream echoed the Authorization
+			// header into the error message.
+			safeErr := redactSecret(errResp.Error, p.apiKey)
 			body = nil // Release memory
-			return nil, fmt.Errorf("hugging face API error: %s", errResp.Error)
+			return nil, fmt.Errorf("hugging face API error: %s", safeErr)
 		}
-		errMsg := fmt.Errorf("hugging face API error (status %d): %s", resp.StatusCode, string(body))
+		// Redact API key from raw response body before including in error.
+		safeBody := redactSecret(string(body), p.apiKey)
+		errMsg := fmt.Errorf("hugging face API error (status %d): %s", resp.StatusCode, safeBody)
 		body = nil // Release memory
 		return nil, errMsg
 	}

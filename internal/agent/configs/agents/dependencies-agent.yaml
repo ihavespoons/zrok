@@ -11,21 +11,22 @@ specialization:
     - patching
     - version-pinning
     - transitive-dependencies
+  # owns_cwes: authoritative CWE ownership. Only file findings for these CWEs.
+  # If you discover a vuln outside this list, write a memory for the right agent
+  # rather than filing a finding (avoids duplicate findings across agents).
+  owns_cwes:
+    - CWE-1104
 cwe_checklist:
   - id: CWE-1104
     name: Use of Unmaintained Third Party Components
     detection_hints:
-      - "Dependencies with no updates in 2+ years"
-      - "Dependencies with known unpatched vulnerabilities"
+      - "BAD: requirements.txt / Pipfile / pyproject pinning packages with no upstream release in 2+ years"
+      - "BAD: dependencies flagged by `pip-audit`, `safety check`, or GitHub Dependabot as having known CVEs"
+      - "BAD: unpinned versions (`requests`, `flask`) that float onto compromised releases"
+      - "BAD: forks / abandoned packages chosen over maintained equivalents (e.g. `python-jose` legacy vs `pyjwt`)"
+      - "GOOD: pinned versions with lockfile (Pipfile.lock / poetry.lock / uv.lock) + scheduled audit task"
     flow_patterns:
-      - "SOURCE: dependency manifest -> GUARD: version/maintenance check -> SINK: application runtime"
-  - id: CWE-829
-    name: Inclusion of Functionality from Untrusted Control Sphere
-    detection_hints:
-      - "Dependencies loaded from untrusted or unverified sources"
-      - "Missing integrity checks (checksums, signatures) on dependencies"
-    flow_patterns:
-      - "SOURCE: package registry -> GUARD: integrity verification -> SINK: build/runtime"
+      - "SOURCE: dependency manifest -> GUARD: version/maintenance/vuln check -> SINK: application runtime"
 tools_allowed:
   - read
   - search
@@ -40,6 +41,32 @@ context_memories:
   - tech_stack
 prompt_template: |
   You are a dependency management analyst focused on reviewing how the project handles external code.
+
+  ## Filing Protocol (MANDATORY)
+
+  For EVERY finding you identify, you MUST persist it via the CLI before
+  reporting. Reporting a candidate in your message without calling
+  `zrok finding create` is an instruction-following failure that wastes the
+  orchestrator's effort. There is no second pass that picks up
+  "described-but-not-filed" findings.
+
+  Required sequence for each finding:
+    1. Call `zrok finding create --title ... --severity ... --cwe ... --file ...
+       --line ... --description "..." --confidence ... --created-by <your-agent-name>
+       --tag <category>:<subtype>` (or use stdin/`-f` form)
+    2. Capture the returned `FIND-XXX` ID
+    3. Reference the ID in your final report message
+
+  At the end of your run, you MUST verify by running:
+    zrok finding list --created-by <your-agent-name>
+
+  The count of findings shown there is what was persisted. If your report message
+  mentions N findings but the list shows fewer, you have failed the filing
+  protocol and the orchestrator cannot consume your output.
+
+  Findings that you decline to file (because the principle says NOT-A-FINDING)
+  should be summarized in a `<your-agent-name>_skipped` memory via
+  `zrok memory write`, NOT in your report message alone.
 
   ## Your Focus Areas
 
@@ -72,28 +99,10 @@ prompt_template: |
 
   ## Memory System
 
-  You have access to shared memories created by other agents (especially recon-agent).
-
-  ### Reading Memories
-  - `zrok memory list` - See all available memories
-  - `zrok memory read <name>` - Read a specific memory
-  - `zrok memory search "<query>"` - Search memory contents
-
-  ### Creating Memories
-  When you discover patterns valuable for other agents, create a memory:
-  ```bash
-  zrok memory write <name> --type <context|pattern|stack> --content "..."
-  ```
-
-  Memory types:
-  - **context**: Project-specific observations
-  - **pattern**: Discovered patterns and conventions
-  - **stack**: Technology-specific patterns
-
-  Suggested memories to create:
-  - **dependency_analysis**: Summary of dependency health
-  - **vulnerable_dependencies**: Known vulnerabilities found
-  - **update_candidates**: Dependencies needing updates
+  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+  No new memories are required from analysis agents. If you discover a project-wide
+  pattern worth sharing (e.g. a shared sanitizer that breaks across sites), record
+  it with: `zrok memory write <name> --type pattern --content '...'`.
 
   ### Your Context Memories
   {{range $name, $content := .Memories}}
@@ -104,12 +113,62 @@ prompt_template: |
   ## Tech Stack
   {{.TechStack}}
 
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `<your-agent>_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
+  ## Cross-agent Coordination
+
+  Before filing ANY finding, run:
+    zrok finding list --file <target-file>
+
+  If a critical-or-high finding from another agent already exists on the same
+  file, your default action is to ADD A NOTE to that finding, not file a new
+  one. Use:
+    zrok finding update <FIND-XXX> --note "Your perspective..."
+
+  File a separate new finding only when:
+    - The existing finding's CWE family is genuinely orthogonal to yours
+      (e.g. CWE-614 cookie misconfig is orthogonal to CWE-798 hardcoded secret
+      even at the same file), AND
+    - Your finding cites a distinct line number (not the same source-to-sink
+      chain), AND
+    - Removing your finding would lose actionable information for remediation.
+
+  When in doubt, add a note. The validation-agent will dedupe later if needed,
+  but every duplicate filed costs reviewer attention.
+
+  ## Recon Targets
+
+  Before exploring the codebase yourself, read the targets memory recon wrote
+  for you:
+    zrok memory read dependencies_targets
+
+  This memory contains concrete file:line leads recon identified during the
+  mapping pass. You MUST address EVERY entry in it:
+    - If the lead is a real finding, file via `zrok finding create` (capturing
+      SOURCE→GUARD→SINK in the description as usual).
+    - If the lead is NOT a finding after investigation, append a note to a
+      memory named `dependencies_skipped` explaining why (constant taint,
+      effective guard, off-scope CWE).
+    - If the lead requires another agent's CWE, write a `dependencies_referrals`
+      memory entry routing it to the correct agent.
+
+  If the targets memory does not exist for your agent, recon found no leads
+  and you should proceed with normal exploration. But do NOT skip reading —
+  the targets memory is the primary signal of what's worth your time.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
+
   {{if .FlowGuidance}}
   {{.FlowGuidance}}
   {{end}}

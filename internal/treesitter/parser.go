@@ -4,19 +4,57 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/odvcencio/gotreesitter"
 	"github.com/odvcencio/gotreesitter/grammars"
 )
 
+// DefaultMaxFileSize is the default cap on source files passed to tree-sitter.
+// Files larger than this are skipped to avoid ballooning memory on
+// pathologically-large or generated/minified inputs. Override per-parser via
+// Parser.SetMaxFileSize, or globally via ZROK_TREESITTER_MAX_FILE_SIZE
+// (bytes). 10 MB comfortably exceeds any reasonable hand-written source file.
+const DefaultMaxFileSize int64 = 10 * 1024 * 1024
+
+// SkippedFileError is returned by ExtractSymbols when a file is intentionally
+// skipped (e.g. exceeds max size). Callers should treat this as non-fatal.
+type SkippedFileError struct {
+	Path   string
+	Size   int64
+	Reason string
+}
+
+func (e *SkippedFileError) Error() string {
+	return fmt.Sprintf("tree-sitter skipped %s: %s (size=%d)", e.Path, e.Reason, e.Size)
+}
+
 // Parser wraps gotreesitter for symbol extraction.
 // Uses pooled parsing for thread-safety and efficiency.
-type Parser struct{}
+type Parser struct {
+	maxFileSize int64
+}
 
-// NewParser creates a new tree-sitter parser.
+// NewParser creates a new tree-sitter parser with default limits.
 func NewParser() *Parser {
-	return &Parser{}
+	return &Parser{maxFileSize: getMaxFileSize()}
+}
+
+// SetMaxFileSize overrides the per-file byte cap. Values <= 0 disable the cap.
+func (p *Parser) SetMaxFileSize(n int64) {
+	p.maxFileSize = n
+}
+
+// getMaxFileSize reads ZROK_TREESITTER_MAX_FILE_SIZE (bytes) or falls back to
+// DefaultMaxFileSize. Set to 0 or negative to disable the cap.
+func getMaxFileSize() int64 {
+	if v := os.Getenv("ZROK_TREESITTER_MAX_FILE_SIZE"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
+	}
+	return DefaultMaxFileSize
 }
 
 // CanHandle returns whether tree-sitter supports the given file path.
@@ -33,7 +71,28 @@ func (p *Parser) CanHandle(path string) bool {
 }
 
 // ExtractSymbols extracts symbols from a file on disk.
+//
+// If the file exceeds the configured max size, it is skipped and a
+// *SkippedFileError is returned. Callers (e.g. the indexer) should treat
+// that error as non-fatal.
 func (p *Parser) ExtractSymbols(filePath, relPath string) ([]Symbol, error) {
+	if p.maxFileSize > 0 {
+		info, err := os.Stat(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to stat file: %w", err)
+		}
+		if info.Size() > p.maxFileSize {
+			fmt.Fprintf(os.Stderr,
+				"warning: tree-sitter skipping %s: file size %d exceeds max %d bytes\n",
+				relPath, info.Size(), p.maxFileSize)
+			return nil, &SkippedFileError{
+				Path:   relPath,
+				Size:   info.Size(),
+				Reason: fmt.Sprintf("exceeds max size %d", p.maxFileSize),
+			}
+		}
+	}
+
 	source, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)

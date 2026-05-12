@@ -155,6 +155,9 @@ func (s *Store) List(opts *FilterOptions) (*FindingList, error) {
 			if opts.CWE != "" && f.CWE != opts.CWE {
 				continue
 			}
+			if opts.File != "" && f.Location.File != opts.File {
+				continue
+			}
 			if opts.Tag != "" && !containsTag(f.Tags, opts.Tag) {
 				continue
 			}
@@ -315,13 +318,28 @@ func (s *Store) generateID() (string, error) {
 	return fmt.Sprintf("FIND-%03d", maxNum+1), nil
 }
 
-// validate validates a finding
+// validate validates a finding. It normalizes case for severity/confidence
+// to lowercase, defaults empty confidence to "medium", and rejects invalid
+// values. It also logs a warning to stderr when CWE is empty.
 func (s *Store) validate(f *Finding) error {
 	if f.Title == "" {
 		return fmt.Errorf("title is required")
 	}
-	if f.Severity != "" && !IsValidSeverity(f.Severity) {
-		return fmt.Errorf("invalid severity: %s", f.Severity)
+	// Normalize severity to lowercase before validation
+	if f.Severity != "" {
+		f.Severity = Severity(strings.ToLower(string(f.Severity)))
+		if !IsValidSeverity(f.Severity) {
+			return fmt.Errorf("invalid severity: %s (valid: critical, high, medium, low, info)", f.Severity)
+		}
+	}
+	// Normalize confidence; default empty to medium
+	if f.Confidence == "" {
+		f.Confidence = ConfidenceMedium
+	} else {
+		f.Confidence = Confidence(strings.ToLower(string(f.Confidence)))
+		if !IsValidConfidence(f.Confidence) {
+			return fmt.Errorf("invalid confidence: %s (valid: high, medium, low)", f.Confidence)
+		}
 	}
 	if f.Status != "" && !IsValidStatus(f.Status) {
 		return fmt.Errorf("invalid status: %s", f.Status)
@@ -334,6 +352,12 @@ func (s *Store) validate(f *Finding) error {
 	}
 	if f.Location.File == "" {
 		return fmt.Errorf("location.file is required")
+	}
+	if f.Location.LineStart < 1 {
+		return fmt.Errorf("location.line_start must be >= 1, got %d", f.Location.LineStart)
+	}
+	if f.CWE == "" {
+		fmt.Fprintf(os.Stderr, "warning: finding %q has no CWE\n", f.Title)
 	}
 	return nil
 }

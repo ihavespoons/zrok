@@ -36,6 +36,7 @@ zrok index build
 ```
 1. Project Setup    → zrok init && zrok onboard (outputs recon prompt)
 2. Recon Agent      → Spawn recon-agent with prompt, creates memories
+   2a. verify-memories --all → block if any analysis-agent memory is missing
 3. Analysis Agents  → Run in parallel (security, guards, architecture, content)
 4. Validation       → Reviews all findings (triage, false positives, priority)
 5. Review Agents    → Deep validation per finding (one agent per finding, parallel)
@@ -118,6 +119,23 @@ After recon-agent completes, verify memories were created:
 zrok memory list
 # Should show: project_overview, tech_stack, coding_standards, api_endpoints, auth_patterns, review_targets
 ```
+
+### Verify memories satisfy analysis-agent expectations
+
+Before spawning analysis agents, run `verify-memories --all` to confirm the
+recon phase produced every memory those agents declare in their
+`context_memories:` field. If anything is missing, re-run recon (or extend it)
+rather than proceeding with under-informed agents.
+
+```bash
+zrok agent verify-memories --all
+# Exit code is 0 only if every analysis agent's context_memories are present.
+# Use --json for machine-readable output.
+```
+
+If the command exits non-zero, **fail the run**: spawn a focused recon follow-up
+to create the missing memories, then re-run `verify-memories --all` before
+moving to Phase 3.
 
 ---
 
@@ -340,12 +358,24 @@ Spawn review-agents for findings that are:
 
 ### Orchestration Pattern
 
-```bash
-# 1. Get the list of findings needing review
-zrok finding list --status confirmed --json
+**This phase is mandatory.** Skipping it dramatically reduces the quality of
+high/critical findings — the per-finding review-agent is what produces
+exploitability and fix-priority data.
 
-# 2. Filter for high/critical severity (parse JSON output)
-# 3. For each finding, spawn a review-agent (see below)
+```bash
+# 1. Get the list of confirmed high/critical findings, machine-readable.
+zrok finding list --status confirmed --severity high --json > /tmp/high.json
+zrok finding list --status confirmed --severity critical --json > /tmp/crit.json
+
+# 2. For each finding ID in the JSON output, generate a tailored prompt and
+#    spawn a review-agent in parallel via the Task tool.
+#
+#    The prompt for review-agent is produced by:
+zrok agent prompt review-agent --finding FIND-XXX
+#
+#    This embeds the full finding YAML into the agent's prompt context so the
+#    subagent has the information it needs without an extra `zrok finding show`
+#    round trip.
 ```
 
 ### Review Agent Prompt Template
@@ -362,8 +392,7 @@ Task tool:
     Working Directory: <target-project>
     zrok Binary: <path-to-zrok>
 
-    ## Finding to Investigate
-    {output from: zrok finding show FIND-XXX}
+    {output from: zrok agent prompt review-agent --finding FIND-XXX}
 
     ## Context Memories
     IMPORTANT: Read these memories FIRST to understand the codebase:
@@ -464,6 +493,27 @@ zrok finding export --format json -o report.json       # Machine-readable
 
 ---
 
+## Optional: Per-Agent Timing for Eval Manifests
+
+When running under the eval harness, the skill can record per-agent start/end
+times so the manifest captures real timing data (otherwise the manifest only
+captures findings/memories counts per agent). This is best-effort — skip it if
+you cannot wrap the Task-tool invocations:
+
+```bash
+# Before spawning an agent:
+zrok agent record-timing security-agent --phase analysis --start
+
+# After it returns:
+zrok agent record-timing security-agent --phase analysis --end \
+  --findings-created 9 --memories-created 0
+```
+
+Timings land in `.zrok/run-state.json` and are merged into the eval manifest
+under each per-agent record (`started_at`, `ended_at`, `duration_ms`).
+
+---
+
 ## Key Principles
 
 1. **Always delegate** - Spawn subagents for each phase, don't analyze code directly
@@ -510,7 +560,8 @@ zrok index status            # Check if semantic search available
 
 # Phase 2: Recon Agent (spawn via Task tool)
 # → Creates memories: project_overview, tech_stack, coding_standards, api_endpoints, auth_patterns, review_targets
-zrok memory list             # Verify recon complete
+zrok memory list                       # Verify recon complete
+zrok agent verify-memories --all       # Verify analysis-agent expectations are met (fail if not)
 
 # Phase 3: Analysis (spawn 3-4 agents in parallel via Task tool)
 # → Creates findings
@@ -521,7 +572,9 @@ zrok memory list             # Verify recon complete
 # Phase 5: Review (spawn N agents in parallel, one per high-severity finding)
 # Get findings needing review:
 zrok finding list --status confirmed --severity high --json
-# → Spawn review-agent for each
+# → For each finding ID, generate a tailored prompt with:
+#     zrok agent prompt review-agent --finding FIND-XXX
+# → Spawn one review-agent per finding (parallel, in a single Task-tool message)
 
 # Phase 6: Export
 zrok finding stats
@@ -585,6 +638,11 @@ zrok finding stats
 zrok agent list
 zrok agent show <name>
 zrok agent prompt <name>
+zrok agent prompt review-agent --finding FIND-XXX  # Generate review-agent prompt for a specific finding
+zrok agent verify-memories <name>                  # Check one agent's context_memories
+zrok agent verify-memories --all                   # Check all analysis-phase agents (exit 1 if any missing)
+zrok agent record-timing <name> --phase <phase> --start
+zrok agent record-timing <name> --phase <phase> --end [--findings-created N] [--memories-created N]
 ```
 
 ### Onboarding

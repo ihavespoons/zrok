@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -119,7 +120,11 @@ var memoryWriteCmd = &cobra.Command{
 	Short: "Create or update a memory",
 	Long: `Create or update a memory with content.
 
-Provide content via --content flag or --file flag.`,
+Provide content via --content flag or --file flag.
+
+By default, writing a memory with a name that already exists replaces it
+(upsert). Pass --no-overwrite to refuse replacement and error instead;
+useful for callers that want to avoid clobbering existing memories.`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		p, err := project.EnsureActive()
@@ -133,6 +138,7 @@ Provide content via --content flag or --file flag.`,
 		memTypeStr, _ := cmd.Flags().GetString("type")
 		description, _ := cmd.Flags().GetString("description")
 		tagsStr, _ := cmd.Flags().GetStringSlice("tags")
+		noOverwrite, _ := cmd.Flags().GetBool("no-overwrite")
 
 		// Get content from file if specified
 		if file != "" {
@@ -161,6 +167,9 @@ Provide content via --content flag or --file flag.`,
 
 		// Check if exists
 		existing, _ := store.ReadByName(name)
+		if existing != nil && noOverwrite {
+			exitError("memory %q already exists; remove --no-overwrite to replace", name)
+		}
 		mem := &memory.Memory{
 			Name:        name,
 			Type:        memType,
@@ -245,8 +254,26 @@ var memorySearchCmd = &cobra.Command{
 			exitError("%v", err)
 		}
 
+		// Cap user-supplied query length to bound bleve work on the
+		// search-side; the index itself has a 5s timeout, but rejecting
+		// obviously-pathological inputs at the CLI is cleaner and gives
+		// the user a clear error.
+		const maxMemorySearchQueryLen = 1024
+		query := args[0]
+		if len(query) > maxMemorySearchQueryLen {
+			exitError("search query too long: %d bytes (max %d)", len(query), maxMemorySearchQueryLen)
+		}
+
 		store := memory.NewStore(p)
-		result, err := store.Search(args[0])
+		// Ensure the bleve index reflects the on-disk YAML before searching.
+		// NewStore no longer auto-reindexes (the former goroutine raced
+		// against concurrent Create and leaked past Close); we trigger it
+		// explicitly here. If reindex fails, search falls back to substring
+		// matching, so this is best-effort.
+		if rerr := store.Reindex(cmd.Context()); rerr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: reindex before search failed: %v\n", rerr)
+		}
+		result, err := store.Search(query)
 		if err != nil {
 			exitError("%v", err)
 		}
@@ -269,6 +296,38 @@ var memorySearchCmd = &cobra.Command{
 	},
 }
 
+// memoryReindexCmd represents the memory reindex command
+var memoryReindexCmd = &cobra.Command{
+	Use:   "reindex",
+	Short: "Rebuild the memory search index",
+	Long: `Rebuild the bleve full-text search index from the on-disk memory YAML files.
+
+Run this after restoring memories from backup, after a manual edit, or when
+the dashboard/search prints "memory search index is empty but memories exist
+on disk."`,
+	Run: func(cmd *cobra.Command, args []string) {
+		p, err := project.EnsureActive()
+		if err != nil {
+			exitError("%v", err)
+		}
+
+		store := memory.NewStore(p)
+		defer func() { _ = store.Close() }()
+
+		if err := store.Reindex(context.Background()); err != nil {
+			exitError("reindex failed: %v", err)
+		}
+
+		if jsonOutput {
+			if err := outputJSON(map[string]interface{}{"success": true, "action": "reindex"}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
+		} else {
+			fmt.Println("Memory search index rebuilt.")
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(memoryCmd)
 	memoryCmd.AddCommand(memoryListCmd)
@@ -276,6 +335,7 @@ func init() {
 	memoryCmd.AddCommand(memoryWriteCmd)
 	memoryCmd.AddCommand(memoryDeleteCmd)
 	memoryCmd.AddCommand(memorySearchCmd)
+	memoryCmd.AddCommand(memoryReindexCmd)
 
 	memoryListCmd.Flags().StringP("type", "t", "", "Filter by type (context, pattern, stack)")
 
@@ -284,4 +344,5 @@ func init() {
 	memoryWriteCmd.Flags().StringP("type", "t", "context", "Memory type (context, pattern, stack)")
 	memoryWriteCmd.Flags().StringP("description", "d", "", "Memory description")
 	memoryWriteCmd.Flags().StringSlice("tags", []string{}, "Memory tags")
+	memoryWriteCmd.Flags().Bool("no-overwrite", false, "Refuse to replace an existing memory with the same name (default: replace)")
 }

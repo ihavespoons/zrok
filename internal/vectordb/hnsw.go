@@ -13,7 +13,20 @@ import (
 	"github.com/viterin/vek/vek32"
 )
 
-// HNSWStore implements Store using HNSW for vector search and SQLite for metadata
+// HNSWStore implements Store using HNSW for vector search and SQLite for metadata.
+//
+// Lock-ordering convention (IMPORTANT — do not violate to avoid AB-BA deadlock):
+//   - HNSWStore.mu (the OUTER lock) is always acquired BEFORE hnswIndex.mu (the INNER lock).
+//   - Every HNSWStore method that touches s.index.* first acquires s.mu (Lock or RLock).
+//   - hnswIndex methods never call back into HNSWStore — they only touch their own state
+//     and their own mu. This guarantees the inner lock is never held when the outer is
+//     acquired, so there is no path that acquires inner-then-outer.
+//   - IsDiskMode reads s.index.diskMode under only s.mu.RLock; this is safe because
+//     every writer of diskMode (EnableDiskMode/DisableDiskMode) holds s.mu.Lock, so
+//     the outer lock provides the necessary happens-before.
+//
+// The inner mutex on hnswIndex is defensive (in case hnswIndex were ever used outside
+// HNSWStore); in practice HNSWStore's outer lock already serializes all index access.
 type HNSWStore struct {
 	config   *StoreConfig
 	meta     *SQLiteMetaStore
@@ -287,6 +300,22 @@ func (s *HNSWStore) CountByFile(file string) (int, error) {
 // Files returns all indexed file paths
 func (s *HNSWStore) Files() ([]string, error) {
 	return s.meta.Files()
+}
+
+// GetFileHash returns the stored file fingerprint or (nil, nil) when absent.
+func (s *HNSWStore) GetFileHash(path string) (*FileHash, error) {
+	return s.meta.GetFileHash(path)
+}
+
+// SetFileHash inserts/replaces a file fingerprint after a successful index.
+func (s *HNSWStore) SetFileHash(fh *FileHash) error {
+	return s.meta.SetFileHash(fh)
+}
+
+// DeleteFileHash removes a file fingerprint (called when a file is deleted
+// or otherwise unindexed).
+func (s *HNSWStore) DeleteFileHash(path string) error {
+	return s.meta.DeleteFileHash(path)
 }
 
 // GetStats returns statistics about the store

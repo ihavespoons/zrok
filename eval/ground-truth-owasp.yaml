@@ -510,5 +510,7 @@ severity_weights:
 
 matching:
   line_tolerance: 30
-  cwe_exact_match: true
+  # Honor CWE parent-child equivalencies (CWE-330 ↔ CWE-338, etc.) via the
+  # scorer's cwe_relations table. Set to true for strict literal-equality.
+  cwe_exact_match: false
   title_similarity_threshold: 0.2

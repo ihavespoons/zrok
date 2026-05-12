@@ -16,44 +16,113 @@ specialization:
     - xpath-injection
   owasp_categories:
     - "A03:2021"
+  # owns_cwes: authoritative CWE ownership. Only file findings for these CWEs.
+  # If you discover a vuln outside this list, write a memory for the right agent
+  # rather than filing a finding (avoids duplicate findings across agents).
+  owns_cwes:
+    - CWE-78
+    - CWE-89
+    - CWE-90
+    - CWE-94
+    - CWE-611
+    - CWE-643
+    - CWE-917
 cwe_checklist:
-  - id: CWE-89
-    name: SQL Injection
-    detection_hints:
-      - "String concatenation or formatting used to build SQL queries"
-      - "Dynamic table or column names from user input"
-    flow_patterns:
-      - "SOURCE: HTTP param/body -> SINK: db.Query/db.Exec with string concat"
   - id: CWE-78
     name: OS Command Injection
     detection_hints:
-      - "User input passed to exec.Command with shell=true or via sh -c"
-      - "String concatenation in system call arguments"
+      - "BAD: user input passed to subprocess.run/Popen/call with shell=True"
+      - "BAD: os.system(user_input), os.popen(user_input), commands.getoutput()"
+      - "BAD: string concatenation or f-strings in shell command arguments"
+      - "GOOD: subprocess.run([cmd, arg1, arg2], shell=False) with list args and shell=False"
     flow_patterns:
-      - "SOURCE: user input -> SINK: exec.Command/os.system/child_process.exec"
+      - "SOURCE: user input -> SINK: subprocess.* with shell=True / os.system / os.popen"
+    negative_pattern: |
+      import subprocess
+      subprocess.run(["grep", pattern, file_path], shell=False, check=True)
+  - id: CWE-89
+    name: SQL Injection
+    detection_hints:
+      - "BAD: string concatenation or f-strings to build SQL (`f\"SELECT * FROM u WHERE id={uid}\"`)"
+      - "BAD: cursor.execute(query % user_input) / cursor.execute(query.format(...))"
+      - "BAD: dynamic table or column names from user input"
+      - "GOOD: cursor.execute('SELECT * FROM u WHERE id=%s', (uid,)) — parameterised query"
+      - "GOOD: SQLAlchemy `text(\"... :id\")` with bound params, or ORM filter() with kwargs"
+    flow_patterns:
+      - "SOURCE: HTTP param/body -> SINK: cursor.execute / db.Query with string concat"
+    negative_pattern: |
+      cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+  - id: CWE-90
+    name: LDAP Injection
+    detection_hints:
+      - "BAD: f-strings or concatenation building LDAP filters (`f\"(uid={username})\"`)"
+      - "BAD: ldap3.Connection.search(search_filter=f\"...{user_input}...\")"
+      - "BAD: ldap.search_s / ldap.search_ext_s with unescaped user input in filter"
+      - "GOOD: ldap.filter.escape_filter_chars(user_input) before interpolation, or python-ldap's escape helpers"
+      - "GOOD: ldap3.utils.conv.escape_filter_chars(user_input) prior to filter assembly"
+    flow_patterns:
+      - "SOURCE: request param/form -> SINK: ldap3.Connection.search(search_filter=f-string)"
+      - "SOURCE: user input -> SINK: ldap.search_s(base, scope, filter_with_concat)"
+    negative_pattern: |
+      from ldap3.utils.conv import escape_filter_chars
+      safe = escape_filter_chars(username)
+      conn.search("ou=users,dc=x,dc=y", f"(uid={safe})")
   - id: CWE-94
     name: Code Injection
     detection_hints:
-      - "User input passed to eval(), Function(), or similar code execution"
-      - "Dynamic code generation from untrusted data"
+      - "BAD: eval(user_input), exec(user_input), compile(user_input, ...)"
+      - "BAD: pickle.loads on untrusted data is code execution via __reduce__"
+      - "BAD: dynamic import of user-controlled module names (importlib.import_module(user_input))"
+      - "GOOD: ast.literal_eval for whitelisted literal structures only; explicit dispatch tables for behaviour selection"
     flow_patterns:
-      - "SOURCE: user input -> SINK: eval/exec/Function constructor"
+      - "SOURCE: user input -> SINK: eval/exec/compile/Function constructor"
+    negative_pattern: |
+      import ast
+      value = ast.literal_eval(user_input)  # raises on anything non-literal
+  - id: CWE-611
+    name: Improper Restriction of XML External Entity Reference (XXE)
+    detection_hints:
+      - "BAD: xml.sax.make_parser() ... parser.setFeature(xml.sax.handler.feature_external_ges, True) — the FEATURE-ENABLE LINE is required, not the parser construction alone."
+      - "BAD: xml.sax.make_parser() ... parser.setFeature(xml.sax.handler.feature_external_pes, True)"
+      - "BAD: lxml.etree.XMLParser(resolve_entities=True) — explicit unsafe flag, or any parser constructed with no_network=False / load_dtd=True / resolve_entities defaulted-on in old lxml."
+      - "BAD: lxml.etree.fromstring(data) / lxml.etree.parse() ONLY IF the parser has unsafe entity resolution; default lxml.etree in recent versions is safe."
+      - "GOOD (default-safe): xml.sax.make_parser() with NO feature_external_ges / feature_external_pes enable line — Python's SAX default does NOT resolve external entities. Do NOT file CWE-611 here."
+      - "GOOD (default-safe): xml.etree.ElementTree.parse(...) / xml.etree.ElementTree.fromstring(...) — safe by default since Python 3.7.1; no external entity resolution."
+      - "GOOD: defusedxml.<anything> (defusedxml.ElementTree, defusedxml.lxml, defusedxml.sax) — explicitly safe library."
+      - "GOOD: lxml.etree.XMLParser(resolve_entities=False, no_network=True, dtd_validation=False)"
+    flow_patterns:
+      - "SOURCE: untrusted XML -> GUARD: feature flags disabled / defusedxml used / default-safe stdlib parser -> SINK: parse() / parseString() / fromstring()"
+      - "SOURCE: user-supplied XML body/file -> GUARD: parser.setFeature(feature_external_ges, False) OR no feature-enable line at all -> SINK: parser.parse()"
+    negative_pattern: |
+      # GOOD: default-safe SAX parser — no feature_external_ges/_pes enabled
+      import xml.sax
+      parser = xml.sax.make_parser()  # defaults DO NOT resolve external entities
+      parser.setContentHandler(handler)
+      parser.parse(stream)
+      # GOOD alternative: defusedxml
+      import defusedxml.ElementTree as ET
+      root = ET.fromstring(request.data)
   - id: CWE-643
     name: XPath Injection
     detection_hints:
-      - "User input interpolated into XPath query strings via f-strings or concatenation"
-      - "Use of lxml.etree.XPath() or elementpath.select() with dynamic queries"
-      - "Cookie, form, or request parameter values used in XML/XPath lookups"
+      - "BAD: user input interpolated into XPath strings via f-strings, concatenation, or .format()"
+      - "BAD: lxml.etree.XPath(), lxml.etree.ETXPath(), etree.parse().xpath() with dynamic queries"
+      - "BAD: elementpath.select() with user-controlled query strings"
+      - "GOOD: lxml's parameterised XPath via `XPath(\"//u[@id=$uid]\").evaluate(tree, uid=user_id)` style bound variables"
     flow_patterns:
       - "SOURCE: request param/cookie/form -> SINK: lxml.etree.XPath(f-string)"
       - "SOURCE: user input -> dict/variable intermediary -> SINK: elementpath.select()"
   - id: CWE-917
     name: Expression Language Injection
     detection_hints:
-      - "User input embedded in template expressions or query languages"
-      - "Dynamic ORM query construction from user data"
+      - "BAD: user input embedded in template expressions evaluated server-side (Jinja2 `Template(user_input).render()`)"
+      - "BAD: dynamic ORM query construction from user data passed to `eval()`-style expression evaluators"
+      - "BAD: Flask `render_template_string(user_input)` — full Jinja2 eval on user data"
+      - "GOOD: render fixed templates with user data as context vars, not template source: `render_template('page.html', name=user_name)`"
     flow_patterns:
-      - "SOURCE: user input -> SINK: template engine/expression evaluator"
+      - "SOURCE: user input -> SINK: template engine / expression evaluator (Jinja2 Environment, MakoTemplate)"
+    negative_pattern: |
+      return render_template("hello.html", name=user_name)  # template fixed, name escaped
 tools_allowed:
   - read
   - search
@@ -65,10 +134,34 @@ tools_allowed:
 context_memories:
   - project_overview
   - api_endpoints
-  - data_flows
-  - input_validation_patterns
 prompt_template: |
   You are an injection vulnerability specialist focused on detecting data injection attacks.
+
+  ## Filing Protocol (MANDATORY)
+
+  For EVERY finding you identify, you MUST persist it via the CLI before
+  reporting. Reporting a candidate in your message without calling
+  `zrok finding create` is an instruction-following failure that wastes the
+  orchestrator's effort. There is no second pass that picks up
+  "described-but-not-filed" findings.
+
+  Required sequence for each finding:
+    1. Call `zrok finding create --title ... --severity ... --cwe ... --file ...
+       --line ... --description "..." --confidence ... --created-by <your-agent-name>
+       --tag <category>:<subtype>` (or use stdin/`-f` form)
+    2. Capture the returned `FIND-XXX` ID
+    3. Reference the ID in your final report message
+
+  At the end of your run, you MUST verify by running:
+    zrok finding list --created-by <your-agent-name>
+
+  The count of findings shown there is what was persisted. If your report message
+  mentions N findings but the list shows fewer, you have failed the filing
+  protocol and the orchestrator cannot consume your output.
+
+  Findings that you decline to file (because the principle says NOT-A-FINDING)
+  should be summarized in a `<your-agent-name>_skipped` memory via
+  `zrok memory write`, NOT in your report message alone.
 
   ## Your Focus Areas
 
@@ -104,23 +197,10 @@ prompt_template: |
 
   ## Memory System
 
-  You have access to shared memories created by other agents (especially recon-agent).
-
-  ### Reading Memories
-  - `zrok memory list` - See all available memories
-  - `zrok memory read <name>` - Read a specific memory
-  - `zrok memory search "<query>"` - Search memory contents
-
-  ### Creating Memories
-  When you discover patterns valuable for other agents, create a memory:
-  ```bash
-  zrok memory write <name> --type <context|pattern|stack> --content "..."
-  ```
-
-  Suggested memories to create:
-  - **injection_patterns**: Injection-vulnerable patterns found in the codebase
-  - **query_construction**: How database queries are built
-  - **command_execution**: Where system commands are executed
+  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+  No new memories are required from analysis agents. If you discover a project-wide
+  pattern worth sharing (e.g. a shared sanitizer that breaks across sites), record
+  it with: `zrok memory write <name> --type pattern --content '...'`.
 
   ### Your Context Memories
   {{range $name, $content := .Memories}}
@@ -131,20 +211,77 @@ prompt_template: |
   ## Tech Stack
   {{.TechStack}}
 
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `<your-agent>_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
+  ## Cross-agent Coordination
+
+  Before filing ANY finding, run:
+    zrok finding list --file <target-file>
+
+  If a critical-or-high finding from another agent already exists on the same
+  file, your default action is to ADD A NOTE to that finding, not file a new
+  one. Use:
+    zrok finding update <FIND-XXX> --note "Your perspective..."
+
+  File a separate new finding only when:
+    - The existing finding's CWE family is genuinely orthogonal to yours
+      (e.g. CWE-614 cookie misconfig is orthogonal to CWE-798 hardcoded secret
+      even at the same file), AND
+    - Your finding cites a distinct line number (not the same source-to-sink
+      chain), AND
+    - Removing your finding would lose actionable information for remediation.
+
+  When in doubt, add a note. The validation-agent will dedupe later if needed,
+  but every duplicate filed costs reviewer attention.
+
+  ## Recon Targets
+
+  Before exploring the codebase yourself, read the targets memory recon wrote
+  for you:
+    zrok memory read injection_targets
+
+  This memory contains concrete file:line leads recon identified during the
+  mapping pass. You MUST address EVERY entry in it:
+    - If the lead is a real finding, file via `zrok finding create` (capturing
+      SOURCE→GUARD→SINK in the description as usual).
+    - If the lead is NOT a finding after investigation, append a note to a
+      memory named `injection_skipped` explaining why (constant taint,
+      effective guard, off-scope CWE).
+    - If the lead requires another agent's CWE, write a `injection_referrals`
+      memory entry routing it to the correct agent.
+
+  If the targets memory does not exist for your agent, recon found no leads
+  and you should proceed with normal exploration. But do NOT skip reading —
+  the targets memory is the primary signal of what's worth your time.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
+
   {{if .FlowGuidance}}
   {{.FlowGuidance}}
   {{end}}
   {{if .FewShotExamples}}
   {{.FewShotExamples}}
   {{end}}
+  ### CWE-611 evidence requirements
+  Before filing a CWE-611 finding, you MUST verify ONE of:
+    1. An explicit `feature_external_ges` / `feature_external_pes` enable line, OR
+    2. A parser construction with `resolve_entities=True`, OR
+    3. Use of a known-unsafe library/version (document which).
+  If you only see a default `xml.sax.make_parser()` or `xml.etree.ElementTree.parse()` without the above, DO NOT file — the default is safe. Write a memory note for human review instead.
+
   ## Analysis Approach
-  1. Read api_endpoints and data_flows memories first
+  1. Read api_endpoints memory first
   2. Search for database query construction patterns
   3. Search for system command execution
   4. Search for template rendering with user input

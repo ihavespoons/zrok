@@ -205,7 +205,7 @@ run_single_eval() {
     {
         echo '{'
 
-        # Which agents created findings
+        # Which agents created findings (legacy field, kept for backward compatibility)
         echo '  "agents_used": ['
         if [[ -f "$result_file" ]]; then
             python3 -c "
@@ -220,6 +220,99 @@ entries = [f'    {{\"name\": \"{a}\", \"findings\": {c}}}' for a, c in sorted(ag
 print(',\n'.join(entries))
 " 2>/dev/null || true
         fi
+        echo '  ],'
+
+        # Per-agent records: name, phase, findings_created, memories_created,
+        # and (best-effort) start/end timing if .zrok/run-state.json was written.
+        echo '  "agents": ['
+        python3 - "$run_dir" "$result_file" "$PROJECT_ROOT" <<'PYEOF' 2>/dev/null || true
+import json, os, sys, glob
+
+run_dir = sys.argv[1]
+result_file = sys.argv[2]
+project_root = sys.argv[3]
+
+# YAML may not be present; fall back to a minimal parser for created_by/phase fields.
+def parse_yaml_field(path, field):
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.rstrip('\n')
+                if line.startswith(field + ':'):
+                    return line.split(':', 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        return None
+    return None
+
+# Findings counts per agent (read from raw YAMLs; falls back to export JSON)
+findings_by_agent = {}
+raw_dir = os.path.join(run_dir, '.zrok', 'findings', 'raw')
+if os.path.isdir(raw_dir):
+    for f in glob.glob(os.path.join(raw_dir, '*.yaml')):
+        agent = parse_yaml_field(f, 'created_by') or 'unknown'
+        findings_by_agent[agent] = findings_by_agent.get(agent, 0) + 1
+else:
+    try:
+        with open(result_file) as f:
+            data = json.load(f)
+        for finding in data.get('findings', []):
+            agent = finding.get('created_by', 'unknown')
+            findings_by_agent[agent] = findings_by_agent.get(agent, 0) + 1
+    except Exception:
+        pass
+
+# Memories counts per agent
+memories_by_agent = {}
+mem_root = os.path.join(run_dir, '.zrok', 'memories')
+if os.path.isdir(mem_root):
+    for sub in ('context', 'patterns', 'stack'):
+        for f in glob.glob(os.path.join(mem_root, sub, '*.yaml')):
+            agent = parse_yaml_field(f, 'created_by') or 'unknown'
+            memories_by_agent[agent] = memories_by_agent.get(agent, 0) + 1
+
+# Optional timing data (only present if the skill called `zrok agent record-timing`)
+timings = {}
+state_path = os.path.join(run_dir, '.zrok', 'run-state.json')
+if os.path.isfile(state_path):
+    try:
+        with open(state_path) as f:
+            timings = (json.load(f) or {}).get('agents', {}) or {}
+    except Exception:
+        timings = {}
+
+# Phase lookup: parse built-in agent YAMLs from the source tree.
+phases = {}
+agents_dir = os.path.join(project_root, 'internal', 'agent', 'configs', 'agents')
+if os.path.isdir(agents_dir):
+    for f in glob.glob(os.path.join(agents_dir, '*.yaml')):
+        name = parse_yaml_field(f, 'name')
+        phase = parse_yaml_field(f, 'phase')
+        if name:
+            phases[name] = phase or ''
+
+names = set(findings_by_agent) | set(memories_by_agent) | set(timings.keys())
+entries = []
+for name in sorted(names):
+    if name == 'unknown':
+        continue
+    rec = {
+        'name': name,
+        'phase': phases.get(name, ''),
+        'findings_created': findings_by_agent.get(name, 0),
+        'memories_created': memories_by_agent.get(name, 0),
+    }
+    t = timings.get(name)
+    if t:
+        if t.get('started_at'):
+            rec['started_at'] = t['started_at']
+        if t.get('ended_at'):
+            rec['ended_at'] = t['ended_at']
+        if t.get('duration_ms'):
+            rec['duration_ms'] = t['duration_ms']
+    entries.append('    ' + json.dumps(rec))
+
+print(',\n'.join(entries))
+PYEOF
         echo '  ],'
 
         # Memories created during the run (captures agent reasoning and discovered patterns)

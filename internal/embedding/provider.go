@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Provider is the interface for embedding providers
@@ -97,6 +98,20 @@ func GetAPIKey(envVar string) (string, error) {
 		return "", fmt.Errorf("environment variable %s not set", envVar)
 	}
 	return key, nil
+}
+
+// redactSecret returns s with every occurrence of secret replaced by "[REDACTED]".
+// Use this when an error path includes upstream response body content that *might*
+// echo the Authorization header (some upstreams do); we never want our API key to
+// reach logs or error messages.
+//
+// Length guard: secrets shorter than 8 characters are not searched-for, to avoid
+// false-positive substring matches against short or empty keys.
+func redactSecret(s, secret string) string {
+	if len(secret) < 8 {
+		return s
+	}
+	return strings.ReplaceAll(s, secret, "[REDACTED]")
 }
 
 // AvailableProviders returns a list of available providers

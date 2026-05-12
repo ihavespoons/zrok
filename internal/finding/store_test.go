@@ -2,6 +2,7 @@ package finding
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/ihavespoons/zrok/internal/project"
@@ -527,6 +528,199 @@ func TestFindingTypes(t *testing.T) {
 	}
 	if SeverityWeight(SeverityHigh) <= SeverityWeight(SeverityMedium) {
 		t.Error("high should have higher weight than medium")
+	}
+}
+
+func TestStoreValidateLineStart(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	store := NewStore(p)
+
+	// line_start = 0 should fail
+	err := store.Create(&Finding{
+		Title:    "Bad line_start zero",
+		Severity: SeverityHigh,
+		Location: Location{File: "test.go", LineStart: 0},
+	})
+	if err == nil {
+		t.Error("expected error for line_start = 0")
+	} else if !strings.Contains(err.Error(), "line_start") {
+		t.Errorf("error should mention line_start: %v", err)
+	}
+
+	// negative line_start should fail
+	err = store.Create(&Finding{
+		Title:    "Bad line_start negative",
+		Severity: SeverityHigh,
+		Location: Location{File: "test.go", LineStart: -5},
+	})
+	if err == nil {
+		t.Error("expected error for negative line_start")
+	}
+
+	// positive line_start should succeed
+	err = store.Create(&Finding{
+		Title:    "Good line_start",
+		Severity: SeverityHigh,
+		Location: Location{File: "test.go", LineStart: 1},
+	})
+	if err != nil {
+		t.Errorf("expected success for line_start = 1, got %v", err)
+	}
+}
+
+func TestStoreValidateSeverityCaseInsensitive(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	store := NewStore(p)
+
+	// Mixed case severity should be normalized to lowercase
+	f := &Finding{
+		Title:    "Mixed case severity",
+		Severity: "HIGH",
+		Location: Location{File: "test.go", LineStart: 1},
+	}
+	if err := store.Create(f); err != nil {
+		t.Fatalf("expected success for HIGH severity, got %v", err)
+	}
+	if f.Severity != SeverityHigh {
+		t.Errorf("expected severity normalized to 'high', got %q", f.Severity)
+	}
+
+	// Read back to confirm persisted value is lowercase
+	loaded, err := store.Read(f.ID)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	if loaded.Severity != SeverityHigh {
+		t.Errorf("expected persisted severity 'high', got %q", loaded.Severity)
+	}
+
+	// Unknown severity rejected
+	err = store.Create(&Finding{
+		Title:    "Unknown severity",
+		Severity: "scary",
+		Location: Location{File: "test.go", LineStart: 1},
+	})
+	if err == nil {
+		t.Error("expected error for invalid severity 'scary'")
+	}
+}
+
+func TestStoreValidateConfidence(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	store := NewStore(p)
+
+	// Empty confidence should default to medium
+	f := &Finding{
+		Title:    "Empty confidence",
+		Severity: SeverityHigh,
+		Location: Location{File: "test.go", LineStart: 1},
+	}
+	if err := store.Create(f); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if f.Confidence != ConfidenceMedium {
+		t.Errorf("expected confidence default 'medium', got %q", f.Confidence)
+	}
+
+	// Invalid confidence rejected
+	err := store.Create(&Finding{
+		Title:      "Bad confidence",
+		Severity:   SeverityHigh,
+		Confidence: "verymuch",
+		Location:   Location{File: "test.go", LineStart: 1},
+	})
+	if err == nil {
+		t.Error("expected error for invalid confidence")
+	}
+
+	// Mixed-case confidence normalized
+	f2 := &Finding{
+		Title:      "Mixed confidence",
+		Severity:   SeverityHigh,
+		Confidence: "HIGH",
+		Location:   Location{File: "test.go", LineStart: 1},
+	}
+	if err := store.Create(f2); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if f2.Confidence != ConfidenceHigh {
+		t.Errorf("expected confidence normalized to 'high', got %q", f2.Confidence)
+	}
+}
+
+func TestStoreValidateEmptyCWEAccepted(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	store := NewStore(p)
+
+	// Empty CWE should be accepted (just warn)
+	err := store.Create(&Finding{
+		Title:    "No CWE",
+		Severity: SeverityHigh,
+		Location: Location{File: "test.go", LineStart: 1},
+	})
+	if err != nil {
+		t.Errorf("empty CWE should be accepted, got %v", err)
+	}
+}
+
+func TestStoreDuplicateStatusRoundTrip(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+
+	store := NewStore(p)
+
+	// Create canonical finding
+	canonical := &Finding{
+		Title:    "Canonical SQLi",
+		Severity: SeverityHigh,
+		CWE:      "CWE-89",
+		Location: Location{File: "db.go", LineStart: 10},
+	}
+	if err := store.Create(canonical); err != nil {
+		t.Fatalf("Create canonical failed: %v", err)
+	}
+
+	// Create duplicate
+	dup := &Finding{
+		Title:    "Duplicate SQLi",
+		Severity: SeverityHigh,
+		CWE:      "CWE-89",
+		Location: Location{File: "db.go", LineStart: 10},
+	}
+	if err := store.Create(dup); err != nil {
+		t.Fatalf("Create duplicate failed: %v", err)
+	}
+
+	// Mark as duplicate
+	dup.Status = StatusDuplicate
+	dup.DuplicateOf = canonical.ID
+	if err := store.Update(dup); err != nil {
+		t.Fatalf("Update with duplicate status failed: %v", err)
+	}
+
+	// Read back and verify round-trip
+	loaded, err := store.Read(dup.ID)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	if loaded.Status != StatusDuplicate {
+		t.Errorf("expected status 'duplicate', got %q", loaded.Status)
+	}
+	if loaded.DuplicateOf != canonical.ID {
+		t.Errorf("expected duplicate_of %q, got %q", canonical.ID, loaded.DuplicateOf)
+	}
+
+	// Verify StatusDuplicate is in ValidStatuses
+	if !IsValidStatus(StatusDuplicate) {
+		t.Error("StatusDuplicate should be in ValidStatuses")
 	}
 }
 

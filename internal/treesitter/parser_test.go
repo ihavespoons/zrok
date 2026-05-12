@@ -1,6 +1,10 @@
 package treesitter
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -199,5 +203,86 @@ const helper = () => {
 	}
 	if !found["function:main"] {
 		t.Error("expected to find function main")
+	}
+}
+
+// TestExtractSymbolsRespectsMaxFileSize: oversized file is skipped with
+// SkippedFileError. The parser must NOT load the file into memory beyond
+// the os.Stat() probe.
+func TestExtractSymbolsRespectsMaxFileSize(t *testing.T) {
+	tmp := t.TempDir()
+	p := filepath.Join(tmp, "big.go")
+	body := "package x\n" + strings.Repeat("// pad\n", 300) // ~2 KB
+	if err := os.WriteFile(p, []byte(body), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	parser := NewParser()
+	parser.SetMaxFileSize(1024) // 1 KB cap, file is ~2 KB
+
+	_, err := parser.ExtractSymbols(p, "big.go")
+	if err == nil {
+		t.Fatal("expected SkippedFileError for oversized file, got nil")
+	}
+	var skipped *SkippedFileError
+	if !errors.As(err, &skipped) {
+		t.Fatalf("expected *SkippedFileError, got %T: %v", err, err)
+	}
+	if skipped.Size <= 1024 {
+		t.Errorf("SkippedFileError.Size=%d should exceed cap 1024", skipped.Size)
+	}
+}
+
+// TestExtractSymbolsBelowCapProceeds: small file under the cap parses
+// without a skip error.
+func TestExtractSymbolsBelowCapProceeds(t *testing.T) {
+	tmp := t.TempDir()
+	p := filepath.Join(tmp, "small.go")
+	body := `package x
+
+func Hello() string { return "hi" }
+`
+	if err := os.WriteFile(p, []byte(body), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	parser := NewParser()
+	parser.SetMaxFileSize(10 * 1024)
+
+	_, err := parser.ExtractSymbols(p, "small.go")
+	if err != nil {
+		var skipped *SkippedFileError
+		if errors.As(err, &skipped) {
+			t.Errorf("did not expect skip for small file under cap, got: %v", err)
+		}
+	}
+}
+
+// TestExtractSymbolsDisabledCap: SetMaxFileSize(0) means no cap.
+func TestExtractSymbolsDisabledCap(t *testing.T) {
+	tmp := t.TempDir()
+	p := filepath.Join(tmp, "huge.go")
+	body := "package x\n" + strings.Repeat("// pad\n", 5000)
+	if err := os.WriteFile(p, []byte(body), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	parser := NewParser()
+	parser.SetMaxFileSize(0) // disabled
+
+	_, err := parser.ExtractSymbols(p, "huge.go")
+	if err != nil {
+		var skipped *SkippedFileError
+		if errors.As(err, &skipped) {
+			t.Errorf("did not expect skip with disabled cap, got: %v", err)
+		}
+	}
+}
+
+// TestDefaultMaxFileSize sanity-checks the default value picks up a
+// reasonable bound (avoids accidentally clamping to a tiny value).
+func TestDefaultMaxFileSize(t *testing.T) {
+	if DefaultMaxFileSize < 1024*1024 {
+		t.Errorf("DefaultMaxFileSize=%d is suspiciously small; should be at least 1 MB", DefaultMaxFileSize)
 	}
 }

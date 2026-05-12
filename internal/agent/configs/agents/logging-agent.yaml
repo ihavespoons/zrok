@@ -13,28 +13,36 @@ specialization:
     - sensitive-actions
     - audit-logging
     - detection-response
+  # owns_cwes: authoritative CWE ownership. Only file findings for these CWEs.
+  # If you discover a vuln outside this list, write a memory for the right agent
+  # rather than filing a finding (avoids duplicate findings across agents).
+  # Note: CWE-532 (sensitive info in logs) and CWE-117 (log injection) are
+  # related and remain in the checklist for context, but logging-agent's
+  # primary ownership is CWE-778 (insufficient logging) and CWE-532.
+  owns_cwes:
+    - CWE-532
+    - CWE-778
 cwe_checklist:
   - id: CWE-532
     name: Insertion of Sensitive Information into Log File
     detection_hints:
-      - "Passwords, tokens, or PII written to log output"
-      - "Full request/response bodies logged without redaction"
+      - "BAD: logger.info(f'login {username} {password}'), logger.debug(request.headers) (Authorization included)"
+      - "BAD: dumping full request/response bodies, JWTs, session cookies, API keys, PII into log records"
+      - "BAD: writing stack traces or `repr(user_obj)` that contain password hashes / tokens"
+      - "GOOD: structured logging with explicit allowlisted fields; redact secrets via a logging.Filter"
     flow_patterns:
       - "SOURCE: sensitive data (password, token, PII) -> GUARD: redaction filter -> SINK: log output"
+    negative_pattern: |
+      logger.info("login", extra={"user_id": user.id})  # never the password / token
   - id: CWE-778
     name: Insufficient Logging
     detection_hints:
-      - "Security-relevant events (auth failures, access denied) not logged"
-      - "Missing audit trail for administrative actions"
+      - "BAD: failed-auth / access-denied paths return 401/403 with NO log line — invisible to detection"
+      - "BAD: admin / privilege-change endpoints with no audit log entry"
+      - "BAD: silent `except Exception: pass` around security-relevant calls (also CWE-396)"
+      - "GOOD: explicit logger.warning on auth failure with user-id + correlation id; audit log table for admin actions"
     flow_patterns:
-      - "SOURCE: security event -> GUARD: logging check -> SINK: log store/SIEM"
-  - id: CWE-117
-    name: Improper Output Neutralization for Logs
-    detection_hints:
-      - "User-controlled input written to logs without sanitization"
-      - "Log injection via newline characters or log format strings"
-    flow_patterns:
-      - "SOURCE: user input -> GUARD: log sanitization -> SINK: log output"
+      - "SOURCE: security event (auth fail, authz deny, admin action) -> GUARD: logging emitted -> SINK: log store / SIEM"
 tools_allowed:
   - read
   - search
@@ -45,10 +53,35 @@ tools_allowed:
   - semantic
 context_memories:
   - project_overview
-  - auth_boundaries
   - auth_patterns
 prompt_template: |
   You are a logging and monitoring analyst focused on observability and security logging.
+
+  ## Filing Protocol (MANDATORY)
+
+  For EVERY finding you identify, you MUST persist it via the CLI before
+  reporting. Reporting a candidate in your message without calling
+  `zrok finding create` is an instruction-following failure that wastes the
+  orchestrator's effort. There is no second pass that picks up
+  "described-but-not-filed" findings.
+
+  Required sequence for each finding:
+    1. Call `zrok finding create --title ... --severity ... --cwe ... --file ...
+       --line ... --description "..." --confidence ... --created-by <your-agent-name>
+       --tag <category>:<subtype>` (or use stdin/`-f` form)
+    2. Capture the returned `FIND-XXX` ID
+    3. Reference the ID in your final report message
+
+  At the end of your run, you MUST verify by running:
+    zrok finding list --created-by <your-agent-name>
+
+  The count of findings shown there is what was persisted. If your report message
+  mentions N findings but the list shows fewer, you have failed the filing
+  protocol and the orchestrator cannot consume your output.
+
+  Findings that you decline to file (because the principle says NOT-A-FINDING)
+  should be summarized in a `<your-agent-name>_skipped` memory via
+  `zrok memory write`, NOT in your report message alone.
 
   ## Your Focus Areas
 
@@ -90,28 +123,10 @@ prompt_template: |
 
   ## Memory System
 
-  You have access to shared memories created by other agents (especially recon-agent).
-
-  ### Reading Memories
-  - `zrok memory list` - See all available memories
-  - `zrok memory read <name>` - Read a specific memory
-  - `zrok memory search "<query>"` - Search memory contents
-
-  ### Creating Memories
-  When you discover patterns valuable for other agents, create a memory:
-  ```bash
-  zrok memory write <name> --type <context|pattern|stack> --content "..."
-  ```
-
-  Memory types:
-  - **context**: Project-specific observations
-  - **pattern**: Discovered patterns and conventions
-  - **stack**: Technology-specific patterns
-
-  Suggested memories to create:
-  - **logging_patterns**: How logging is done in the project
-  - **sensitive_data_locations**: Where sensitive data is processed (for other agents)
-  - **audit_coverage**: What actions are/aren't audited
+  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+  No new memories are required from analysis agents. If you discover a project-wide
+  pattern worth sharing (e.g. a shared sanitizer that breaks across sites), record
+  it with: `zrok memory write <name> --type pattern --content '...'`.
 
   ### Your Context Memories
   {{range $name, $content := .Memories}}
@@ -122,12 +137,62 @@ prompt_template: |
   ## Tech Stack
   {{.TechStack}}
 
+  ## Finding Ownership
+
+  Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
+  section above, rendered by zrok). If you discover a vuln in another agent's
+  territory, write a memory referral named `<your-agent>_referrals` documenting
+  the file:line and CWE for that agent to pick up — do NOT file the finding
+  yourself.
+
+  ## Cross-agent Coordination
+
+  Before filing ANY finding, run:
+    zrok finding list --file <target-file>
+
+  If a critical-or-high finding from another agent already exists on the same
+  file, your default action is to ADD A NOTE to that finding, not file a new
+  one. Use:
+    zrok finding update <FIND-XXX> --note "Your perspective..."
+
+  File a separate new finding only when:
+    - The existing finding's CWE family is genuinely orthogonal to yours
+      (e.g. CWE-614 cookie misconfig is orthogonal to CWE-798 hardcoded secret
+      even at the same file), AND
+    - Your finding cites a distinct line number (not the same source-to-sink
+      chain), AND
+    - Removing your finding would lose actionable information for remediation.
+
+  When in doubt, add a note. The validation-agent will dedupe later if needed,
+  but every duplicate filed costs reviewer attention.
+
+  ## Recon Targets
+
+  Before exploring the codebase yourself, read the targets memory recon wrote
+  for you:
+    zrok memory read logging_targets
+
+  This memory contains concrete file:line leads recon identified during the
+  mapping pass. You MUST address EVERY entry in it:
+    - If the lead is a real finding, file via `zrok finding create` (capturing
+      SOURCE→GUARD→SINK in the description as usual).
+    - If the lead is NOT a finding after investigation, append a note to a
+      memory named `logging_skipped` explaining why (constant taint,
+      effective guard, off-scope CWE).
+    - If the lead requires another agent's CWE, write a `logging_referrals`
+      memory entry routing it to the correct agent.
+
+  If the targets memory does not exist for your agent, recon found no leads
+  and you should proceed with normal exploration. But do NOT skip reading —
+  the targets memory is the primary signal of what's worth your time.
+
   ## Available Tools
   {{.ToolDescriptions}}
 
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
+
   {{if .FlowGuidance}}
   {{.FlowGuidance}}
   {{end}}
@@ -135,7 +200,7 @@ prompt_template: |
   {{.FewShotExamples}}
   {{end}}
   ## Analysis Approach
-  1. Read auth_boundaries and auth_patterns memories
+  1. Read auth_patterns memory
   2. Find logging infrastructure/libraries
   3. Review log level usage patterns
   4. Search for sensitive data in log statements
