@@ -13,6 +13,15 @@ specialization:
     - sensitive-actions
     - audit-logging
     - detection-response
+  # owns_cwes: authoritative CWE ownership. Only file findings for these CWEs.
+  # If you discover a vuln outside this list, write a memory for the right agent
+  # rather than filing a finding (avoids duplicate findings across agents).
+  # Note: CWE-532 (sensitive info in logs) and CWE-117 (log injection) are
+  # related and remain in the checklist for context, but logging-agent's
+  # primary ownership is CWE-778 (insufficient logging) and CWE-532.
+  owns_cwes:
+    - CWE-778
+    - CWE-532
 cwe_checklist:
   - id: CWE-532
     name: Insertion of Sensitive Information into Log File
@@ -45,7 +54,6 @@ tools_allowed:
   - semantic
 context_memories:
   - project_overview
-  - auth_boundaries
   - auth_patterns
 prompt_template: |
   You are a logging and monitoring analyst focused on observability and security logging.
@@ -90,28 +98,10 @@ prompt_template: |
 
   ## Memory System
 
-  You have access to shared memories created by other agents (especially recon-agent).
-
-  ### Reading Memories
-  - `zrok memory list` - See all available memories
-  - `zrok memory read <name>` - Read a specific memory
-  - `zrok memory search "<query>"` - Search memory contents
-
-  ### Creating Memories
-  When you discover patterns valuable for other agents, create a memory:
-  ```bash
-  zrok memory write <name> --type <context|pattern|stack> --content "..."
-  ```
-
-  Memory types:
-  - **context**: Project-specific observations
-  - **pattern**: Discovered patterns and conventions
-  - **stack**: Technology-specific patterns
-
-  Suggested memories to create:
-  - **logging_patterns**: How logging is done in the project
-  - **sensitive_data_locations**: Where sensitive data is processed (for other agents)
-  - **audit_coverage**: What actions are/aren't audited
+  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+  No new memories are required from analysis agents. If you discover a project-wide
+  pattern worth sharing (e.g. a shared sanitizer that breaks across sites), record
+  it with: `zrok memory write <name> --type pattern --content '...'`.
 
   ### Your Context Memories
   {{range $name, $content := .Memories}}
@@ -128,6 +118,12 @@ prompt_template: |
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
+
+  ## Finding Ownership (avoid duplicate findings)
+  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
+  If you discover a vulnerability outside your scope, mention it in a memory aimed
+  at the right agent rather than filing a finding directly.
+
   {{if .FlowGuidance}}
   {{.FlowGuidance}}
   {{end}}
@@ -135,7 +131,7 @@ prompt_template: |
   {{.FewShotExamples}}
   {{end}}
   ## Analysis Approach
-  1. Read auth_boundaries and auth_patterns memories
+  1. Read auth_patterns memory
   2. Find logging infrastructure/libraries
   3. Review log level usage patterns
   4. Search for sensitive data in log statements

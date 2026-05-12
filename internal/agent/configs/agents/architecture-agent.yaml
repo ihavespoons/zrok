@@ -13,6 +13,12 @@ specialization:
     - stale-code
     - dead-code
     - unfinished-code
+  # owns_cwes: authoritative CWE ownership. Only file findings for these CWEs.
+  # If you discover a vuln outside this list, write a memory for the right agent
+  # rather than filing a finding (avoids duplicate findings across agents).
+  owns_cwes:
+    - CWE-657
+    - CWE-710
 tools_allowed:
   - read
   - search
@@ -64,28 +70,10 @@ prompt_template: |
 
   ## Memory System
 
-  You have access to shared memories created by other agents (especially recon-agent).
-
-  ### Reading Memories
-  - `zrok memory list` - See all available memories
-  - `zrok memory read <name>` - Read a specific memory
-  - `zrok memory search "<query>"` - Search memory contents
-
-  ### Creating Memories
-  When you discover patterns valuable for other agents, create a memory:
-  ```bash
-  zrok memory write <name> --type <context|pattern|stack> --content "..."
-  ```
-
-  Memory types:
-  - **context**: Project-specific observations
-  - **pattern**: Discovered patterns and conventions
-  - **stack**: Technology-specific patterns
-
-  Suggested memories to create:
-  - **architecture_patterns**: Document the architectural patterns you discover
-  - **framework_usage**: How frameworks are being used (or misused)
-  - **refactoring_candidates**: Code areas that could benefit from refactoring
+  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+  No new memories are required from analysis agents. If you discover a project-wide
+  pattern worth sharing (e.g. a shared sanitizer that breaks across sites), record
+  it with: `zrok memory write <name> --type pattern --content '...'`.
 
   ### Your Context Memories
   {{range $name, $content := .Memories}}
@@ -102,6 +90,12 @@ prompt_template: |
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
+
+  ## Finding Ownership (avoid duplicate findings)
+  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
+  If you discover a vulnerability outside your scope, mention it in a memory aimed
+  at the right agent rather than filing a finding directly.
+
   {{if .FlowGuidance}}
   {{.FlowGuidance}}
   {{end}}

@@ -17,6 +17,16 @@ specialization:
     - exposed-interfaces
   owasp_categories:
     - "A05:2021"
+  # owns_cwes: authoritative CWE ownership. Only file findings for these CWEs.
+  # If you discover a vuln outside this list, write a memory for the right agent
+  # rather than filing a finding (avoids duplicate findings across agents).
+  # Note: config-agent owns CWE-614 (insecure cookie flags) as it is a
+  # configuration concern, even though it touches session security.
+  owns_cwes:
+    - CWE-16
+    - CWE-200
+    - CWE-209
+    - CWE-614
 cwe_checklist:
   - id: CWE-16
     name: Configuration
@@ -35,10 +45,44 @@ cwe_checklist:
   - id: CWE-942
     name: Permissive Cross-domain Policy
     detection_hints:
-      - "CORS allowing all origins (Access-Control-Allow-Origin: *)"
+      - "BAD: CORS allowing all origins (Access-Control-Allow-Origin: *) combined with credentials"
+      - "BAD: Flask-CORS(app, origins='*'), django-cors-headers CORS_ALLOW_ALL_ORIGINS = True"
+      - "GOOD: explicit origin allowlist (CORS_ALLOWED_ORIGINS = ['https://app.example.com'])"
       - "Missing or overly permissive CSP headers"
     flow_patterns:
       - "SOURCE: HTTP request origin -> GUARD: CORS policy -> SINK: response headers"
+  - id: CWE-200
+    name: Exposure of Sensitive Information to an Unauthorized Actor
+    detection_hints:
+      - "BAD: returning internal stack traces, server hostnames, or DB error messages to clients"
+      - "BAD: response bodies that echo full user objects (password hashes, tokens) without serializer filtering"
+      - "GOOD: explicit response schemas (pydantic.BaseModel with `exclude`, marshmallow Schemas) that omit sensitive fields"
+    flow_patterns:
+      - "SOURCE: internal state/error -> GUARD: redaction/serializer -> SINK: HTTP response"
+  - id: CWE-209
+    name: Generation of Error Message Containing Sensitive Information
+    detection_hints:
+      - "BAD: Flask DEBUG=True or Django DEBUG=True in production (renders stack traces, settings)"
+      - "BAD: returning `str(exc)` or `traceback.format_exc()` to clients"
+      - "GOOD: generic 500 responses, errors logged server-side with a correlation ID, traceback NEVER returned to client"
+    flow_patterns:
+      - "SOURCE: exception -> GUARD: prod/debug check + generic message -> SINK: HTTP response"
+  - id: CWE-614
+    name: Sensitive Cookie Without 'Secure' Attribute
+    detection_hints:
+      - "BAD: Flask SESSION_COOKIE_SECURE = False / unset, Django SESSION_COOKIE_SECURE = False"
+      - "BAD: response.set_cookie('session', val) without secure=True, httponly=True, samesite='Lax' or 'Strict'"
+      - "BAD: CSRF cookie without Secure attribute on HTTPS sites"
+      - "GOOD: set_cookie(..., secure=True, httponly=True, samesite='Lax')"
+      - "GOOD: SESSION_COOKIE_SECURE = True, CSRF_COOKIE_SECURE = True, SESSION_COOKIE_HTTPONLY = True"
+    flow_patterns:
+      - "SOURCE: session/auth value -> GUARD: cookie attribute config -> SINK: Set-Cookie response header"
+    negative_pattern: |
+      # Django settings
+      SESSION_COOKIE_SECURE = True
+      SESSION_COOKIE_HTTPONLY = True
+      SESSION_COOKIE_SAMESITE = "Lax"
+      CSRF_COOKIE_SECURE = True
 tools_allowed:
   - read
   - search
@@ -51,7 +95,6 @@ tools_allowed:
 context_memories:
   - project_overview
   - tech_stack
-  - deployment_config
 prompt_template: |
   You are a security configuration analyst focused on misconfigurations that expose applications to attack.
 
@@ -92,23 +135,10 @@ prompt_template: |
 
   ## Memory System
 
-  You have access to shared memories created by other agents (especially recon-agent).
-
-  ### Reading Memories
-  - `zrok memory list` - See all available memories
-  - `zrok memory read <name>` - Read a specific memory
-  - `zrok memory search "<query>"` - Search memory contents
-
-  ### Creating Memories
-  When you discover patterns valuable for other agents, create a memory:
-  ```bash
-  zrok memory write <name> --type <context|pattern|stack> --content "..."
-  ```
-
-  Suggested memories to create:
-  - **security_config**: Security-relevant configuration settings found
-  - **deployment_config**: Deployment and environment configuration patterns
-  - **exposed_endpoints**: Endpoints that may be unintentionally exposed
+  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+  No new memories are required from analysis agents. If you discover a project-wide
+  pattern worth sharing (e.g. a shared sanitizer that breaks across sites), record
+  it with: `zrok memory write <name> --type pattern --content '...'`.
 
   ### Your Context Memories
   {{range $name, $content := .Memories}}
@@ -125,6 +155,12 @@ prompt_template: |
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
+
+  ## Finding Ownership (avoid duplicate findings)
+  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
+  If you discover a vulnerability outside your scope, mention it in a memory aimed
+  at the right agent rather than filing a finding directly.
+
   {{if .FlowGuidance}}
   {{.FlowGuidance}}
   {{end}}

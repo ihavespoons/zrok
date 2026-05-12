@@ -13,17 +13,34 @@ specialization:
     - internal-network-access
   owasp_categories:
     - "A10:2021"
+  # owns_cwes: authoritative CWE ownership. Only file findings for these CWEs.
+  # If you discover a vuln outside this list, write a memory for the right agent
+  # rather than filing a finding (avoids duplicate findings across agents).
+  owns_cwes:
+    - CWE-918
 cwe_checklist:
   - id: CWE-918
     name: Server-Side Request Forgery (SSRF)
     detection_hints:
-      - "User-supplied URLs passed to HTTP client without validation"
-      - "URL parameters used to fetch remote resources"
-      - "Webhook or callback URLs from user input"
-      - "Image/file download from user-provided URLs"
+      - "BAD: requests.get(user_url), requests.post(user_url), httpx.get(user_url) with no allowlist"
+      - "BAD: urllib.request.urlopen(user_url), urllib3.PoolManager().request('GET', user_url)"
+      - "BAD: substring checks like `if 'trusted' in url` or `url.startswith('http')`"
+      - "BAD: image/file download endpoints accepting URLs from query/body"
+      - "BAD: webhook/callback URL config with no host validation"
+      - "GOOD: parse with urllib.parse.urlparse(); verify scheme in {'http','https'}; resolve host via socket.getaddrinfo and reject RFC1918/loopback/link-local before fetch"
+      - "GOOD: explicit allowlist of hostnames compared via urlparse(url).netloc.lower() in ALLOWED"
     flow_patterns:
       - "SOURCE: user-controlled URL -> GUARD: URL allowlist/blocklist -> SINK: HTTP client request"
       - "SOURCE: webhook config -> GUARD: host validation -> SINK: outbound HTTP request"
+    negative_pattern: |
+      from urllib.parse import urlparse
+      import socket
+      ALLOWED = {"api.partner.com", "files.partner.com"}
+      def safe_fetch(url):
+          p = urlparse(url)
+          if p.scheme not in ("http", "https"): raise ValueError("scheme")
+          if p.hostname not in ALLOWED: raise ValueError("host")
+          # Resolve and reject internal ranges before requests.get(url)
 tools_allowed:
   - read
   - search
@@ -35,7 +52,6 @@ tools_allowed:
 context_memories:
   - project_overview
   - api_endpoints
-  - external_dependencies
 prompt_template: |
   You are an SSRF specialist focused on detecting server-side request forgery vulnerabilities.
 
@@ -65,23 +81,10 @@ prompt_template: |
 
   ## Memory System
 
-  You have access to shared memories created by other agents (especially recon-agent).
-
-  ### Reading Memories
-  - `zrok memory list` - See all available memories
-  - `zrok memory read <name>` - Read a specific memory
-  - `zrok memory search "<query>"` - Search memory contents
-
-  ### Creating Memories
-  When you discover patterns valuable for other agents, create a memory:
-  ```bash
-  zrok memory write <name> --type <context|pattern|stack> --content "..."
-  ```
-
-  Suggested memories to create:
-  - **outbound_requests**: Where the application makes outbound HTTP requests
-  - **url_handling**: How URLs are processed and validated
-  - **ssrf_surfaces**: Potential SSRF attack surfaces identified
+  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+  No new memories are required from analysis agents. If you discover a project-wide
+  pattern worth sharing (e.g. a shared sanitizer that breaks across sites), record
+  it with: `zrok memory write <name> --type pattern --content '...'`.
 
   ### Your Context Memories
   {{range $name, $content := .Memories}}
@@ -98,6 +101,12 @@ prompt_template: |
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
+
+  ## Finding Ownership (avoid duplicate findings)
+  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
+  If you discover a vulnerability outside your scope, mention it in a memory aimed
+  at the right agent rather than filing a finding directly.
+
   {{if .FlowGuidance}}
   {{.FlowGuidance}}
   {{end}}

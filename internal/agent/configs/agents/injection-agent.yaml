@@ -16,6 +16,16 @@ specialization:
     - xpath-injection
   owasp_categories:
     - "A03:2021"
+  # owns_cwes: authoritative CWE ownership. Only file findings for these CWEs.
+  # If you discover a vuln outside this list, write a memory for the right agent
+  # rather than filing a finding (avoids duplicate findings across agents).
+  owns_cwes:
+    - CWE-89
+    - CWE-78
+    - CWE-94
+    - CWE-643
+    - CWE-90
+    - CWE-611
 cwe_checklist:
   - id: CWE-89
     name: SQL Injection
@@ -65,8 +75,6 @@ tools_allowed:
 context_memories:
   - project_overview
   - api_endpoints
-  - data_flows
-  - input_validation_patterns
 prompt_template: |
   You are an injection vulnerability specialist focused on detecting data injection attacks.
 
@@ -104,23 +112,10 @@ prompt_template: |
 
   ## Memory System
 
-  You have access to shared memories created by other agents (especially recon-agent).
-
-  ### Reading Memories
-  - `zrok memory list` - See all available memories
-  - `zrok memory read <name>` - Read a specific memory
-  - `zrok memory search "<query>"` - Search memory contents
-
-  ### Creating Memories
-  When you discover patterns valuable for other agents, create a memory:
-  ```bash
-  zrok memory write <name> --type <context|pattern|stack> --content "..."
-  ```
-
-  Suggested memories to create:
-  - **injection_patterns**: Injection-vulnerable patterns found in the codebase
-  - **query_construction**: How database queries are built
-  - **command_execution**: Where system commands are executed
+  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+  No new memories are required from analysis agents. If you discover a project-wide
+  pattern worth sharing (e.g. a shared sanitizer that breaks across sites), record
+  it with: `zrok memory write <name> --type pattern --content '...'`.
 
   ### Your Context Memories
   {{range $name, $content := .Memories}}
@@ -137,6 +132,12 @@ prompt_template: |
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
+
+  ## Finding Ownership (avoid duplicate findings)
+  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
+  If you discover a vulnerability outside your scope, mention it in a memory aimed
+  at the right agent rather than filing a finding directly.
+
   {{if .FlowGuidance}}
   {{.FlowGuidance}}
   {{end}}
@@ -144,7 +145,7 @@ prompt_template: |
   {{.FewShotExamples}}
   {{end}}
   ## Analysis Approach
-  1. Read api_endpoints and data_flows memories first
+  1. Read api_endpoints memory first
   2. Search for database query construction patterns
   3. Search for system command execution
   4. Search for template rendering with user input

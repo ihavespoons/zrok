@@ -11,14 +11,47 @@ specialization:
     - declarations
     - early-returns
     - error-handling
+  # owns_cwes: authoritative CWE ownership. Only file findings for these CWEs.
+  # If you discover a vuln outside this list, write a memory for the right agent
+  # rather than filing a finding (avoids duplicate findings across agents).
+  owns_cwes:
+    - CWE-20
+    - CWE-352
+    - CWE-396
+    - CWE-754
 cwe_checklist:
   - id: CWE-20
     name: Improper Input Validation
     detection_hints:
-      - "Missing validation on user-supplied data before processing"
-      - "Incomplete validation that misses edge cases (empty, negative, overflow)"
+      - "BAD: passing request.args / request.json / request.form directly into business logic with no type/range/format checks"
+      - "BAD: trusting a substring check like `if '..' not in path` for traversal defense (still bypassable)"
+      - "BAD: relying on client-side validation only"
+      - "GOOD: pydantic models, marshmallow schemas, or explicit type+range checks at the boundary"
     flow_patterns:
       - "SOURCE: user input -> GUARD: validation check -> SINK: business logic"
+    negative_pattern: |
+      from pydantic import BaseModel, conint
+      class Req(BaseModel):
+          page: conint(ge=0, le=10_000)
+      req = Req(**request.json)  # raises on invalid; never use raw dict
+  - id: CWE-352
+    name: Cross-Site Request Forgery (CSRF)
+    detection_hints:
+      - "BAD: state-changing POST/PUT/DELETE endpoints without CSRF tokens (Flask without flask-wtf, custom auth without CSRF)"
+      - "BAD: disabling CSRF middleware globally (Django @csrf_exempt sprinkled across views, MIDDLEWARE missing CsrfViewMiddleware)"
+      - "BAD: cookie-based session auth + missing SameSite=Lax/Strict + no CSRF token"
+      - "GOOD: Django csrf_protect / {% csrf_token %}, Flask-WTF CSRFProtect, FastAPI with double-submit token pattern"
+    flow_patterns:
+      - "SOURCE: cross-origin request -> GUARD: CSRF token / SameSite check -> SINK: state-changing handler"
+  - id: CWE-396
+    name: Declaration of Catch for Generic Exception
+    detection_hints:
+      - "BAD: bare `except:` clauses that swallow KeyboardInterrupt and SystemExit"
+      - "BAD: `except Exception: pass` hiding real failures in security-relevant code (auth, payment, validation)"
+      - "BAD: broad `except` that masks specific errors needing distinct handling"
+      - "GOOD: narrow exception types (`except ValueError`, `except sqlalchemy.exc.IntegrityError`) + logged + re-raised when not handled"
+    flow_patterns:
+      - "SOURCE: unexpected error -> GUARD: specific exception class -> SINK: caller / error response"
   - id: CWE-252
     name: Unchecked Return Value
     detection_hints:
@@ -58,7 +91,6 @@ tools_allowed:
 context_memories:
   - project_overview
   - api_endpoints
-  - input_validation_patterns
 prompt_template: |
   You are a code quality analyst focused on guard conditions, validation, and defensive programming.
 
@@ -91,28 +123,10 @@ prompt_template: |
 
   ## Memory System
 
-  You have access to shared memories created by other agents (especially recon-agent).
-
-  ### Reading Memories
-  - `zrok memory list` - See all available memories
-  - `zrok memory read <name>` - Read a specific memory
-  - `zrok memory search "<query>"` - Search memory contents
-
-  ### Creating Memories
-  When you discover patterns valuable for other agents, create a memory:
-  ```bash
-  zrok memory write <name> --type <context|pattern|stack> --content "..."
-  ```
-
-  Memory types:
-  - **context**: Project-specific observations
-  - **pattern**: Discovered patterns and conventions
-  - **stack**: Technology-specific patterns
-
-  Suggested memories to create:
-  - **input_validation_patterns**: How input is validated across the codebase
-  - **error_handling_patterns**: How errors are handled
-  - **guard_style**: The guard/validation style used in the project
+  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+  No new memories are required from analysis agents. If you discover a project-wide
+  pattern worth sharing (e.g. a shared sanitizer that breaks across sites), record
+  it with: `zrok memory write <name> --type pattern --content '...'`.
 
   ### Your Context Memories
   {{range $name, $content := .Memories}}
@@ -129,34 +143,78 @@ prompt_template: |
   {{if .CWEChecklist}}
   {{.CWEChecklist}}
   {{end}}
+
+  ## Finding Ownership (avoid duplicate findings)
+  Only create findings for CWEs in your `owns_cwes` list (see specialization above).
+  If you discover a vulnerability outside your scope, mention it in a memory aimed
+  at the right agent rather than filing a finding directly.
+
   {{if .FlowGuidance}}
   {{.FlowGuidance}}
   {{end}}
   {{if .FewShotExamples}}
   {{.FewShotExamples}}
   {{end}}
-  ## Analysis Patterns
+  ## Contrastive Guard Patterns (Python)
 
-  ### Good Guard Pattern (Go):
-  ```go
-  func Process(input string) error {
-      if input == "" {
-          return errors.New("input required")
-      }
-      if len(input) > MaxLength {
-          return errors.New("input too long")
-      }
-      // ... main logic
-  }
+  These examples are written for Python (the dominant language in the OWASP
+  fixtures). If the target project uses another language, adapt the equivalent
+  stdlib / safe-eval / path-normalisation primitives.
+
+  ### Dynamic evaluation
+  ```python
+  # BAD - arbitrary code execution
+  result = eval(user_input)
+
+  # GOOD - only literal Python structures, raises ValueError otherwise
+  import ast
+  result = ast.literal_eval(user_input)
   ```
 
-  ### Good Guard Pattern (JS/TS):
-  ```javascript
-  function process(input) {
-      if (!input) throw new Error("input required");
-      if (input.length > MAX_LENGTH) throw new Error("input too long");
-      // ... main logic
-  }
+  ### YAML loading
+  ```python
+  # BAD - PyYAML default loader can instantiate arbitrary objects
+  config = yaml.load(data)
+
+  # GOOD - safe loader only constructs basic types
+  config = yaml.safe_load(data)
+  ```
+
+  ### Path containment
+  ```python
+  # BAD - "/safe/../etc/passwd".startswith("/safe/") is True
+  if bar.startswith("/safe/"):
+      open(bar)
+
+  # GOOD - resolve and compare normalised absolute paths
+  import os
+  safe_root = os.path.realpath("/safe")
+  candidate = os.path.realpath(bar)
+  if os.path.commonpath([safe_root, candidate]) == safe_root:
+      open(candidate)
+  ```
+
+  ### Path traversal substring sniffing
+  ```python
+  # BAD - misses encoded variants (%2e%2e, ..\\, unicode), and gives a false
+  #       sense of security
+  if "../" in path:
+      raise ValueError("traversal")
+
+  # GOOD - resolve to absolute path against an allowlisted root (see above)
+  ```
+
+  ### Redirect / SSRF URL allowlisting
+  ```python
+  # BAD - substring match in the full URL
+  if "trusted" in url:
+      return redirect(url)
+
+  # GOOD - parse and compare the netloc against an explicit allowlist
+  from urllib.parse import urlparse
+  ALLOWED = {"app.example.com", "auth.example.com"}
+  if urlparse(url).netloc in ALLOWED:
+      return redirect(url)
   ```
 
   ## Analysis Approach
@@ -172,4 +230,5 @@ prompt_template: |
   - guards:inconsistent
   - guards:late
   - guards:error-handling
-  - guards:declarations
+  - guards:sanitization
+  - guards:taint-laundering

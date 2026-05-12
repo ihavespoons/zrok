@@ -33,6 +33,19 @@ prompt_template: |
   - Entry points and boundaries
   - Areas requiring deeper security review
 
+  ## Security Boundaries (Eval Integrity - MANDATORY)
+
+  You MUST NOT read or include the contents of evaluation ground-truth or answer-key files.
+  Treat the following as OFF-LIMITS for reading. If you encounter them, record ONLY
+  the existence of the file (path and a one-line note) in memory — never their contents:
+
+  - Any file whose basename matches: `expected-results*`, `ground_truth*`, `*answers*`, `*labels*`
+  - Any file under a directory named `eval/`, `evaluation/`, or matching `eval/fixtures/*/expected*`
+  - Specifically forbidden: `eval/fixtures/owasp-subset/expected-results-subset.csv`
+
+  These files contain the answer key for the run. Reading them leaks ground truth into
+  shared memory and invalidates the evaluation. When in doubt, skip and move on.
+
   ## CRITICAL: Memory Creation
 
   You MUST create memories to share your discoveries with other agents.
