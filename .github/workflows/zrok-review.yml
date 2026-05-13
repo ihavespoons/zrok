@@ -16,6 +16,14 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# A new push to the same PR cancels the in-flight review. Reviews are
+# expensive (multi-agent + API spend) and re-pushes happen during normal
+# dev — without this, every push piles a fresh run on top while the old
+# one keeps burning the budget.
+concurrency:
+  group: zrok-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write       # post the review comment
@@ -33,34 +41,29 @@ jobs:
       - uses: diffsec/zrok-review-action@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          # Z.AI Coding Plan — GLM-5.1. The coding-plan endpoint differs
-          # from standard z.ai, so we define it as a custom provider here
-          # rather than relying on a committed opencode.json.
+          # OpenRouter via OpenCode's openai-compatible adapter. Lets us
+          # pick any model OpenRouter routes to without provider-specific
+          # plumbing.
           opencode-env: |
-            ZAI_API_KEY=${{ secrets.ZAI_API_KEY }}
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
           opencode-config: |
             {
               "$schema": "https://opencode.ai/config.json",
               "provider": {
-                "zai": {
+                "openrouter": {
                   "npm": "@ai-sdk/openai-compatible",
-                  "name": "Z.AI Coding Plan",
+                  "name": "OpenRouter",
                   "options": {
-                    "baseURL": "https://api.z.ai/api/coding/paas/v4",
-                    "apiKey": "{env:ZAI_API_KEY}"
+                    "baseURL": "https://openrouter.ai/api/v1",
+                    "apiKey": "{env:OPENROUTER_API_KEY}"
                   },
                   "models": {
-                    "glm-5.1": { "name": "GLM-5.1" },
-                    "glm-5-turbo": { "name": "GLM-5-Turbo" },
-                    "glm-4.7": { "name": "GLM-4.7" }
+                    "google/gemma-4-31b-it": { "name": "Gemma 4 31B Instruct" }
                   }
                 }
               }
             }
-          # glm-5-turbo for CI: dramatically faster than glm-5.1 with
-          # acceptable quality for the bounded validation/triage decisions
-          # the orchestrator makes. Use glm-5.1 for deep local reviews.
-          model: zai/glm-5-turbo
+          model: openrouter/google/gemma-4-31b-it
           # Dogfood: review with the PR's own zrok code. If a PR breaks
           # the review pipeline, the review breaks visibly, which is the
           # signal we want.
