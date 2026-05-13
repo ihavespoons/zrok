@@ -55,9 +55,9 @@
   "mean_finding_count": 18.8125,
   "std_finding_count": 32.191549098068165,
   "thresholds": {
-    "min_recall": 0,
-    "min_f1": 0,
-    "min_weighted_recall": 0,
-    "max_false_positive_rate": 0.5
+    "min_recall": 0.05,
+    "min_f1": 0.05,
+    "min_weighted_recall": 0.05,
+    "max_false_positive_rate": 0.9
   }
 }
