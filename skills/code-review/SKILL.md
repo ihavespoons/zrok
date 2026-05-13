@@ -139,6 +139,67 @@ moving to Phase 3.
 
 ---
 
+## Phase 2.5: Run SAST + Triage (Optional but Recommended)
+
+Before the LLM analysis agents run, perform a deterministic SAST pass with
+**opengrep** and let `sast-triage-agent` filter false positives. SAST is
+fast and free relative to LLM calls, so even when it produces low signal
+the cost is negligible. The triage step ensures the analysis agents see a
+clean store and don't re-flag noise SAST already covered.
+
+### Setup (one-time per host)
+
+If opengrep isn't installed:
+
+```bash
+# macOS
+brew install opengrep                # or download standalone binary
+
+# Linux / any
+curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | sh
+
+# Rules pack (once)
+git clone --depth 1 https://github.com/opengrep/opengrep-rules /tmp/og-rules
+```
+
+If opengrep isn't available, skip this phase entirely — the LLM agents
+will still produce a full review.
+
+### Run the scan
+
+```bash
+zrok sast --config /tmp/og-rules/security --diff <base-ref>
+```
+
+This persists SAST findings into the zrok store with `created_by: opengrep`
+and `status: open`.
+
+### Spawn sast-triage-agent
+
+```
+Task tool:
+- subagent_type: "general-purpose"
+- description: "sast-triage-agent: triage opengrep findings"
+- prompt: |
+    You are running as the sast-triage-agent for a zrok code review.
+
+    Working Directory: <target-project>
+    zrok Binary: <path-to-zrok>
+
+    {output from: zrok agent prompt sast-triage-agent}
+```
+
+The triage agent reads each opengrep finding, checks for mitigations, and
+marks `confirmed` / `false_positive` / `duplicate`. Use a **smaller model**
+for this work — the decisions are bounded and frontier-model tokens are
+wasted here.
+
+After triage completes, the analysis agents in Phase 3 will see confirmed
+SAST findings already in the store and won't recreate them (they dedup via
+fingerprint).
+
+---
+
 ## Phase 3: Spawn Analysis Agents (Parallel)
 
 Spawn multiple analysis agents in a SINGLE message with multiple Task tool calls.
@@ -156,6 +217,7 @@ These agents MUST always be spawned for any security review:
 | architecture-agent | Code patterns, dead code, tech debt |
 | injection-agent | SQL/command/XPath/template injection (**always for web apps or projects with databases**) |
 | config-agent | Debug modes, default creds, CORS, headers |
+| sast-triage-agent | Triages opengrep SAST findings (runs in Phase 2.5; small model; instructs the user to install opengrep if missing) |
 
 ### Additional Agents (spawn when suggested by onboarding)
 

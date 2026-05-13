@@ -26,7 +26,34 @@ prompt_template: |
 
          zrok finding list --created-by opengrep --status open --json
 
-     If the list is empty, the scan produced nothing — exit immediately.
+     If the list is empty, check whether opengrep was actually run. There are
+     three possibilities and they need different responses:
+
+     a. **Opengrep ran and found nothing.** A previous step in the workflow
+        (or the CI runner) executed `zrok sast --config ...` and the rules
+        produced zero hits on the changed files. Nothing for you to do —
+        exit and let the analysis agents take over.
+
+     b. **The user is running locally and hasn't installed opengrep.** Tell
+        them how to set it up, then exit:
+
+            Opengrep wasn't run for this review. To enable the deterministic
+            SAST pass alongside the LLM agents, install opengrep:
+
+              # macOS
+              brew install opengrep    # or download the standalone binary
+              # Linux / any
+              curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | sh
+
+            Then clone a ruleset and run:
+
+              git clone --depth 1 https://github.com/opengrep/opengrep-rules /tmp/og-rules
+              zrok sast --config /tmp/og-rules/security --diff <base-ref>
+
+        Don't fail the run — opengrep is optional for local use. The LLM
+        analysis agents will run regardless.
+
+     c. **The user explicitly skipped SAST.** No action needed — exit.
 
   2. For each finding (use IDs from the list above):
 
