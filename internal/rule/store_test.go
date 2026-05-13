@@ -228,6 +228,54 @@ func TestStore_EnabledRulePathsSkipsDisabled(t *testing.T) {
 	}
 }
 
+const multiRuleYAML = `rules:
+  - id: zrok-sql-concat
+    message: hand-built SQL
+    severity: ERROR
+    pattern: $DB.execute($X + $Y)
+  - id: zrok-fstring-sql
+    message: f-string SQL
+    severity: ERROR
+    pattern: $DB.execute(f"$X")
+`
+
+func TestStore_ParseRuleIDs(t *testing.T) {
+	s, cleanup := newTestStore(t)
+	defer cleanup()
+	if err := s.Add("multi", []byte(multiRuleYAML), validMeta()); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	ids, err := s.ParseRuleIDs("multi")
+	if err != nil {
+		t.Fatalf("ParseRuleIDs: %v", err)
+	}
+	if len(ids) != 2 || ids[0] != "zrok-sql-concat" || ids[1] != "zrok-fstring-sql" {
+		t.Errorf("expected [zrok-sql-concat zrok-fstring-sql], got %v", ids)
+	}
+}
+
+func TestStore_RuleIDToSlug(t *testing.T) {
+	s, cleanup := newTestStore(t)
+	defer cleanup()
+	_ = s.Add("multi", []byte(multiRuleYAML), validMeta())
+	_ = s.Add("single", []byte(validRule), validMeta())
+
+	m, err := s.RuleIDToSlug()
+	if err != nil {
+		t.Fatalf("RuleIDToSlug: %v", err)
+	}
+	cases := map[string]string{
+		"zrok-sql-concat":    "multi",
+		"zrok-fstring-sql":   "multi",
+		"zrok-hand-built-sql": "single",
+	}
+	for id, wantSlug := range cases {
+		if got := m[id]; got != wantSlug {
+			t.Errorf("RuleIDToSlug[%q] = %q, want %q", id, got, wantSlug)
+		}
+	}
+}
+
 func TestStore_MetaRequiresCreatedBy(t *testing.T) {
 	s, cleanup := newTestStore(t)
 	defer cleanup()

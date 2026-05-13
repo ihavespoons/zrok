@@ -191,6 +191,25 @@ func TestExtractCWE(t *testing.T) {
 	}
 }
 
+func TestParseSARIF_TagsIncludeOpengrepRuleID(t *testing.T) {
+	got, _ := ParseSARIF([]byte(sampleSARIF))
+	if len(got) == 0 {
+		t.Fatal("expected findings")
+	}
+	for _, f := range got {
+		hasRuleTag := false
+		for _, tag := range f.Tags {
+			if strings.HasPrefix(tag, OpengrepRuleTagPrefix) {
+				hasRuleTag = true
+				break
+			}
+		}
+		if !hasRuleTag {
+			t.Errorf("finding %q missing %q tag: %v", f.Title, OpengrepRuleTagPrefix, f.Tags)
+		}
+	}
+}
+
 func TestParseSARIF_TagsAlwaysIncludeSastMarker(t *testing.T) {
 	got, _ := ParseSARIF([]byte(sampleSARIF))
 	for _, f := range got {

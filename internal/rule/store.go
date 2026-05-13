@@ -214,6 +214,49 @@ func (s *Store) EnabledRulePaths() ([]string, error) {
 	return paths, nil
 }
 
+// ParseRuleIDs reads the rule file for a slug and returns every rule.id
+// declared inside. The internal IDs (e.g. "zrok-hand-built-sql") are what
+// opengrep emits as `ruleId` in SARIF results, so callers can map findings
+// back to the zrok rule slug that produced them.
+func (s *Store) ParseRuleIDs(slug string) ([]string, error) {
+	data, err := s.ReadRule(slug)
+	if err != nil {
+		return nil, err
+	}
+	var rf RuleFile
+	if err := yaml.Unmarshal(data, &rf); err != nil {
+		return nil, fmt.Errorf("parse rule %q: %w", slug, err)
+	}
+	out := make([]string, 0, len(rf.Rules))
+	for _, r := range rf.Rules {
+		if id := strings.TrimSpace(r.ID); id != "" {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+// RuleIDToSlug returns a map from every opengrep rule id (across all
+// project-local rule files) to the slug of the rule file that defines it.
+// Used by audit code to count triggers per slug.
+func (s *Store) RuleIDToSlug() (map[string]string, error) {
+	metas, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, m := range metas {
+		ids, err := s.ParseRuleIDs(m.Slug)
+		if err != nil {
+			continue // skip malformed rule files; don't poison the whole map
+		}
+		for _, id := range ids {
+			out[id] = m.Slug
+		}
+	}
+	return out, nil
+}
+
 func (s *Store) rulePath(slug string) string { return filepath.Join(s.dir, slug+ruleSuffix) }
 func (s *Store) metaPath(slug string) string { return filepath.Join(s.dir, slug+metaSuffix) }
 

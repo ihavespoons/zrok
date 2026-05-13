@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ihavespoons/zrok/internal/finding"
 	"github.com/ihavespoons/zrok/internal/project"
 	"github.com/ihavespoons/zrok/internal/rule"
+	"github.com/ihavespoons/zrok/internal/sast"
 	"github.com/spf13/cobra"
 )
 
@@ -221,6 +223,13 @@ zrok rule annotate.`,
 		if err != nil {
 			exitError("%v", err)
 		}
+
+		// Compute live trigger and false-positive counts per rule slug by
+		// walking the finding store. Findings carry "opengrep-rule:<id>"
+		// tags from internal/sast; we map those back to slug via the
+		// rule store's RuleIDToSlug.
+		triggers, fps := computeRuleCounts(p, store)
+
 		entries := make([]ruleAuditEntry, 0, len(metas))
 		for _, m := range metas {
 			body, err := store.ReadRule(m.Slug)
@@ -236,8 +245,8 @@ zrok rule annotate.`,
 				Verdict:      m.Verdict,
 				VerdictNote:  m.VerdictNote,
 				LastAuditAt:  m.LastAuditAt,
-				TriggerCount: m.TriggerCount,
-				FPCount:      m.FPCount,
+				TriggerCount: triggers[m.Slug],
+				FPCount:      fps[m.Slug],
 				Disabled:     m.Disabled,
 				RuleBody:     string(body),
 			})
@@ -274,6 +283,59 @@ zrok rule annotate.`,
 		}
 		fmt.Printf("%d rule(s)\n", len(entries))
 	},
+}
+
+// computeRuleCounts walks the finding store filtering created_by=opengrep
+// and returns per-rule-slug trigger and false-positive counts. Findings
+// from opengrep rules that aren't in the project's local set (e.g. bundled
+// rule packs) are ignored — only project-local rules get counted.
+func computeRuleCounts(p *project.Project, rs *rule.Store) (triggers, fps map[string]int) {
+	triggers = map[string]int{}
+	fps = map[string]int{}
+
+	idToSlug, err := rs.RuleIDToSlug()
+	if err != nil || len(idToSlug) == 0 {
+		return triggers, fps
+	}
+
+	fs := finding.NewStore(p)
+	all, err := fs.List(&finding.FilterOptions{})
+	if err != nil {
+		return triggers, fps
+	}
+	for _, f := range all.Findings {
+		if f.CreatedBy != "opengrep" {
+			continue
+		}
+		slug := ""
+		for _, tag := range f.Tags {
+			if !strings.HasPrefix(tag, sast.OpengrepRuleTagPrefix) {
+				continue
+			}
+			id := strings.TrimPrefix(tag, sast.OpengrepRuleTagPrefix)
+			// Opengrep prefixes rule IDs with their file path
+			// (e.g. "tmp.rdbg..zrok.zrok-admin-default-creds"), so we
+			// also accept a match on the dotted suffix.
+			if s, ok := idToSlug[id]; ok {
+				slug = s
+				break
+			}
+			if idx := strings.LastIndex(id, "."); idx >= 0 {
+				if s, ok := idToSlug[id[idx+1:]]; ok {
+					slug = s
+					break
+				}
+			}
+		}
+		if slug == "" {
+			continue
+		}
+		triggers[slug]++
+		if f.Status == finding.StatusFalsePositive {
+			fps[slug]++
+		}
+	}
+	return triggers, fps
 }
 
 func defaultCreatedBy() string {

@@ -178,6 +178,14 @@ func convertResult(r sarifResult, rules map[string]sarifRule) finding.Finding {
 		}
 	}
 
+	// Tag the finding with the opengrep rule id that produced it. This is
+	// what cmd/rule.go's audit path uses to attribute triggers and FPs
+	// back to project-local rules by ID lookup.
+	tags := []string{"sast", "opengrep"}
+	if id := strings.TrimSpace(r.RuleID); id != "" {
+		tags = append(tags, "opengrep-rule:"+id)
+	}
+
 	return finding.Finding{
 		Title:       title,
 		Severity:    severity,
@@ -187,10 +195,15 @@ func convertResult(r sarifResult, rules map[string]sarifRule) finding.Finding {
 		Location:    loc,
 		Description: description,
 		Remediation: strings.TrimSpace(rule.Help.Text),
-		Tags:        []string{"sast", "opengrep"},
+		Tags:        tags,
 		CreatedBy:   "opengrep",
 	}
 }
+
+// OpengrepRuleTagPrefix is the prefix on a finding tag identifying the
+// opengrep rule that produced it (e.g. "opengrep-rule:python.lang.security.xyz").
+// Exposed so the rule package can scan finding tags and attribute triggers.
+const OpengrepRuleTagPrefix = "opengrep-rule:"
 
 // titleFor picks a short human-readable title. Preference order:
 //
