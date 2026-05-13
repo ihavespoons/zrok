@@ -57,7 +57,18 @@ type SarifResult struct {
 	CodeFlows           []SarifCodeFlow        `json:"codeFlows,omitempty"`
 	Fixes               []SarifFix             `json:"fixes,omitempty"`
 	PartialFingerprints map[string]string      `json:"partialFingerprints,omitempty"`
+	Suppressions        []SarifSuppression     `json:"suppressions,omitempty"`
 	Properties          map[string]interface{} `json:"properties,omitempty"`
+}
+
+// SarifSuppression marks a result as dismissed. Per SARIF 2.1.0, code-scanning
+// reads this and shows the alert in a dismissed state with the justification
+// visible. Preferred over dropping the result entirely — keeps the audit
+// trail of "this was flagged but suppressed because X."
+type SarifSuppression struct {
+	Kind          string `json:"kind"`                    // "external" (zrok exceptions are external suppressions)
+	Status        string `json:"status,omitempty"`        // "accepted" — we wouldn't be emitting it otherwise
+	Justification string `json:"justification,omitempty"` // the exception's reason
 }
 
 type SarifMessage struct {
@@ -115,8 +126,9 @@ type SarifThreadFlowLocation struct {
 
 // SARIFExporter exports findings to SARIF format
 type SARIFExporter struct {
-	toolName    string
-	toolVersion string
+	toolName     string
+	toolVersion  string
+	suppressions map[string]string // finding.ID → justification
 }
 
 // NewSARIFExporter creates a new SARIF exporter
@@ -125,6 +137,15 @@ func NewSARIFExporter() *SARIFExporter {
 		toolName:    "zrok",
 		toolVersion: "1.0.0",
 	}
+}
+
+// WithSuppressions configures the exporter to mark the given findings as
+// dismissed in SARIF output, using the provided justifications. Map key is
+// the finding ID, value is the reason text. Findings not in the map are
+// emitted unsuppressed.
+func (e *SARIFExporter) WithSuppressions(suppressions map[string]string) *SARIFExporter {
+	e.suppressions = suppressions
+	return e
 }
 
 // Export exports findings to SARIF format
@@ -337,6 +358,17 @@ func (e *SARIFExporter) buildResult(f finding.Finding, ruleMap map[string]int) S
 			"score":  f.CVSS.Score,
 			"vector": f.CVSS.Vector,
 		}
+	}
+
+	// Mark suppressed findings as dismissed at the SARIF layer rather than
+	// dropping them; code-scanning shows them in a "dismissed" state with
+	// the justification visible, preserving the audit trail.
+	if reason, ok := e.suppressions[f.ID]; ok {
+		result.Suppressions = []SarifSuppression{{
+			Kind:          "external",
+			Status:        "accepted",
+			Justification: reason,
+		}}
 	}
 
 	return result

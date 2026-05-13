@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ihavespoons/zrok/internal/agent"
+	"github.com/ihavespoons/zrok/internal/exception"
 	"github.com/ihavespoons/zrok/internal/finding"
 	"github.com/ihavespoons/zrok/internal/finding/export"
 	"github.com/ihavespoons/zrok/internal/project"
@@ -441,22 +442,64 @@ var findingListCmd = &cobra.Command{
 			result.Total = len(result.Findings)
 		}
 
+		// Apply suppression filter from .zrok/exceptions.yaml. By default
+		// suppressed findings are hidden; --include-suppressed surfaces them
+		// with a SUPPRESSED tag so reviewers can see what was filtered.
+		includeSuppressed, _ := cmd.Flags().GetBool("include-suppressed")
+		excStore := exception.NewStore(p)
+		suppressedFor := map[string]string{} // ID → reason
+		filtered := result.Findings[:0]
+		var suppressedCount int
+		for _, f := range result.Findings {
+			match, _ := excStore.Match(f)
+			if match != nil {
+				suppressedCount++
+				suppressedFor[f.ID] = match.Reason
+				if !includeSuppressed {
+					continue
+				}
+			}
+			filtered = append(filtered, f)
+		}
+		result.Findings = filtered
+		result.Total = len(result.Findings)
+
 		if jsonOutput {
-			if err := outputJSON(result); err != nil {
+			payload := map[string]any{
+				"findings":          result.Findings,
+				"total":             result.Total,
+				"suppressed_count":  suppressedCount,
+			}
+			if includeSuppressed {
+				payload["suppressed_by"] = suppressedFor
+			}
+			if err := outputJSON(payload); err != nil {
 				exitError("failed to encode JSON: %v", err)
 			}
 		} else {
 			if result.Total == 0 {
-				fmt.Println("No findings")
+				if suppressedCount > 0 {
+					fmt.Printf("No findings (%d suppressed by exception; pass --include-suppressed to see)\n", suppressedCount)
+				} else {
+					fmt.Println("No findings")
+				}
 				return
 			}
 
 			for _, f := range result.Findings {
 				badge := getSeverityBadge(f.Severity)
-				fmt.Printf("%s [%s] %s - %s\n", badge, f.ID, f.Title, f.Status)
+				suppressTag := ""
+				if reason, ok := suppressedFor[f.ID]; ok {
+					suppressTag = " [SUPPRESSED: " + reason + "]"
+				}
+				fmt.Printf("%s [%s] %s - %s%s\n", badge, f.ID, f.Title, f.Status, suppressTag)
 				fmt.Printf("   Location: %s:%d\n", f.Location.File, f.Location.LineStart)
 			}
-			fmt.Printf("\nTotal: %d findings\n", result.Total)
+			fmt.Printf("\nTotal: %d findings", result.Total)
+			if suppressedCount > 0 {
+				fmt.Printf(" (%d suppressed)", suppressedCount)
+			}
+			fmt.Println()
 		}
 	},
 }
@@ -859,6 +902,7 @@ func init() {
 	findingListCmd.Flags().String("cwe", "", "Filter by CWE")
 	findingListCmd.Flags().String("file", "", "Filter by location file (exact match against finding's location.file)")
 	findingListCmd.Flags().String("diff", "", "Filter to findings in files changed since base ref (e.g., main)")
+	findingListCmd.Flags().Bool("include-suppressed", false, "Show findings that would be filtered by .zrok/exceptions.yaml")
 
 	findingExportCmd.Flags().StringP("format", "f", "json", "Export format (sarif, json, md, html, csv)")
 	findingExportCmd.Flags().StringP("output", "o", "", "Output file (default: stdout)")

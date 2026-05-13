@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ihavespoons/zrok/internal/agent"
+	"github.com/ihavespoons/zrok/internal/exception"
 	"github.com/ihavespoons/zrok/internal/finding"
 	"github.com/ihavespoons/zrok/internal/finding/export"
 	"github.com/ihavespoons/zrok/internal/memory"
@@ -364,12 +365,26 @@ gh api and uploading to code-scanning.`,
 		}
 		inDiff := filterFindingsByDiff(all.Findings, changedSet)
 
-		bySeverity := map[string]int{}
+		// Partition by suppression: comment-bound findings get the visible
+		// ones; SARIF gets both, with suppressed entries marked dismissed.
+		excStore := exception.NewStore(p)
+		suppressedFor := map[string]string{} // ID → reason
+		var visible []finding.Finding
 		for _, f := range inDiff {
+			match, _ := excStore.Match(f)
+			if match != nil {
+				suppressedFor[f.ID] = match.Reason
+				continue
+			}
+			visible = append(visible, f)
+		}
+
+		bySeverity := map[string]int{}
+		for _, f := range visible {
 			bySeverity[string(f.Severity)]++
 		}
 
-		md := renderPRComment(inDiff, topN, finding.Severity(strings.ToLower(threshold)), sarifLink)
+		md := renderPRComment(visible, topN, finding.Severity(strings.ToLower(threshold)), sarifLink)
 
 		// Write artifacts to disk so the action can pick them up.
 		if outDir == "" {
@@ -382,7 +397,12 @@ gh api and uploading to code-scanning.`,
 		if err := os.WriteFile(commentPath, []byte(md), 0644); err != nil {
 			exitError("failed to write comment.md: %v", err)
 		}
-		sarifBytes, err := export.ExportFindings(inDiff, "sarif", p.Config.Name)
+		// SARIF includes ALL findings in the diff. Suppressed ones are marked
+		// as dismissed via SARIF suppressions so code-scanning shows them
+		// "Closed (won't fix)" with the justification rather than dropping
+		// the audit trail.
+		sarifExporter := export.NewSARIFExporter().WithSuppressions(suppressedFor)
+		sarifBytes, err := sarifExporter.Export(inDiff)
 		if err != nil {
 			exitError("failed to render SARIF: %v", err)
 		}
@@ -393,9 +413,9 @@ gh api and uploading to code-scanning.`,
 
 		out := reviewReport{
 			Base:            base,
-			Total:           len(inDiff),
+			Total:           len(visible),
 			BySeverity:      bySeverity,
-			Findings:        inDiff,
+			Findings:        visible,
 			CommentMarkdown: md,
 			SarifPath:       sarifPath,
 			CommentPath:     commentPath,

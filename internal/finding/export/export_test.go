@@ -164,6 +164,49 @@ func TestSARIFExport(t *testing.T) {
 	}
 }
 
+func TestSARIFExport_WithSuppressions(t *testing.T) {
+	findings := createTestFindings()
+	suppressions := map[string]string{
+		"FIND-002": "test fixture, not production code",
+	}
+	exporter := NewSARIFExporter().WithSuppressions(suppressions)
+	data, err := exporter.Export(findings)
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	var sarif SarifLog
+	if err := json.Unmarshal(data, &sarif); err != nil {
+		t.Fatalf("Invalid JSON: %v", err)
+	}
+
+	var suppressed, normal *SarifResult
+	for i := range sarif.Runs[0].Results {
+		r := &sarif.Runs[0].Results[i]
+		// id is in properties.id
+		if id, ok := r.Properties["id"].(string); ok && id == "FIND-002" {
+			suppressed = r
+		} else {
+			normal = r
+		}
+	}
+	if suppressed == nil {
+		t.Fatal("FIND-002 not present in SARIF output")
+	}
+	if len(suppressed.Suppressions) != 1 {
+		t.Fatalf("expected 1 suppression on FIND-002, got %d", len(suppressed.Suppressions))
+	}
+	s := suppressed.Suppressions[0]
+	if s.Kind != "external" || s.Status != "accepted" {
+		t.Errorf("suppression kind=%q status=%q; want external/accepted", s.Kind, s.Status)
+	}
+	if s.Justification != "test fixture, not production code" {
+		t.Errorf("justification = %q, want the reason from the suppressions map", s.Justification)
+	}
+	if normal != nil && len(normal.Suppressions) != 0 {
+		t.Errorf("FIND-001 (not in suppressions map) should have no Suppressions, got %v", normal.Suppressions)
+	}
+}
+
 func TestJSONExport(t *testing.T) {
 	findings := createTestFindings()
 	exporter := NewJSONExporter()
