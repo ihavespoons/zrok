@@ -34,6 +34,15 @@ type Scanner struct {
 	// SARIF + quiet flags. Use sparingly — most behavior should be exposed
 	// via dedicated fields.
 	ExtraArgs []string
+
+	// ProjectRoot is used to relativize the file paths opengrep emits.
+	// Opengrep SARIF output contains absolute paths (e.g. /tmp/repo-xyz/
+	// src/api/users.py); without this, downstream finding matching,
+	// fingerprinting, and SARIF code-scanning ingest see a path that
+	// differs across runs from different working directories. Empty
+	// means "leave paths as-is" — preserves the old behavior for callers
+	// that don't yet plumb this through.
+	ProjectRoot string
 }
 
 // Scan runs opengrep over the given target paths (files or directories) and
@@ -101,6 +110,17 @@ func (s *Scanner) Scan(targets []string) ([]finding.Finding, error) {
 			return nil, fmt.Errorf("sast: opengrep exited %d and SARIF parse failed: %v (stderr: %s)", exitCode, parseErr, strings.TrimSpace(stderr.String()))
 		}
 		return nil, parseErr
+	}
+	// Relativize finding paths against ProjectRoot so downstream matching
+	// (ground-truth comparison, dedup fingerprinting, SARIF code-scanning
+	// ingest) doesn't see a path that varies with the working directory.
+	// Opengrep SARIF emits absolute paths; without this, the same file
+	// scanned from /tmp/repo-A vs /tmp/repo-B produces findings with
+	// distinct .location.file values and they fail to dedup or match.
+	if s.ProjectRoot != "" {
+		for i := range findings {
+			findings[i].Location.File = relativizePath(findings[i].Location.File, s.ProjectRoot)
+		}
 	}
 	// Non-fatal exit code with usable SARIF: log a warning to stderr so the
 	// caller knows opengrep complained about something, but return the
@@ -275,6 +295,56 @@ func extractCWE(tag string) string {
 		return ""
 	}
 	return upper[:end]
+}
+
+// relativizePath converts an absolute path emitted by opengrep into a
+// path relative to projectRoot, stripping URI prefixes opengrep
+// occasionally includes (file://). When the path is already relative or
+// can't be related to projectRoot (e.g. opengrep scanned a vendored
+// rule pack outside the project tree), the cleaned absolute path is
+// returned unchanged — callers that filter out-of-project findings (see
+// cmd/sast.go) handle that case separately.
+//
+// Symlinks in the project path are resolved before relativization so
+// the OWASP-eval pattern of running in macOS's /var/folders/... (a
+// symlink to /private/var/folders/...) doesn't break the match.
+func relativizePath(path, projectRoot string) string {
+	cleaned := strings.TrimPrefix(path, "file://")
+	cleaned = filepath.Clean(cleaned)
+	if !filepath.IsAbs(cleaned) {
+		return cleaned
+	}
+	if projectRoot == "" {
+		return cleaned
+	}
+	rootAbs, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return cleaned
+	}
+	// Resolve symlinks on the root so /var/folders/... matches
+	// /private/var/folders/... when projectRoot was passed in symlink form.
+	// EvalSymlinks fails for non-existent paths; if so we fall back to the
+	// pre-resolution root.
+	if resolved, errEval := filepath.EvalSymlinks(rootAbs); errEval == nil {
+		rootAbs = resolved
+	}
+	// Same trick for the path itself — opengrep may emit the realpath
+	// even when we passed in the symlink form, or vice versa.
+	pathAbs := cleaned
+	if resolved, errEval := filepath.EvalSymlinks(pathAbs); errEval == nil {
+		pathAbs = resolved
+	}
+	rel, err := filepath.Rel(rootAbs, pathAbs)
+	if err != nil {
+		return cleaned
+	}
+	// If Rel had to walk up out of the project root, the file is
+	// outside the project — keep the absolute form so the caller's
+	// "out of project" filter (see cmd/sast.go) still rejects it.
+	if strings.HasPrefix(rel, "..") {
+		return cleaned
+	}
+	return rel
 }
 
 func mapSeverity(level string) finding.Severity {

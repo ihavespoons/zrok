@@ -1,6 +1,8 @@
 package sast
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -269,6 +271,58 @@ func TestScanner_RequiresConfig(t *testing.T) {
 	s := &Scanner{}
 	if _, err := s.Scan([]string{"."}); err == nil {
 		t.Fatal("expected error when Config is empty")
+	}
+}
+
+// TestRelativizePath covers the absolute-path normalisation opengrep
+// findings need before they can match ground truth, dedup against other
+// agents' findings, or render in SARIF without working-directory leakage.
+//
+// The OWASP-eval failure mode that motivated this: opengrep was run
+// from /var/folders/.../tmp.Cigwc9rdHa/ (the macOS tmp dir, itself a
+// symlink to /private/var/folders/...) and emitted absolute paths in
+// SARIF. ParseSARIF returned them as-is, and 15 of 43 findings became
+// FPs because their .location.file didn't match `testcode/Foo.py`
+// in the ground truth.
+func TestRelativizePath(t *testing.T) {
+	// Use a real tmpdir so the symlink behavior on macOS exercises the
+	// EvalSymlinks branch.
+	root, err := os.MkdirTemp("", "zrok-relpath-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	// Make a nested file we'll reference, since EvalSymlinks needs the
+	// path to exist to resolve.
+	nested := filepath.Join(root, "testcode")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(nested, "Foo.py")
+	if err := os.WriteFile(target, []byte("# fixture"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name string
+		path string
+		root string
+		want string
+	}{
+		{"already relative passes through", "testcode/Foo.py", root, "testcode/Foo.py"},
+		{"empty root passes through cleaned", target, "", filepath.Clean(target)},
+		{"file:// URI prefix stripped", "file://" + target, root, "testcode/Foo.py"},
+		{"absolute under root becomes relative", target, root, "testcode/Foo.py"},
+		{"absolute outside root stays absolute", "/usr/lib/python3/something.py", root, "/usr/lib/python3/something.py"},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			got := relativizePath(c.path, c.root)
+			if got != c.want {
+				t.Errorf("relativizePath(%q, %q) = %q, want %q", c.path, c.root, got, c.want)
+			}
+		})
 	}
 }
 

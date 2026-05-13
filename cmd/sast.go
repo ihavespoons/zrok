@@ -81,6 +81,7 @@ across SAST + LLM dedup automatically in SARIF code-scanning uploads.`,
 			Binary:       binary,
 			Config:       config,
 			ExtraConfigs: localRulePaths,
+			ProjectRoot:  p.RootPath,
 		}
 		results, err := scanner.Scan(targets)
 		if err != nil {
