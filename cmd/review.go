@@ -120,7 +120,7 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 		// next to the project root, where the runner expects them.
 		runnerAgentsDir := ""
 		if runner == "opencode" {
-			runnerAgentsDir = filepath.Join(p.RootPath, ".opencode", "agent")
+			runnerAgentsDir = filepath.Join(p.RootPath, ".opencode", "agents")
 			if err := os.MkdirAll(runnerAgentsDir, 0755); err != nil {
 				exitError("failed to create .opencode/agents dir: %v", err)
 			}
