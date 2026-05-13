@@ -183,7 +183,7 @@ run_single_eval() {
 
     # Run the orchestrator. opencode reads OPENROUTER_API_KEY from env and
     # uses its built-in openrouter provider — no opencode.json needed.
-    echo "  Running OpenCode orchestrator (model: $OPENCODE_MODEL)..."
+    echo "  Running review (mode: ${EVAL_DISPATCH_MODE:-orchestrator}, model: $OPENCODE_MODEL)..."
     local start_time
     start_time=$(date +%s)
 
@@ -203,26 +203,66 @@ run_single_eval() {
         # etc. from inside the tmp working directory.
         local zrok_bin_dir
         zrok_bin_dir="$(cd "$(dirname "$ZROK_BIN")" && pwd)"
-        if (cd "$run_dir" && PATH="${zrok_bin_dir}:${PATH}" opencode run --agent zrok-orchestrator \
-                --model "$OPENCODE_MODEL" \
-                "Run a security review of this codebase using the listed subagents. Scope: every file in your system prompt's Changed Files block. Work autonomously and exit when analysis dispatch completes." \
-                > "${run_dir}/opencode-output.log" 2>&1); then
-            echo "  OpenCode review completed."
+
+        # EVAL_DISPATCH_MODE toggles the dispatch path:
+        #   - "orchestrator" (default): existing `opencode run --agent
+        #     zrok-orchestrator` flow. The LLM is the orchestrator.
+        #   - "dispatcher": new `zrok review pr run` flow. Deterministic
+        #     code dispatches subagents in parallel; the LLM only does
+        #     review work, not orchestration. Cheaper models do
+        #     substantially better here.
+        # Both modes coexist; the toggle is for A/B measurement.
+        local dispatch_mode="${EVAL_DISPATCH_MODE:-orchestrator}"
+        local run_ok=false
+        local run_log="${run_dir}/opencode-output.log"
+
+        case "$dispatch_mode" in
+            orchestrator)
+                if (cd "$run_dir" && PATH="${zrok_bin_dir}:${PATH}" opencode run --agent zrok-orchestrator \
+                        --model "$OPENCODE_MODEL" \
+                        "Run a security review of this codebase using the listed subagents. Scope: every file in your system prompt's Changed Files block. Work autonomously and exit when analysis dispatch completes." \
+                        > "$run_log" 2>&1); then
+                    run_ok=true
+                fi
+                ;;
+            dispatcher)
+                # The dispatcher reads .zrok/review/setup.json (written
+                # unconditionally by `pr setup`). Per-agent logs land in
+                # .zrok/review/agents/<name>.log inside run_dir; the
+                # combined log captured here is the dispatcher's own
+                # progress output, useful for the quota-error grep.
+                run_log="${run_dir}/pr-run-output.log"
+                if (cd "$run_dir" && PATH="${zrok_bin_dir}:${PATH}" "$ZROK_BIN" review pr run \
+                        --runner opencode \
+                        --model "$OPENCODE_MODEL" \
+                        --max-parallel 6 \
+                        > "$run_log" 2>&1); then
+                    run_ok=true
+                fi
+                ;;
+            *)
+                echo "  ERROR: unsupported EVAL_DISPATCH_MODE=$dispatch_mode (use orchestrator or dispatcher)"
+                return 1
+                ;;
+        esac
+
+        if $run_ok; then
+            echo "  Review completed (mode: $dispatch_mode)."
             opencode_success=true
             CONSECUTIVE_QUOTA_FAILURES=0
             break
         else
-            if is_quota_error "${run_dir}/opencode-output.log"; then
+            if is_quota_error "$run_log"; then
                 echo "  Quota/rate-limit error detected (attempt $attempt/$MAX_RETRIES)."
-                tail -3 "${run_dir}/opencode-output.log" 2>/dev/null || true
+                tail -3 "$run_log" 2>/dev/null || true
                 if [[ $attempt -ge $MAX_RETRIES ]]; then
                     echo "  ERROR: Exhausted retries due to quota limits."
                     CONSECUTIVE_QUOTA_FAILURES=$((CONSECUTIVE_QUOTA_FAILURES + 1))
                 fi
                 continue
             else
-                echo "  Warning: opencode exited non-zero (non-quota error). Last 10 lines:"
-                tail -10 "${run_dir}/opencode-output.log" 2>/dev/null || true
+                echo "  Warning: review exited non-zero (non-quota error). Last 10 lines of $run_log:"
+                tail -10 "$run_log" 2>/dev/null || true
                 CONSECUTIVE_QUOTA_FAILURES=0
                 break
             fi
