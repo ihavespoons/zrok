@@ -33,6 +33,18 @@ DRY_RUN=false
 MAX_RETRIES=3
 CONSECUTIVE_QUOTA_FAILURES=0
 MAX_CONSECUTIVE_QUOTA_FAILURES=3
+ZERO_FINDING_RUNS=0
+
+# Eval mirrors the dogfood orchestration so scores reflect production
+# behavior. Override via env when measuring an alternative model/profile.
+OPENCODE_MODEL="${OPENCODE_MODEL:-openrouter/deepseek/deepseek-v4-flash}"
+EVAL_PROFILE="${EVAL_PROFILE:-fast}"
+
+# Git empty-tree SHA — universal in every git repo. Using it as the diff
+# base makes ALL files in HEAD appear in `git diff --name-only`, which is
+# how we reuse `zrok review pr setup`'s changed-files plumbing for a
+# whole-fixture review.
+EMPTY_TREE_SHA="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -117,8 +129,17 @@ run_single_eval() {
     # Copy fixture to isolated directory
     cp -r "$FIXTURE_DIR"/* "$run_dir/"
 
+    # Make the fixture a git repo so `zrok review pr setup`'s git-diff plumbing
+    # has a HEAD to work against. Using EMPTY_TREE_SHA as the diff base makes
+    # every fixture file appear in "changed files", which reuses the dogfood
+    # orchestrator's per-PR scope for a whole-codebase review.
+    (cd "$run_dir" \
+        && git init -q \
+        && git -c user.email=eval@zrok -c user.name=eval add -A \
+        && git -c user.email=eval@zrok -c user.name=eval commit -qm fixture-baseline)
+
     # Initialize zrok project
-    (cd "$run_dir" && "$ZROK_BIN" init)
+    (cd "$run_dir" && "$ZROK_BIN" init >/dev/null)
 
     # Run static onboarding (fast, no LLM needed for setup)
     (cd "$run_dir" && "$ZROK_BIN" onboard --static)
@@ -131,13 +152,29 @@ run_single_eval() {
         (cd "$run_dir" && "$ZROK_BIN" index enable --provider ollama) 2>/dev/null || true
     fi
 
-    # Run the code review using Claude Code with the skill (with retry on quota errors)
-    echo "  Running code review (this may take several minutes)..."
+    # Materialize OpenCode agent files (subagents + zrok-orchestrator primary)
+    # via the same setup path the dogfood action uses. This keeps eval and
+    # production aligned — improvements to the orchestrator prompt land in
+    # both places automatically.
+    echo "  Setting up OpenCode agents (profile: $EVAL_PROFILE)..."
+    if ! (cd "$run_dir" && "$ZROK_BIN" review pr setup \
+            --base "$EMPTY_TREE_SHA" \
+            --runner opencode \
+            --profile "$EVAL_PROFILE" \
+            --json > "${run_dir}/setup.json" 2>"${run_dir}/setup-err.log"); then
+        echo "  ERROR: zrok review pr setup failed:"
+        cat "${run_dir}/setup-err.log" >&2
+        return 1
+    fi
+
+    # Run the orchestrator. opencode reads OPENROUTER_API_KEY from env and
+    # uses its built-in openrouter provider — no opencode.json needed.
+    echo "  Running OpenCode orchestrator (model: $OPENCODE_MODEL)..."
     local start_time
     start_time=$(date +%s)
 
     local attempt=0
-    local claude_success=false
+    local opencode_success=false
 
     while [[ $attempt -lt $MAX_RETRIES ]]; do
         attempt=$((attempt + 1))
@@ -147,36 +184,35 @@ run_single_eval() {
             sleep "$backoff"
         fi
 
-        # Execute the review via claude CLI
-        # Unset CLAUDECODE to allow nested invocation (safe: each run is isolated)
-        if (cd "$run_dir" && unset CLAUDECODE && claude -p \
-            "Run a code review of this project using zrok. The zrok binary is at ${ZROK_BIN}. Export findings as JSON when complete. Work autonomously and do not ask questions." \
-            --allowedTools "Bash,Read,Write,Glob,Grep,Agent" \
-            --output-format json \
-            --permission-mode bypassPermissions \
-            --max-budget-usd 5 \
-            > "${run_dir}/claude-output.json" 2>"${run_dir}/claude-stderr.log"); then
-            echo "  Claude review completed."
-            claude_success=true
+        if (cd "$run_dir" && opencode run --agent zrok-orchestrator \
+                --model "$OPENCODE_MODEL" \
+                "Run a security review of this codebase using the listed subagents. Scope: every file in your system prompt's Changed Files block. Work autonomously and exit when analysis dispatch completes." \
+                > "${run_dir}/opencode-output.log" 2>&1); then
+            echo "  OpenCode review completed."
+            opencode_success=true
             CONSECUTIVE_QUOTA_FAILURES=0
             break
         else
-            if is_quota_error "${run_dir}/claude-stderr.log"; then
+            if is_quota_error "${run_dir}/opencode-output.log"; then
                 echo "  Quota/rate-limit error detected (attempt $attempt/$MAX_RETRIES)."
-                tail -3 "${run_dir}/claude-stderr.log" 2>/dev/null || true
+                tail -3 "${run_dir}/opencode-output.log" 2>/dev/null || true
                 if [[ $attempt -ge $MAX_RETRIES ]]; then
                     echo "  ERROR: Exhausted retries due to quota limits."
                     CONSECUTIVE_QUOTA_FAILURES=$((CONSECUTIVE_QUOTA_FAILURES + 1))
                 fi
                 continue
             else
-                echo "  Warning: Claude review exited with non-zero status (non-quota error)."
-                tail -5 "${run_dir}/claude-stderr.log" 2>/dev/null || true
+                echo "  Warning: opencode exited non-zero (non-quota error). Last 10 lines:"
+                tail -10 "${run_dir}/opencode-output.log" 2>/dev/null || true
                 CONSECUTIVE_QUOTA_FAILURES=0
                 break
             fi
         fi
     done
+
+    # Alias `claude_success` for downstream manifest code that still reads
+    # this name — flip the variable so existing JSON shape stays stable.
+    local claude_success="$opencode_success"
 
     local end_time
     end_time=$(date +%s)
@@ -197,6 +233,27 @@ run_single_eval() {
     else
         echo "  ERROR: No findings produced for run $run_id"
         echo '{"metadata":{"tool":"zrok"},"summary":{"total":0},"findings":[]}' > "$result_file"
+    fi
+
+    # Zero-findings fail-fast.
+    #
+    # Eval fixtures (vulnerable-app, owasp-subset) have KNOWN vulnerabilities
+    # — non-zero ground truth. A run that produces zero findings means the
+    # review didn't execute against the code: opencode auth failed silently,
+    # the orchestrator hit a tool-schema error, the model never dispatched,
+    # etc. Without this guard, the workflow's `compare` step happily passes
+    # zero findings against a zero-threshold baseline and CI reports green
+    # for a totally broken pipeline. Count zero-finding runs explicitly and
+    # surface them at the end of the run loop.
+    local finding_count
+    finding_count=$(python3 -c "import json;print(len(json.load(open('$result_file')).get('findings',[])))" 2>/dev/null || echo 0)
+    echo "  Findings produced: $finding_count"
+    if [[ "$finding_count" == "0" ]]; then
+        echo "  ::error::Run $run_id produced 0 findings against fixture '$FIXTURE_PRESET' (known-vulnerable)."
+        echo "  Likely causes: opencode auth failed, model didn't dispatch agents,"
+        echo "  orchestrator hit a tool-schema error. Inspect $run_dir/opencode-output.log"
+        echo "  if it still exists, or re-run with EVAL_PROFILE=deep for more diagnostics."
+        ZERO_FINDING_RUNS=$((ZERO_FINDING_RUNS + 1))
     fi
 
     # Capture run manifest (agent activity, memories, reasoning)
@@ -404,6 +461,16 @@ if $COMPARE_MODE; then
         exit 2
     fi
 
+    # Hard fail on zero findings — fixtures have known vulnerabilities, so
+    # zero findings means the review didn't actually execute. The baseline
+    # `compare` step won't catch this because the baseline thresholds are
+    # set to 0 by default; this guard is independent.
+    if [[ $ZERO_FINDING_RUNS -gt 0 ]]; then
+        echo "ERROR: Comparison run produced 0 findings against known-vulnerable fixture."
+        echo "This indicates the review pipeline is broken, not a real regression."
+        exit 3
+    fi
+
     echo "=== Comparing to baseline ==="
     "$EVAL_BIN" compare --run "$result_file" --baseline "$BASELINE_FILE" --ground-truth "$GROUND_TRUTH"
     exit $?
@@ -428,6 +495,18 @@ for i in $(seq 1 "$NUM_RUNS"); do
 done
 
 echo "=== All runs complete ==="
+
+if [[ $ZERO_FINDING_RUNS -gt 0 ]]; then
+    echo ""
+    echo "ERROR: $ZERO_FINDING_RUNS run(s) produced 0 findings against fixture '$FIXTURE_PRESET'."
+    echo "This is treated as a hard failure regardless of baseline thresholds — the"
+    echo "fixture has known vulnerabilities, so zero findings means the review"
+    echo "pipeline is broken (auth, model, orchestration), not a real regression."
+    if $GENERATE_BASELINE; then
+        echo "Refusing to write a baseline that includes broken runs."
+    fi
+    exit 3
+fi
 
 if $GENERATE_BASELINE; then
     echo ""

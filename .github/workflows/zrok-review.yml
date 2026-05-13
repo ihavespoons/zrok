@@ -50,7 +50,7 @@ jobs:
           # streaming handshake (silent opencode runs with zero output).
           opencode-env: |
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
-          model: openrouter/google/gemma-4-31b-it
+          model: openrouter/deepseek/deepseek-v4-flash
           # Dogfood: review with the PR's own zrok code. If a PR breaks
           # the review pipeline, the review breaks visibly, which is the
           # signal we want.
