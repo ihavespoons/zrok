@@ -599,6 +599,93 @@ When agents fail or produce unexpected results:
 - **Agent timeout** - Use hierarchical recovery: other agents' results remain valid. Re-run only the failed agent, optionally with a smaller scope.
 - **Contradictory findings** - Cross-validation (Phase 4.5) catches these. If two agents disagree, the validation-agent should investigate and resolve.
 
+## Advanced: agent-authored rules and exceptions (v1.1, opt-in)
+
+Two features that let the review loop accumulate org-specific knowledge over
+time. Both are **off by default** — enable per-project in `.zrok/project.yaml`:
+
+```yaml
+allow_agent_writes:
+  rules: true        # let agents author opengrep rules via `zrok rule add`
+  exceptions: true   # let agents author finding suppressions via `zrok exception add`
+```
+
+When enabled, the orchestrator gains two responsibilities:
+
+### Rules — additive
+
+When an analysis agent notices a vulnerability pattern that's worth catching
+on every future PR (not a one-off), it can codify the pattern as a
+project-local opengrep rule. Stored at `.zrok/rules/<slug>.yaml`, picked up
+automatically by the next `zrok sast` run.
+
+```bash
+# From an agent, after observing a repeated SQL-concatenation pattern:
+cat > /tmp/rule.yaml <<'EOF'
+rules:
+  - id: zrok-hand-built-sql
+    message: "Hand-built SQL string — use parameterized queries."
+    severity: ERROR
+    languages: [python]
+    pattern: $DB.execute($X + $Y)
+EOF
+zrok rule add hand-built-sql --file /tmp/rule.yaml \
+  --created-by "agent:injection-agent" \
+  --reasoning "Repeated string-concat SQL pattern in this codebase."
+```
+
+**Bias toward not adding.** Only codify patterns seen multiple times — one-offs
+aren't worth the rule-set bloat.
+
+### Exceptions — subtractive
+
+When the sast-triage-agent or a review-agent decides a finding is acceptable
+in this codebase (test fixture, deliberately unsafe demo, etc.) it can
+suppress it permanently:
+
+```bash
+# By fingerprint (one specific finding):
+zrok exception add --fingerprint <finding's fingerprint> \
+  --reason "test fixture, not production code" \
+  --expires 2027-01-01 \
+  --approved-by "agent:sast-triage-agent"
+
+# By pattern (whole class within a path):
+zrok exception add --path-glob 'tests/*.py' --cwe CWE-89 \
+  --reason "test fixtures intentionally use raw SQL" \
+  --expires 2027-01-01 \
+  --approved-by "agent:sast-triage-agent"
+```
+
+`expires` is mandatory — suppressions are time-bounded by design. After
+expiry, the finding re-flags for re-evaluation. Use `zrok exception expire`
+to clean expired entries.
+
+### Periodic noise audit
+
+The `rule-judge-agent` reviews accumulated rules and verdicts each one as
+`keep` / `refine` / `retire` / `escalate`. Run it on-demand:
+
+```bash
+# 1. Surface rule state for the judge to read
+zrok rule audit --json > /tmp/audit.json
+
+# 2. Spawn rule-judge-agent (or run it via opencode):
+#    The agent reads /tmp/audit.json, decides verdicts, and calls
+#    `zrok rule annotate <slug> --verdict X --note Y` for each.
+```
+
+Retired rules are flipped to `disabled: true` on their metadata — file stays
+on disk for archaeology; `zrok sast` skips it.
+
+### Sequencing
+
+Both rule-add and exception-add happen **after** SAST runs. A rule the
+orchestrator authors during PR #N applies starting with PR #N+1, not PR #N
+itself. Don't expect immediate effect on the current review.
+
+---
+
 ## CI/CD Security Warning
 
 When using zrok in CI/CD pipelines (e.g., PR-triggered reviews):
