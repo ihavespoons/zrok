@@ -168,8 +168,20 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 				}
 			}
 			if runner == "opencode" {
+				// PR-mode scoping override: recon's default prompt tells it
+				// to map the whole project, which is the right behavior for
+				// local/full-codebase reviews. For PR mode the diff is
+				// small and recon should stay near the changed files —
+				// otherwise it dominates run time. We append the override
+				// to the prompt body for THIS run only; the underlying
+				// recon-agent.yaml is unchanged so `zrok agent prompt
+				// recon-agent` from the CLI still gives the broad version.
+				prText := text
+				if name == "recon-agent" {
+					prText += prModeReconScopingOverride(changed)
+				}
 				path := filepath.Join(runnerAgentsDir, name+".md")
-				if err := os.WriteFile(path, []byte(renderOpenCodeSubagent(cfg.Description, text)), 0644); err != nil {
+				if err := os.WriteFile(path, []byte(renderOpenCodeSubagent(cfg.Description, prText)), 0644); err != nil {
 					exitError("failed to write OpenCode subagent %s: %v", name, err)
 				}
 			}
@@ -237,6 +249,49 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 
 func isEmptyClassification(c project.ProjectClassification) bool {
 	return len(c.Types) == 0 && len(c.Traits) == 0
+}
+
+// prModeReconScopingOverride is appended to the recon-agent prompt ONLY when
+// the agent is materialized for an OpenCode PR-review run. It narrows
+// recon to the changed files + their 1-hop neighborhood, which keeps the
+// review loop fast on small PRs without changing recon's default behavior
+// for full-codebase reviews (where the broad map is the whole point).
+func prModeReconScopingOverride(changedFiles []string) string {
+	var b strings.Builder
+	b.WriteString("\n\n## PR-Mode Scoping Override (this run only)\n\n")
+	b.WriteString("You are running in PR-review mode. Override your default ")
+	b.WriteString("project-mapping behavior with the narrower scope below:\n\n")
+
+	b.WriteString("### In-scope\n")
+	b.WriteString("- The changed files for this PR:\n")
+	for _, f := range changedFiles {
+		fmt.Fprintf(&b, "  - %s\n", f)
+	}
+	b.WriteString("- Files that directly call into, or are called by, ")
+	b.WriteString("symbols defined in the changed files (one hop). Use ")
+	b.WriteString("`zrok search` / `zrok symbols find <name>` to locate them.\n")
+	b.WriteString("- Routing / config files that wire the changed files into the app ")
+	b.WriteString("(e.g. main.go, router setup, dependency injection registration).\n\n")
+
+	b.WriteString("### Out-of-scope (do NOT read pre-emptively)\n")
+	b.WriteString("- Files >1 call hop from the changed set.\n")
+	b.WriteString("- Tests for unrelated modules.\n")
+	b.WriteString("- Vendored dependencies.\n")
+	b.WriteString("- Project-wide enumeration (`zrok list <root> --recursive`, ")
+	b.WriteString("`find . -type f`, etc.). The analysis agents only review the ")
+	b.WriteString("diff, so out-of-scope context is wasted tokens.\n\n")
+
+	b.WriteString("### When to expand scope\n")
+	b.WriteString("If a finding's analysis genuinely requires reading beyond the ")
+	b.WriteString("1-hop neighborhood (e.g. tracing a data flow from request entry ")
+	b.WriteString("to a sink across many files), expand to THAT specific path. ")
+	b.WriteString("Don't pre-emptively read \"in case it's needed.\"\n\n")
+
+	b.WriteString("### Memories\n")
+	b.WriteString("Write memories focused on the changed-file neighborhood, not the ")
+	b.WriteString("whole project. The analysis agents need just enough context to ")
+	b.WriteString("evaluate the diff, not a full project tour.\n")
+	return b.String()
 }
 
 // renderOpenCodeSubagent wraps a rendered zrok agent prompt as an OpenCode
