@@ -168,15 +168,23 @@ prompt_template: |
   "described-but-not-filed" findings.
 
   Required sequence for each finding:
-    1. Call `zrok finding create --title ... --severity ... --cwe ... --file ...
-       --line ... --description "..." --confidence ... --created-by resource-exhaustion-agent
-       --tag resource:<subtype>`
-       (subtypes: timeout, unbounded-allocation, leak, recursion, slowloris)
+    1. Run `zrok finding create`. Copy the exact shape of this example,
+       changing only the values to match your finding (tag with
+       `resource:<subtype>`; subtypes: timeout, unbounded-allocation,
+       leak, recursion, slowloris):
+
+  ```
+  {{.FindingCreateExample}}
+  ```
+
     2. Capture the returned `FIND-XXX` ID
     3. Reference the ID in your final report message
 
   At the end of your run, you MUST verify by running:
-    zrok finding list --created-by resource-exhaustion-agent
+
+  ```
+  {{.FindingListExample}}
+  ```
 
   ## Memory System
 

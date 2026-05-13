@@ -49,6 +49,18 @@ type PromptData struct {
 	CWEChecklist     string
 	FlowGuidance     string
 	FewShotExamples  string
+
+	// Tool exemplars (see internal/agent/tool_examples.go). Each is a
+	// copy-pasteable shell command with all required fields populated.
+	// Weak models follow examples reliably even when prose instructions
+	// fail; strong models still benefit from disambiguation.
+	FindingCreateExample        string
+	FindingCreateYAMLExample    string
+	FindingListExample          string
+	FindingUpdateNoteExample    string
+	RuleAddExample              string
+	ExceptionAddFingerprintExample string
+	ExceptionAddPathGlobExample string
 }
 
 // PromptGenerator generates prompts for agents
@@ -135,6 +147,14 @@ func (g *PromptGenerator) buildPromptData(config *AgentConfig) *PromptData {
 	data.CWEChecklist = buildCWEChecklist(config)
 	data.FlowGuidance = buildFlowGuidance(config)
 	data.FewShotExamples = buildFewShotExamples(config)
+
+	data.FindingCreateExample = FindingCreateExample(config.Name)
+	data.FindingCreateYAMLExample = FindingCreateYAMLExample()
+	data.FindingListExample = FindingListExample(config.Name)
+	data.FindingUpdateNoteExample = FindingUpdateNoteExample(config.Name)
+	data.RuleAddExample = RuleAddExample(config.Name)
+	data.ExceptionAddFingerprintExample = ExceptionAddFingerprintExample(config.Name)
+	data.ExceptionAddPathGlobExample = ExceptionAddPathGlobExample(config.Name)
 
 	return data
 }

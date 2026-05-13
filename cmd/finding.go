@@ -38,9 +38,19 @@ Three input modes are supported:
 
   1. YAML file:    zrok finding create -f finding.yaml
   2. Stdin:        zrok finding create -          (also: -f -)
-  3. Flags:        zrok finding create --title ... --severity high \
-                       --cwe CWE-89 --file app.py --line 42 \
-                       --description "..." [--remediation "..."]
+  3. Flags (complete example — copy and edit values):
+
+       zrok finding create \
+         --title "SQL injection in user lookup" \
+         --severity high \
+         --confidence high \
+         --cwe CWE-89 \
+         --file src/api/users.py \
+         --line 42 \
+         --description "User-supplied id is concatenated into the SQL query without parameterisation." \
+         --remediation "Use parameterised queries: cursor.execute('SELECT * FROM users WHERE id=%s', (uid,))" \
+         --created-by injection-agent \
+         --tag injection:sql
 
 Flag mode is triggered when --title is provided. Stdin mode reads YAML from
 standard input. The three modes are mutually exclusive.

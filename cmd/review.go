@@ -361,6 +361,54 @@ func taskToolSchemaGuidance() string {
 	return b.String()
 }
 
+// zrokCommandExemplars renders a copy-pasteable quick-reference of every
+// zrok command the orchestrator may shell out to. Source of truth is
+// internal/agent/tool_examples.go — same exemplars subagent prompts ship,
+// so an orchestrator emulating an agent's filing flow stays aligned.
+//
+// allowWrites toggles in the rule/exception examples since those commands
+// only matter when the project has opted in.
+func zrokCommandExemplars(allowWrites project.AllowAgentWrites) string {
+	var b strings.Builder
+	b.WriteString("## zrok command quick-reference\n\n")
+	b.WriteString("Copy these shapes when shelling out to zrok. Required fields are ")
+	b.WriteString("populated; change values to match your context.\n\n")
+
+	b.WriteString("**Create a finding** (flag mode — works from any shell):\n\n")
+	b.WriteString("```\n")
+	b.WriteString(agent.FindingCreateExample(""))
+	b.WriteString("\n```\n\n")
+
+	b.WriteString("**List findings** filed by a specific agent:\n\n")
+	b.WriteString("```\n")
+	b.WriteString(agent.FindingListExample(""))
+	b.WriteString("\n```\n\n")
+
+	b.WriteString("**Add a note** to an existing finding (cross-agent coordination):\n\n")
+	b.WriteString("```\n")
+	b.WriteString(agent.FindingUpdateNoteExample(""))
+	b.WriteString("\n```\n\n")
+
+	if allowWrites.Rules {
+		b.WriteString("**Add an opengrep rule** (project has rule-writes enabled):\n\n")
+		b.WriteString("```\n")
+		b.WriteString(agent.RuleAddExample(""))
+		b.WriteString("\n```\n\n")
+	}
+
+	if allowWrites.Exceptions {
+		b.WriteString("**Suppress a finding** by fingerprint (project has exception-writes enabled):\n\n")
+		b.WriteString("```\n")
+		b.WriteString(agent.ExceptionAddFingerprintExample(""))
+		b.WriteString("\n```\n\n")
+		b.WriteString("**Suppress by path glob** (e.g. test fixtures):\n\n")
+		b.WriteString("```\n")
+		b.WriteString(agent.ExceptionAddPathGlobExample(""))
+		b.WriteString("\n```\n\n")
+	}
+	return b.String()
+}
+
 // renderOpenCodeOrchestratorFast is the slim orchestrator for advisory CI
 // runs. It drops the recon and validation phases entirely — analysis agents
 // work directly from the changed-files list inlined in the prompt, and the
@@ -410,6 +458,7 @@ func renderOpenCodeOrchestratorFast(base string, changedFiles, suggestedAgents [
 	b.WriteString("\n")
 
 	b.WriteString(taskToolSchemaGuidance())
+	b.WriteString(zrokCommandExemplars(allowWrites))
 
 	b.WriteString("## Workflow (2 phases, dispatch all subagents in parallel)\n")
 	b.WriteString("1. **SAST triage (skip if no opengrep findings).** Run:\n")
@@ -580,6 +629,7 @@ func renderOpenCodeOrchestrator(base string, changedFiles, suggestedAgents []str
 	b.WriteString("parallel coverage. Findings dedup via fingerprint downstream.\n\n")
 
 	b.WriteString(taskToolSchemaGuidance())
+	b.WriteString(zrokCommandExemplars(allowWrites))
 
 	b.WriteString("## Workflow (lean for CI; depth-on-demand)\n")
 	b.WriteString("1. **Recon.** Dispatch `@recon-agent`. It is scoped to the changed-file ")

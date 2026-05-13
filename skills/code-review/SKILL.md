@@ -82,6 +82,101 @@ The phase sections below use the correct three-field form in every example.
 
 ---
 
+## zrok command quick-reference
+
+Copy these shapes when shelling out to zrok or when a subagent asks how to
+file findings. Required fields are populated; change values to match
+context.
+
+> Canonical source for these exemplars is `internal/agent/tool_examples.go`;
+> if a flag is added to the underlying command, update both.
+
+**Create a finding** (flag mode — works from any shell):
+
+```
+zrok finding create \
+  --title "SQL injection in user lookup" \
+  --severity high \
+  --confidence high \
+  --cwe CWE-89 \
+  --file src/api/users.py \
+  --line 42 \
+  --description "User-supplied id is concatenated into the SQL query without parameterisation." \
+  --remediation "Use parameterised queries: cursor.execute('SELECT * FROM users WHERE id=%s', (uid,))" \
+  --created-by <your-agent-name> \
+  --tag injection:sql
+```
+
+**Create a finding** (YAML mode — useful when description spans multiple lines):
+
+```yaml
+title: "SQL injection in user lookup"
+severity: high
+confidence: high
+cwe: CWE-89
+location:
+  file: src/api/users.py
+  line_start: 42
+description: "User-supplied id is concatenated into the SQL query without parameterisation."
+remediation: "Use parameterised queries"
+tags:
+  - injection:sql
+```
+
+Pipe with: `cat finding.yaml | zrok finding create -`
+
+**List findings** filed by a specific agent (verify your own filings):
+
+```
+zrok finding list --created-by <your-agent-name> --json
+```
+
+**Add a note** to an existing finding (cross-agent coordination):
+
+```
+zrok finding update FIND-001 \
+  --note "Same file also has an auth bypass at line 87 — see FIND-002." \
+  --note-author <your-agent-name>
+```
+
+**Add an opengrep rule** (only when project has rule-writes enabled):
+
+```
+cat <<'EOF' | zrok rule add no-shell-true \
+  --created-by agent:<your-agent-name> \
+  --reasoning "subprocess.run with shell=True keeps causing CWE-78 findings; codify a pattern."
+rules:
+  - id: no-shell-true
+    message: "subprocess.run with shell=True is command injection risk"
+    pattern: "subprocess.run($X, shell=True, ...)"
+    languages: [python]
+    severity: WARNING
+EOF
+```
+
+**Suppress a finding** by fingerprint (only with exception-writes enabled):
+
+```
+zrok exception add \
+  --fingerprint a1b2c3d4e5f6 \
+  --reason "Test fixture intentionally vulnerable for the eval harness." \
+  --expires 2026-12-31 \
+  --approved-by agent:<your-agent-name>
+```
+
+**Suppress by path glob** (e.g. test fixtures):
+
+```
+zrok exception add \
+  --path-glob "tests/**/*.py" \
+  --cwe CWE-89 \
+  --reason "Test fixtures contain intentional SQLi for repro; not shipped." \
+  --expires 2026-12-31 \
+  --approved-by agent:<your-agent-name>
+```
+
+---
+
 ## Phase 1: Project Setup
 
 ```bash
