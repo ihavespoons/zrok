@@ -116,15 +116,15 @@ func ParseSARIF(data []byte) ([]finding.Finding, error) {
 func convertResult(r sarifResult, rules map[string]sarifRule) finding.Finding {
 	rule, _ := rules[r.RuleID]
 
-	title := r.RuleID
-	if rule.ShortDescription.Text != "" {
-		title = rule.ShortDescription.Text
+	// Prefer the result message — it's the rule author's actual guidance.
+	// opengrep populates rule.shortDescription with a synthetic
+	// "Opengrep Finding: <ruleId>" string, which is useless as a title.
+	description := strings.TrimSpace(r.Message.Text)
+	if description == "" {
+		description = strings.TrimSpace(rule.FullDescription.Text)
 	}
 
-	description := r.Message.Text
-	if description == "" {
-		description = rule.FullDescription.Text
-	}
+	title := titleFor(rule, r.RuleID, description)
 
 	severity := mapSeverity(r.Level)
 	if rule.DefaultConfiguration != nil {
@@ -151,12 +151,13 @@ func convertResult(r sarifResult, rules map[string]sarifRule) finding.Finding {
 		loc.LineStart = 1
 	}
 
-	// opengrep encodes CWE in rule properties under "tags" with entries like
-	// "CWE-79". Pull the first CWE-shaped tag.
+	// opengrep encodes CWE in rule property tags with descriptive suffixes
+	// like "CWE-327: Use of a Broken or Risky Cryptographic Algorithm" —
+	// we want just the CWE-NNN identifier.
 	cwe := ""
 	for _, tag := range tagsOf(rule.Properties) {
-		if strings.HasPrefix(strings.ToUpper(tag), "CWE-") {
-			cwe = strings.ToUpper(tag)
+		if id := extractCWE(tag); id != "" {
+			cwe = id
 			break
 		}
 	}
@@ -168,11 +169,63 @@ func convertResult(r sarifResult, rules map[string]sarifRule) finding.Finding {
 		Status:      finding.StatusOpen,
 		CWE:         cwe,
 		Location:    loc,
-		Description: strings.TrimSpace(description),
+		Description: description,
 		Remediation: strings.TrimSpace(rule.Help.Text),
 		Tags:        []string{"sast", "opengrep"},
 		CreatedBy:   "opengrep",
 	}
+}
+
+// titleFor picks a short human-readable title. Preference order:
+//
+//  1. First sentence of the description (the rule's actual message).
+//  2. shortDescription, unless it's opengrep's "Opengrep Finding: …" synthetic.
+//  3. Last segment of the rule id (e.g. "insecure-hash-algorithm-md5").
+func titleFor(rule sarifRule, ruleID, description string) string {
+	if s := firstSentence(description); s != "" {
+		return s
+	}
+	sd := strings.TrimSpace(rule.ShortDescription.Text)
+	if sd != "" && !strings.HasPrefix(sd, "Opengrep Finding:") {
+		return sd
+	}
+	parts := strings.Split(ruleID, ".")
+	return parts[len(parts)-1]
+}
+
+func firstSentence(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if i := strings.IndexAny(s, ".!?"); i > 0 {
+		return strings.TrimSpace(s[:i])
+	}
+	return s
+}
+
+// extractCWE accepts opengrep-shaped tags and returns the canonical
+// "CWE-<digits>" form. Returns "" when the tag isn't CWE-shaped.
+func extractCWE(tag string) string {
+	tag = strings.TrimSpace(tag)
+	upper := strings.ToUpper(tag)
+	if !strings.HasPrefix(upper, "CWE-") {
+		return ""
+	}
+	// Walk past the digits; anything after (colon, space, description) is dropped.
+	end := len(upper)
+	for i := 4; i < len(upper); i++ {
+		c := upper[i]
+		if c < '0' || c > '9' {
+			end = i
+			break
+		}
+	}
+	if end == 4 {
+		// "CWE-" with no digits — invalid.
+		return ""
+	}
+	return upper[:end]
 }
 
 func mapSeverity(level string) finding.Severity {

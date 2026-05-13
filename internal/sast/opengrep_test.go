@@ -7,9 +7,10 @@ import (
 	"github.com/ihavespoons/zrok/internal/finding"
 )
 
-// sampleSARIF is a trimmed opengrep-shaped SARIF blob covering the result
-// fields zrok cares about. It carries two findings: one with a CWE tag and
-// rule-level metadata, one minimal/edge-case.
+// sampleSARIF mirrors what opengrep actually emits in production: the rule's
+// shortDescription is the synthetic "Opengrep Finding: <ruleId>" string,
+// CWE tags carry a description suffix ("CWE-89: ..."), and the result
+// message holds the real security guidance.
 const sampleSARIF = `{
   "version": "2.1.0",
   "runs": [{
@@ -19,15 +20,15 @@ const sampleSARIF = `{
         "rules": [
           {
             "id": "python.lang.security.sql-injection",
-            "shortDescription": {"text": "SQL injection via string concatenation"},
+            "shortDescription": {"text": "Opengrep Finding: python.lang.security.sql-injection"},
             "fullDescription": {"text": "User-controlled data flows into a SQL query without parameterization."},
             "help": {"text": "Use parameterized queries. Example: cur.execute('SELECT * FROM t WHERE id = %s', (uid,))"},
             "defaultConfiguration": {"level": "error"},
-            "properties": {"tags": ["security", "CWE-89", "owasp-a03"]}
+            "properties": {"tags": ["security", "CWE-89: SQL Injection", "owasp-a03"]}
           },
           {
             "id": "generic.note.todo",
-            "shortDescription": {"text": "TODO in code"},
+            "shortDescription": {"text": "Opengrep Finding: generic.note.todo"},
             "defaultConfiguration": {"level": "note"},
             "properties": {"tags": ["maintenance"]}
           }
@@ -38,7 +39,7 @@ const sampleSARIF = `{
       {
         "ruleId": "python.lang.security.sql-injection",
         "level": "error",
-        "message": {"text": "SQL query is built via string concatenation"},
+        "message": {"text": "User-supplied input flows into a SQL query without parameterization. Use parameterized queries."},
         "locations": [{
           "physicalLocation": {
             "artifactLocation": {"uri": "app/handlers.py"},
@@ -86,8 +87,9 @@ func TestParseSARIF_HighSeverityHasFullMetadata(t *testing.T) {
 	if sql == nil {
 		t.Fatal("did not find the SQL-injection result")
 	}
-	if sql.Title != "SQL injection via string concatenation" {
-		t.Errorf("title = %q, want shortDescription text", sql.Title)
+	wantTitle := "User-supplied input flows into a SQL query without parameterization"
+	if sql.Title != wantTitle {
+		t.Errorf("title = %q, want first sentence of message %q", sql.Title, wantTitle)
 	}
 	if sql.Severity != finding.SeverityHigh {
 		t.Errorf("severity = %v, want high (level=error)", sql.Severity)
@@ -104,7 +106,7 @@ func TestParseSARIF_HighSeverityHasFullMetadata(t *testing.T) {
 	if sql.Location.File != "app/handlers.py" || sql.Location.LineStart != 42 || sql.Location.LineEnd != 44 {
 		t.Errorf("location wrong: %+v", sql.Location)
 	}
-	if !strings.Contains(sql.Description, "string concatenation") {
+	if !strings.Contains(sql.Description, "parameterization") {
 		t.Errorf("description should come from result message, got: %q", sql.Description)
 	}
 	if !strings.Contains(sql.Remediation, "parameterized") {
@@ -116,19 +118,76 @@ func TestParseSARIF_LowSeverityRuleLevel(t *testing.T) {
 	got, _ := ParseSARIF([]byte(sampleSARIF))
 	var todo *finding.Finding
 	for i := range got {
-		if got[i].Title == "TODO in code" {
+		// Title comes from first-sentence-of-message, falling through to a
+		// cleaned rule id when the message has no separable sentence.
+		if strings.Contains(got[i].Title, "TODO") {
 			todo = &got[i]
 			break
 		}
 	}
 	if todo == nil {
-		t.Fatal("did not find TODO result")
+		t.Fatalf("did not find TODO result; titles: %v", titlesOf(got))
 	}
 	if todo.Severity != finding.SeverityLow {
 		t.Errorf("severity = %v, want low (rule level=note)", todo.Severity)
 	}
 	if todo.CWE != "" {
 		t.Errorf("CWE = %q, want empty (rule has no CWE tag)", todo.CWE)
+	}
+}
+
+func titlesOf(fs []finding.Finding) []string {
+	out := make([]string, len(fs))
+	for i, f := range fs {
+		out[i] = f.Title
+	}
+	return out
+}
+
+func TestParseSARIF_CWEExtractionStripsDescription(t *testing.T) {
+	got, _ := ParseSARIF([]byte(sampleSARIF))
+	var sql *finding.Finding
+	for i := range got {
+		if strings.Contains(got[i].Title, "parameterization") {
+			sql = &got[i]
+			break
+		}
+	}
+	if sql == nil {
+		t.Fatal("did not find SQL injection result")
+	}
+	if sql.CWE != "CWE-89" {
+		t.Errorf("CWE = %q, want canonical CWE-89 (description suffix stripped)", sql.CWE)
+	}
+}
+
+func TestParseSARIF_SyntheticShortDescriptionIgnored(t *testing.T) {
+	// "Opengrep Finding: <ruleId>" is a useless title; converter should
+	// fall through to the message text instead. Regression test for the
+	// behavior we observed in real opengrep output.
+	got, _ := ParseSARIF([]byte(sampleSARIF))
+	for _, f := range got {
+		if strings.HasPrefix(f.Title, "Opengrep Finding:") {
+			t.Errorf("title %q leaked opengrep's synthetic shortDescription", f.Title)
+		}
+	}
+}
+
+func TestExtractCWE(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"CWE-89", "CWE-89"},
+		{"CWE-327: Use of a Broken or Risky Cryptographic Algorithm", "CWE-327"},
+		{"cwe-22: path traversal", "CWE-22"},
+		{"security", ""},
+		{"CWE-", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := extractCWE(c.in); got != c.want {
+			t.Errorf("extractCWE(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }
 
