@@ -149,14 +149,15 @@ clean store and don't re-flag noise SAST already covered.
 
 ### Setup (one-time per host)
 
-If opengrep isn't installed:
+Opengrep does not publish a Homebrew formula. Install via the official
+script or a release binary:
 
 ```bash
-# macOS
-brew install opengrep                # or download standalone binary
+# macOS / Linux — install script
+curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
 
-# Linux / any
-curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | sh
+# Or download a standalone binary from the releases page:
+#   https://github.com/opengrep/opengrep/releases
 
 # Rules pack (once)
 git clone --depth 1 https://github.com/opengrep/opengrep-rules /tmp/og-rules

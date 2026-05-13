@@ -38,12 +38,15 @@ prompt_template: |
         them how to set it up, then exit:
 
             Opengrep wasn't run for this review. To enable the deterministic
-            SAST pass alongside the LLM agents, install opengrep:
+            SAST pass alongside the LLM agents, install opengrep (the
+            project does not publish a Homebrew formula — use the install
+            script or a release binary):
 
-              # macOS
-              brew install opengrep    # or download the standalone binary
-              # Linux / any
-              curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | sh
+              # macOS / Linux
+              curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
+
+              # Or download a release binary manually:
+              #   https://github.com/opengrep/opengrep/releases
 
             Then clone a ruleset and run:
 
