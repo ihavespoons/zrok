@@ -58,6 +58,7 @@ func (s *Store) Create(f *Finding) error {
 	now := time.Now()
 	f.CreatedAt = now
 	f.UpdatedAt = now
+	f.Fingerprint = Fingerprint(*f)
 
 	return s.save(f)
 }
@@ -76,6 +77,10 @@ func (s *Store) Read(id string) (*Finding, error) {
 	var f Finding
 	if err := yaml.Unmarshal(data, &f); err != nil {
 		return nil, fmt.Errorf("failed to parse finding: %w", err)
+	}
+
+	if f.Fingerprint == "" {
+		f.Fingerprint = Fingerprint(f)
 	}
 
 	return &f, nil
@@ -97,6 +102,7 @@ func (s *Store) Update(f *Finding) error {
 	// Preserve created_at
 	f.CreatedAt = existing.CreatedAt
 	f.UpdatedAt = time.Now()
+	f.Fingerprint = Fingerprint(*f)
 
 	return s.save(f)
 }

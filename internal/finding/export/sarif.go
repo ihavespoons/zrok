@@ -49,14 +49,15 @@ type SarifReportingConfiguration struct {
 }
 
 type SarifResult struct {
-	RuleID     string                 `json:"ruleId"`
-	RuleIndex  int                    `json:"ruleIndex,omitempty"`
-	Level      string                 `json:"level"`
-	Message    SarifMessage           `json:"message"`
-	Locations  []SarifLocation        `json:"locations,omitempty"`
-	CodeFlows  []SarifCodeFlow        `json:"codeFlows,omitempty"`
-	Fixes      []SarifFix             `json:"fixes,omitempty"`
-	Properties map[string]interface{} `json:"properties,omitempty"`
+	RuleID              string                 `json:"ruleId"`
+	RuleIndex           int                    `json:"ruleIndex,omitempty"`
+	Level               string                 `json:"level"`
+	Message             SarifMessage           `json:"message"`
+	Locations           []SarifLocation        `json:"locations,omitempty"`
+	CodeFlows           []SarifCodeFlow        `json:"codeFlows,omitempty"`
+	Fixes               []SarifFix             `json:"fixes,omitempty"`
+	PartialFingerprints map[string]string      `json:"partialFingerprints,omitempty"`
+	Properties          map[string]interface{} `json:"properties,omitempty"`
 }
 
 type SarifMessage struct {
@@ -217,12 +218,20 @@ func (e *SARIFExporter) buildRule(f finding.Finding) SarifRule {
 func (e *SARIFExporter) buildResult(f finding.Finding, ruleMap map[string]int) SarifResult {
 	ruleID := e.getRuleID(f)
 
+	fp := f.Fingerprint
+	if fp == "" {
+		fp = finding.Fingerprint(f)
+	}
+
 	result := SarifResult{
 		RuleID:    ruleID,
 		RuleIndex: ruleMap[ruleID],
 		Level:     e.severityToLevel(f.Severity),
 		Message: SarifMessage{
 			Text: f.Description,
+		},
+		PartialFingerprints: map[string]string{
+			finding.FingerprintKey: fp,
 		},
 		Properties: map[string]interface{}{
 			"id":         f.ID,

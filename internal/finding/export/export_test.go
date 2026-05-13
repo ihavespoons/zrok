@@ -151,6 +151,17 @@ func TestSARIFExport(t *testing.T) {
 	if exporter.FileExtension() != ".sarif" {
 		t.Errorf("unexpected extension: %s", exporter.FileExtension())
 	}
+
+	// partialFingerprints must be present for GitHub code-scanning dedup.
+	for i, r := range run.Results {
+		fp, ok := r.PartialFingerprints[finding.FingerprintKey]
+		if !ok || fp == "" {
+			t.Errorf("result %d missing partialFingerprints[%q]", i, finding.FingerprintKey)
+		}
+		if len(fp) != 64 {
+			t.Errorf("result %d fingerprint %q is not a 64-char sha256 hex", i, fp)
+		}
+	}
 }
 
 func TestJSONExport(t *testing.T) {
