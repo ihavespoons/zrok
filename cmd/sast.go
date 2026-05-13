@@ -6,6 +6,7 @@ import (
 
 	"github.com/ihavespoons/zrok/internal/finding"
 	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/zrok/internal/rule"
 	"github.com/ihavespoons/zrok/internal/sast"
 	"github.com/spf13/cobra"
 )
@@ -64,9 +65,20 @@ across SAST + LLM dedup automatically in SARIF code-scanning uploads.`,
 			}
 		}
 
+		// Merge project-local rules. Each enabled rule under .zrok/rules/
+		// becomes an extra --config to opengrep, so org-specific rules
+		// apply automatically alongside the user's chosen ruleset. Retired
+		// rules (verdict=retire on their metadata) are skipped here.
+		ruleStore := rule.NewStore(p)
+		localRulePaths, err := ruleStore.EnabledRulePaths()
+		if err != nil {
+			exitError("read project rules: %v", err)
+		}
+
 		scanner := &sast.Scanner{
-			Binary: binary,
-			Config: config,
+			Binary:       binary,
+			Config:       config,
+			ExtraConfigs: localRulePaths,
 		}
 		results, err := scanner.Scan(targets)
 		if err != nil {
@@ -109,6 +121,9 @@ across SAST + LLM dedup automatically in SARIF code-scanning uploads.`,
 		}
 
 		fmt.Printf("opengrep scan complete\n")
+		if len(localRulePaths) > 0 {
+			fmt.Printf("  + %d project-local rule(s) from .zrok/rules\n", len(localRulePaths))
+		}
 		fmt.Printf("  results:  %d\n", len(results))
 		fmt.Printf("  created:  %d\n", created)
 		if skipped > 0 {

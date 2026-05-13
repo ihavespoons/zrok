@@ -24,6 +24,12 @@ type Scanner struct {
 	// rules YAML, or a registry shorthand like "p/security-audit". Required.
 	Config string
 
+	// ExtraConfigs are additional --config arguments appended after Config.
+	// Used by cmd/sast.go to merge in project-local rules from .zrok/rules/
+	// alongside the user's chosen ruleset, so org-specific rules apply
+	// automatically without users re-specifying them.
+	ExtraConfigs []string
+
 	// ExtraArgs are passed through to opengrep scan, after the standard
 	// SARIF + quiet flags. Use sparingly — most behavior should be exposed
 	// via dedicated fields.
@@ -58,9 +64,7 @@ func (s *Scanner) Scan(targets []string) ([]finding.Finding, error) {
 	tmp.Close()
 	defer os.Remove(tmpPath)
 
-	args := []string{"scan", "--sarif-output=" + tmpPath, "--quiet", "--config", s.Config}
-	args = append(args, s.ExtraArgs...)
-	args = append(args, targets...)
+	args := s.buildArgs(tmpPath, targets)
 
 	var stderr bytes.Buffer
 	cmd := exec.Command(bin, args...)
@@ -86,6 +90,18 @@ func (s *Scanner) Scan(targets []string) ([]finding.Finding, error) {
 		return nil, nil
 	}
 	return ParseSARIF(data)
+}
+
+// buildArgs assembles the opengrep CLI arguments. Extracted so tests can
+// inspect the merged --config list without invoking the binary.
+func (s *Scanner) buildArgs(sarifOutPath string, targets []string) []string {
+	args := []string{"scan", "--sarif-output=" + sarifOutPath, "--quiet", "--config", s.Config}
+	for _, cfg := range s.ExtraConfigs {
+		args = append(args, "--config", cfg)
+	}
+	args = append(args, s.ExtraArgs...)
+	args = append(args, targets...)
+	return args
 }
 
 // ParseSARIF converts an opengrep SARIF blob into zrok findings. Exposed so

@@ -263,3 +263,46 @@ func TestScanner_MissingBinaryGivesActionableError(t *testing.T) {
 		t.Errorf("error should mention opengrep binary + PATH, got: %v", err)
 	}
 }
+
+func TestScanner_BuildArgsMergesExtraConfigs(t *testing.T) {
+	s := &Scanner{
+		Config:       "p/security",
+		ExtraConfigs: []string{"/proj/.zrok/rules/foo.yaml", "/proj/.zrok/rules/bar.yaml"},
+	}
+	args := s.buildArgs("/tmp/out.sarif", []string{"/proj/app.py"})
+	// Each --config appears with its value immediately after; we count them
+	// and check the values to confirm order is preserved.
+	var configValues []string
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "--config" {
+			configValues = append(configValues, args[i+1])
+		}
+	}
+	want := []string{"p/security", "/proj/.zrok/rules/foo.yaml", "/proj/.zrok/rules/bar.yaml"}
+	if len(configValues) != len(want) {
+		t.Fatalf("got %d --config values, want %d: %v", len(configValues), len(want), configValues)
+	}
+	for i := range want {
+		if configValues[i] != want[i] {
+			t.Errorf("--config[%d] = %q, want %q", i, configValues[i], want[i])
+		}
+	}
+	// Targets land after all --config args.
+	if args[len(args)-1] != "/proj/app.py" {
+		t.Errorf("expected /proj/app.py at end, got: %v", args)
+	}
+}
+
+func TestScanner_BuildArgsWithoutExtraConfigs(t *testing.T) {
+	s := &Scanner{Config: "p/security"}
+	args := s.buildArgs("/tmp/out.sarif", []string{"."})
+	configCount := 0
+	for _, a := range args {
+		if a == "--config" {
+			configCount++
+		}
+	}
+	if configCount != 1 {
+		t.Errorf("expected single --config when ExtraConfigs empty, got %d", configCount)
+	}
+}
