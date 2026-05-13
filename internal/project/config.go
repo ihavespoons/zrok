@@ -160,14 +160,27 @@ func DefaultIndexConfig() IndexConfig {
 
 // ProjectConfig represents the .zrok/project.yaml configuration
 type ProjectConfig struct {
-	Name           string                 `yaml:"name" json:"name"`
-	Version        string                 `yaml:"version" json:"version"`
-	Description    string                 `yaml:"description,omitempty" json:"description,omitempty"`
-	DetectedAt     time.Time              `yaml:"detected_at" json:"detected_at"`
-	TechStack      TechStack              `yaml:"tech_stack" json:"tech_stack"`
-	Classification ProjectClassification  `yaml:"classification,omitempty" json:"classification,omitempty"`
-	SecurityScope  SecurityScope          `yaml:"security_scope,omitempty" json:"security_scope,omitempty"`
-	Index          IndexConfig            `yaml:"index,omitempty" json:"index,omitempty"`
+	Name              string                 `yaml:"name" json:"name"`
+	Version           string                 `yaml:"version" json:"version"`
+	Description       string                 `yaml:"description,omitempty" json:"description,omitempty"`
+	DetectedAt        time.Time              `yaml:"detected_at" json:"detected_at"`
+	TechStack         TechStack              `yaml:"tech_stack" json:"tech_stack"`
+	Classification    ProjectClassification  `yaml:"classification,omitempty" json:"classification,omitempty"`
+	SecurityScope     SecurityScope          `yaml:"security_scope,omitempty" json:"security_scope,omitempty"`
+	Index             IndexConfig            `yaml:"index,omitempty" json:"index,omitempty"`
+	AllowAgentWrites  AllowAgentWrites       `yaml:"allow_agent_writes,omitempty" json:"allow_agent_writes,omitempty"`
+}
+
+// AllowAgentWrites toggles whether the orchestrator may grant subagents
+// access to the project-mutating CLI commands (zrok rule add,
+// zrok exception add). Both default to false; when off, the runner's bash
+// allowlist excludes the commands AND the orchestrator prompt omits the
+// rule/exception sections entirely. This is the v1.1 security boundary —
+// agents have no native edit/write permission, and even the route through
+// the CLI is opt-in per project.
+type AllowAgentWrites struct {
+	Rules      bool `yaml:"rules" json:"rules"`
+	Exceptions bool `yaml:"exceptions" json:"exceptions"`
 }
 
 // Project represents an active zrok project
