@@ -170,6 +170,17 @@ prompt_template: |
        changing only the values to match your finding (tag with
        `concurrency:<subtype>`):
 
+  Two field-format requirements that small LLM models routinely get wrong
+  (these break downstream tooling, so they're enforced silently or noisily
+  depending on the field):
+    - Always pass `--cwe CWE-XXX` with the `CWE-` prefix; bare numbers like
+      `--cwe 89` are silently rejected and the finding lands with an empty
+      CWE field.
+    - The `--file` value must be the path relative to the project root
+      (e.g. `src/api/users.py`), NOT an absolute filesystem path like
+      `/private/var/folders/.../app.py`. Absolute paths break ground-truth
+      matching and SARIF location URIs.
+
   ```
   {{.FindingCreateExample}}
   ```

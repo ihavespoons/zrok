@@ -32,6 +32,14 @@ func agentNameOrPlaceholder(agentName string) string {
 // `zrok finding create` in flag mode with every required field populated.
 // Pass agentName="" when rendering for prompts that aren't scoped to a
 // specific agent (orchestrator, SKILL.md).
+//
+// The trailing `# NOTE:` lines after the command are intentional. We can't
+// place inline comments on continuation lines (a `#` consumes the trailing
+// `\` and breaks line continuation), so the format reminders live as bash
+// no-op comment lines after the last argument. Smoke-tested against
+// qwen3-coder-plus which had been emitting bare CWE numbers and absolute
+// paths copied out of working-directory context — having the reminders
+// adjacent to the command in the same code block is what was missing.
 func FindingCreateExample(agentName string) string {
 	name := agentNameOrPlaceholder(agentName)
 	return strings.TrimSpace(`
@@ -46,19 +54,25 @@ zrok finding create \
   --remediation "Use parameterised queries: cursor.execute('SELECT * FROM users WHERE id=%s', (uid,))" \
   --created-by ` + name + ` \
   --tag injection:sql
+# NOTE: --cwe MUST include the "CWE-" prefix (e.g. CWE-89). Bare numbers like "89" are rejected.
+# NOTE: --file MUST be the path relative to the project root (e.g. src/api/users.py), NOT an absolute path like /private/var/folders/.../app.py.
 `)
 }
 
 // FindingCreateYAMLExample returns a YAML body suitable for piping into
 // `zrok finding create -` (stdin mode) or writing to a file.
+//
+// The trailing `#` comment lines are YAML comments (same syntax as shell)
+// reinforcing the two field-format rules that the flag-mode example calls
+// out. They're stripped on parse so they don't affect the resulting Finding.
 func FindingCreateYAMLExample() string {
 	return strings.TrimSpace(`
 title: "SQL injection in user lookup"
 severity: high
 confidence: high
-cwe: CWE-89
+cwe: CWE-89             # MUST include the "CWE-" prefix; bare numbers like "89" are rejected.
 location:
-  file: src/api/users.py
+  file: src/api/users.py  # MUST be relative to the project root, NOT an absolute path.
   line_start: 42
 description: "User-supplied id is concatenated into the SQL query without parameterisation."
 remediation: "Use parameterised queries"

@@ -79,6 +79,100 @@ func TestToolExamplesContainRequiredFlags(t *testing.T) {
 	}
 }
 
+// TestFindingCreateExampleFieldFormats guards the two field-format rules
+// that broke during the qwen3-coder-plus smoke test against vulnerable-app:
+//   - --cwe values must include the "CWE-" prefix (bare numbers like "89"
+//     were emitted and rejected silently).
+//   - --file values must be project-relative (absolute paths from a tmp
+//     working directory were echoed back into findings).
+//
+// These assertions are intentionally narrow: they catch drift on the exact
+// formatting cues the prompt relies on to discipline weaker models.
+func TestFindingCreateExampleFieldFormats(t *testing.T) {
+	for _, name := range []string{"", "test-agent"} {
+		name := name
+		t.Run("agentName="+name, func(t *testing.T) {
+			got := FindingCreateExample(name)
+			// The CWE flag and value MUST appear together with the "CWE-"
+			// prefix. Asserting on the literal "--cwe CWE-" rules out a
+			// future edit that switches to "--cwe 89".
+			if !strings.Contains(got, "--cwe CWE-") {
+				t.Errorf("FindingCreateExample missing literal %q; bare-number CWEs break ground-truth matching and SARIF taxonomy refs.\nGot:\n%s", "--cwe CWE-", got)
+			}
+
+			// Extract the value passed to the --file flag (the first
+			// occurrence; later NOTE comment lines also contain "--file"
+			// in prose, which we must skip). The value MUST NOT start
+			// with "/" — that would indicate an absolute filesystem path
+			// like /private/var/folders/.../app.py crept into the
+			// exemplar.
+			fileValue := extractFlagValue(t, got, "--file")
+			if strings.HasPrefix(fileValue, "/") {
+				t.Errorf("FindingCreateExample --file value %q is absolute; must be project-relative (e.g. src/api/users.py)", fileValue)
+			}
+			if fileValue == "" {
+				t.Errorf("FindingCreateExample --file value not found; example may be malformed\nGot:\n%s", got)
+			}
+		})
+	}
+}
+
+// TestFindingCreateYAMLExampleFieldFormats applies the same two rules to
+// the YAML exemplar so the stdin/file-mode path stays disciplined too.
+func TestFindingCreateYAMLExampleFieldFormats(t *testing.T) {
+	got := FindingCreateYAMLExample()
+	// In YAML mode the key is `cwe:` and the value starts with "CWE-".
+	if !strings.Contains(got, "cwe: CWE-") {
+		t.Errorf("FindingCreateYAMLExample missing literal %q; bare-number CWEs break ground-truth matching.\nGot:\n%s", "cwe: CWE-", got)
+	}
+	// Extract the file: value (strip any trailing inline comment) and
+	// reject absolute paths.
+	for _, line := range strings.Split(got, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "file:") {
+			continue
+		}
+		rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "file:"))
+		if i := strings.Index(rest, "#"); i >= 0 {
+			rest = strings.TrimSpace(rest[:i])
+		}
+		// Strip optional quotes.
+		rest = strings.Trim(rest, `"'`)
+		if strings.HasPrefix(rest, "/") {
+			t.Errorf("FindingCreateYAMLExample file: value %q is absolute; must be project-relative", rest)
+		}
+		return
+	}
+	t.Errorf("FindingCreateYAMLExample has no file: key\nGot:\n%s", got)
+}
+
+// extractFlagValue scans `text` line-by-line for the first line whose first
+// non-blank token equals `flag`, then returns the next whitespace-delimited
+// token on that line (stripped of surrounding quotes and trailing backslash).
+// Returns "" if not found. Lines beginning with "#" are skipped so trailing
+// NOTE comment lines don't masquerade as flag occurrences.
+func extractFlagValue(t *testing.T, text, flag string) string {
+	t.Helper()
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		fields := strings.Fields(trimmed)
+		if len(fields) < 2 {
+			continue
+		}
+		if fields[0] != flag {
+			continue
+		}
+		val := fields[1]
+		val = strings.TrimSuffix(val, `\`)
+		val = strings.Trim(val, `"'`)
+		return val
+	}
+	return ""
+}
+
 // TestAgentNameOrPlaceholder verifies the empty-name fallback used by
 // prompts that aren't scoped to a single agent.
 func TestAgentNameOrPlaceholder(t *testing.T) {

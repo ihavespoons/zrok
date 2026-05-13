@@ -105,6 +105,8 @@ zrok finding create \
   --remediation "Use parameterised queries: cursor.execute('SELECT * FROM users WHERE id=%s', (uid,))" \
   --created-by <your-agent-name> \
   --tag injection:sql
+# NOTE: --cwe MUST include the "CWE-" prefix (e.g. CWE-89). Bare numbers like "89" are rejected.
+# NOTE: --file MUST be relative to the project root (e.g. src/api/users.py), NOT an absolute path like /private/var/folders/.../app.py.
 ```
 
 **Create a finding** (YAML mode — useful when description spans multiple lines):
@@ -113,9 +115,9 @@ zrok finding create \
 title: "SQL injection in user lookup"
 severity: high
 confidence: high
-cwe: CWE-89
+cwe: CWE-89             # MUST include the "CWE-" prefix; bare numbers like "89" are rejected.
 location:
-  file: src/api/users.py
+  file: src/api/users.py  # MUST be relative to the project root, NOT an absolute path.
   line_start: 42
 description: "User-supplied id is concatenated into the SQL query without parameterisation."
 remediation: "Use parameterised queries"

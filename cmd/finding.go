@@ -51,6 +51,8 @@ Three input modes are supported:
          --remediation "Use parameterised queries: cursor.execute('SELECT * FROM users WHERE id=%s', (uid,))" \
          --created-by injection-agent \
          --tag injection:sql
+       # NOTE: --cwe MUST include the "CWE-" prefix (e.g. CWE-89). Bare numbers like "89" are rejected.
+       # NOTE: --file MUST be relative to the project root (e.g. src/api/users.py), NOT an absolute filesystem path.
 
 Flag mode is triggered when --title is provided. Stdin mode reads YAML from
 standard input. The three modes are mutually exclusive.
