@@ -72,6 +72,14 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 		allowAgentRules, _ := cmd.Flags().GetBool("allow-agent-rules")
 		allowAgentExceptions, _ := cmd.Flags().GetBool("allow-agent-exceptions")
 		includeAgents, _ := cmd.Flags().GetStringSlice("include-agent")
+		profile, _ := cmd.Flags().GetString("profile")
+		profile = strings.ToLower(strings.TrimSpace(profile))
+		if profile == "" {
+			profile = "deep"
+		}
+		if profile != "deep" && profile != "fast" {
+			exitError("unsupported --profile %q (supported: deep, fast)", profile)
+		}
 		runner = strings.ToLower(strings.TrimSpace(runner))
 		switch runner {
 		case "", "none", "opencode":
@@ -106,6 +114,30 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 		classification := p.Config.Classification
 		suggested := agent.SuggestAgents(p, classification)
 
+		// Fast profile: skip the workflow agents (recon, validation,
+		// review). They're high-cost relative to the marginal signal
+		// they add to an advisory CI run — recon's broad mapping was
+		// the biggest time sink in observed runs, and validation's
+		// triage step adds 5-10 min per run for diminishing returns
+		// when the report step already filters by severity threshold.
+		// sast-triage-agent stays — it's cheap and high-signal.
+		if profile == "fast" {
+			skip := map[string]bool{
+				"recon-agent":      true,
+				"validation-agent": true,
+				"review-agent":     true,
+			}
+			kept := suggested[:0]
+			for _, n := range suggested {
+				if skip[n] {
+					continue
+				}
+				kept = append(kept, n)
+			}
+			suggested = kept
+		}
+
+		// CLI flag-controlled additions to the suggested set.
 		// Force-include named agents (e.g. rule-judge-agent for periodic
 		// audit workflows). The set is union'd into `suggested` so the
 		// downstream materialization writes the agent file and the
@@ -199,7 +231,12 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 				effective.Exceptions = allowAgentExceptions
 			}
 			orchestratorPath := filepath.Join(runnerAgentsDir, "zrok-orchestrator.md")
-			orchestrator := renderOpenCodeOrchestrator(base, changed, suggested, effective)
+			var orchestrator string
+			if profile == "fast" {
+				orchestrator = renderOpenCodeOrchestratorFast(base, changed, suggested, effective)
+			} else {
+				orchestrator = renderOpenCodeOrchestrator(base, changed, suggested, effective)
+			}
 			if err := os.WriteFile(orchestratorPath, []byte(orchestrator), 0644); err != nil {
 				exitError("failed to write OpenCode orchestrator: %v", err)
 			}
@@ -249,6 +286,79 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 
 func isEmptyClassification(c project.ProjectClassification) bool {
 	return len(c.Types) == 0 && len(c.Traits) == 0
+}
+
+// renderOpenCodeOrchestratorFast is the slim orchestrator for advisory CI
+// runs. It drops the recon and validation phases entirely — analysis agents
+// work directly from the changed-files list inlined in the prompt, and the
+// `zrok review pr report` step does its own per-finding filtering at the
+// boundary. Per-finding review is skipped too (was already critical-only
+// in the deep profile; fast profile removes it outright).
+//
+// Workflow shrinks from 5 phases to 2:
+//   1. SAST triage (if opengrep findings exist)
+//   2. Parallel analysis dispatch
+//
+// Observed deep-profile runs spent ~9 min in recon and ~6 min in validation
+// for negligible improvement to the eventual PR comment, so fast profile
+// removes those costs. Use deep profile for thorough off-CI reviews.
+func renderOpenCodeOrchestratorFast(base string, changedFiles, suggestedAgents []string, allowWrites project.AllowAgentWrites) string {
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.WriteString("description: \"zrok security review orchestrator (fast/CI profile) — parallel-only, no recon/validation\"\n")
+	b.WriteString("mode: primary\n")
+	b.WriteString("permission:\n")
+	b.WriteString("  edit: deny\n")
+	b.WriteString("  write: deny\n")
+	b.WriteString("  webfetch: deny\n")
+	b.WriteString("  bash: allow\n")
+	b.WriteString("---\n")
+	b.WriteString("You are the zrok review orchestrator in FAST/CI profile.\n\n")
+
+	b.WriteString("## Tool-use safety\n")
+	b.WriteString("Bash is granted. Use it only for `zrok ...`, `git diff/log/show`, and ")
+	b.WriteString("read-only file tools (`cat`, `head`, `tail`, `wc`, `ls`, `grep`, `rg`, `find`). ")
+	b.WriteString("No network, no edits, no script execution from the repo under review.\n\n")
+
+	b.WriteString("## Scope (analysis agents read this from your context)\n")
+	fmt.Fprintf(&b, "Base ref: %s\n", base)
+	b.WriteString("Changed files:\n")
+	for _, f := range changedFiles {
+		fmt.Fprintf(&b, "- %s\n", f)
+	}
+	b.WriteString("\nAnalysis is scoped to these files. The report step filters anything ")
+	b.WriteString("else out anyway. Do NOT explore the project broadly — that's the deep ")
+	b.WriteString("profile's job.\n\n")
+
+	b.WriteString("## Available subagents\n")
+	for _, name := range suggestedAgents {
+		fmt.Fprintf(&b, "- `@%s`\n", name)
+	}
+	b.WriteString("\n## Workflow (2 phases, dispatch all subagents in parallel)\n")
+	b.WriteString("1. **SAST triage (skip if no opengrep findings).** Run:\n")
+	b.WriteString("       zrok finding list --created-by opengrep --status open --json\n")
+	b.WriteString("   If non-empty AND `@sast-triage-agent` is listed above, dispatch it once. ")
+	b.WriteString("If the list is empty, skip this phase entirely.\n")
+	b.WriteString("2. **Parallel analysis.** Dispatch EVERY remaining analysis subagent ")
+	b.WriteString("(everything except sast-triage-agent) **in a single message via @-mention**. ")
+	b.WriteString("Do NOT call them sequentially — that defeats the parallel dispatch. ")
+	b.WriteString("Each agent creates findings via `zrok finding create`; their output is ")
+	b.WriteString("persisted, you do not need to relay it.\n\n")
+
+	b.WriteString("## What you do NOT do in this profile\n")
+	b.WriteString("- No recon phase. Agents work from the changed-files list above.\n")
+	b.WriteString("- No validation-agent triage. The report step renders findings as-is.\n")
+	b.WriteString("- No per-finding review-agent. Severity is set by the analysis agents.\n")
+	b.WriteString("- No long summary at the end. Exit when analysis dispatch completes.\n\n")
+
+	if allowWrites.Rules || allowWrites.Exceptions {
+		b.WriteString("## Project-mutating commands (opt-in)\n")
+		b.WriteString("You may use `zrok rule add` / `zrok exception add` per the project's ")
+		b.WriteString("toggle settings. Same constraints as deep profile: writes apply to the ")
+		b.WriteString("NEXT PR, not this one.\n\n")
+	}
+
+	return b.String()
 }
 
 // prModeReconScopingOverride is appended to the recon-agent prompt ONLY when
@@ -719,6 +829,7 @@ func init() {
 	reviewPrSetupCmd.Flags().Bool("allow-agent-rules", false, "Allow the orchestrator to dispatch `zrok rule add` (overrides project.yaml when set)")
 	reviewPrSetupCmd.Flags().Bool("allow-agent-exceptions", false, "Allow the orchestrator to dispatch `zrok exception add` (overrides project.yaml when set)")
 	reviewPrSetupCmd.Flags().StringSlice("include-agent", nil, "Force-include an agent that wouldn't normally be suggested (repeatable, e.g. --include-agent rule-judge-agent)")
+	reviewPrSetupCmd.Flags().String("profile", "deep", "Orchestrator profile: 'deep' (recon + analysis + validation + per-finding review, ~20-30min) or 'fast' (SAST triage + parallel analysis only, ~3-5min). Use 'fast' for CI advisory runs.")
 
 	reviewPrReportCmd.Flags().String("base", "", "Base git ref to diff against (e.g. origin/main)")
 	reviewPrReportCmd.Flags().Int("top-n", 10, "Maximum findings to inline in the PR comment")
