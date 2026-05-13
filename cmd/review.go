@@ -100,7 +100,7 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 		}
 
 		classification := p.Config.Classification
-		suggested := agent.SuggestAgents(classification)
+		suggested := agent.SuggestAgents(p, classification)
 
 		// Render each agent's prompt. Default: write to disk (small JSON
 		// output, friendly to CI step output limits). With --inline-prompts:

@@ -385,8 +385,10 @@ Modes:
 			exitError("onboarding failed: %v", err)
 		}
 
-		// Suggest agents based on project classification
-		result.Agents = agent.SuggestAgents(result.Config.Classification)
+		// Suggest agents based on project classification. Pass `p` so local
+		// agent YAMLs in .zrok/agents/ override built-ins (including their
+		// applicability rules).
+		result.Agents = agent.SuggestAgents(p, result.Config.Classification)
 
 		// Create initial memories
 		memStore := memory.NewStore(p)
