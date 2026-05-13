@@ -55,7 +55,6 @@ type SarifResult struct {
 	Message             SarifMessage           `json:"message"`
 	Locations           []SarifLocation        `json:"locations,omitempty"`
 	CodeFlows           []SarifCodeFlow        `json:"codeFlows,omitempty"`
-	Fixes               []SarifFix             `json:"fixes,omitempty"`
 	PartialFingerprints map[string]string      `json:"partialFingerprints,omitempty"`
 	Suppressions        []SarifSuppression     `json:"suppressions,omitempty"`
 	Properties          map[string]interface{} `json:"properties,omitempty"`
@@ -100,10 +99,6 @@ type SarifRegion struct {
 
 type SarifSnippet struct {
 	Text string `json:"text"`
-}
-
-type SarifFix struct {
-	Description SarifMessage `json:"description"`
 }
 
 type SarifInvocation struct {
@@ -287,16 +282,14 @@ func (e *SARIFExporter) buildResult(f finding.Finding, ruleMap map[string]int) S
 
 	result.Locations = []SarifLocation{loc}
 
-	// Add fix suggestion if remediation exists
-	if f.Remediation != "" {
-		result.Fixes = []SarifFix{
-			{
-				Description: SarifMessage{
-					Text: f.Remediation,
-				},
-			},
-		}
-	}
+	// Don't emit `fixes` here. Per SARIF 2.1.0 the `fix` object requires
+	// a non-empty `artifactChanges` array — a `fix` with only a
+	// `description` is invalid and GitHub code-scanning's SARIF
+	// validator rejects the whole upload. The remediation text is still
+	// surfaced via the rule's `help` field (see buildRule below), which
+	// code-scanning displays in the alert detail. If we ever produce
+	// actual patches we can re-introduce a proper `fixes` block with
+	// real artifactChanges.
 
 	// Add code flow from FlowTrace
 	if f.FlowTrace != nil {
