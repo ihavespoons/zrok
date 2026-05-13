@@ -167,6 +167,9 @@ func (s *Store) List(opts *FilterOptions) (*FindingList, error) {
 			if opts.Tag != "" && !containsTag(f.Tags, opts.Tag) {
 				continue
 			}
+			if opts.CreatedBy != "" && f.CreatedBy != opts.CreatedBy {
+				continue
+			}
 		}
 
 		findings = append(findings, *f)

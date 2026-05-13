@@ -426,6 +426,9 @@ var findingListCmd = &cobra.Command{
 		if file, _ := cmd.Flags().GetString("file"); file != "" {
 			opts.File = file
 		}
+		if createdBy, _ := cmd.Flags().GetString("created-by"); createdBy != "" {
+			opts.CreatedBy = createdBy
+		}
 
 		result, err := store.List(opts)
 		if err != nil {
@@ -920,6 +923,7 @@ func init() {
 	findingListCmd.Flags().String("cwe", "", "Filter by CWE")
 	findingListCmd.Flags().String("file", "", "Filter by location file (exact match against finding's location.file)")
 	findingListCmd.Flags().String("diff", "", "Filter to findings in files changed since base ref (e.g., main)")
+	findingListCmd.Flags().String("created-by", "", "Filter by creator (e.g., opengrep, security-agent). Matches finding.created_by exactly.")
 	findingListCmd.Flags().Bool("include-suppressed", false, "Show findings that would be filtered by .zrok/exceptions.yaml")
 
 	findingExportCmd.Flags().StringP("format", "f", "json", "Export format (sarif, json, md, html, csv)")

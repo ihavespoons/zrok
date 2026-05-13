@@ -211,6 +211,7 @@ type FilterOptions struct {
 	CWE            string
 	Tag            string
 	File           string
+	CreatedBy      string
 	Limit          int
 	Offset         int
 }
