@@ -8,10 +8,65 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
+
+// Classification of a subprocess outcome — drives the retry decision.
+type failureCategory int
+
+const (
+	// failureNone: subprocess succeeded (exit 0, no parser/schema errors in log).
+	failureNone failureCategory = iota
+
+	// failureRecoverable: the subprocess hit a parser/schema/tool error that
+	// a corrective re-prompt is likely to fix on the second try. Examples:
+	// SchemaError on the Task tool, malformed YAML rejected by
+	// `zrok finding create`, "tool not found" because the model spelled a
+	// command wrong.
+	failureRecoverable
+
+	// failureHard: the subprocess failed in a way retrying won't help.
+	// Quota/rate-limit, auth failure, network outage, OOM, ctx timeout.
+	// Surfaced as an error to the caller; no retry.
+	failureHard
+)
+
+// retryableLogPatterns matches subprocess output that indicates the agent
+// hit a structural error (schema, parse, tool-shape) rather than a
+// substantive review failure. Each pattern is OR'd; a single match
+// triggers the retry path.
+//
+// Update this list when new failure modes surface in real runs — adding a
+// pattern is much cheaper than tightening the retry decision logic.
+var retryableLogPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)SchemaError`),
+	regexp.MustCompile(`(?i)failed to parse`),
+	regexp.MustCompile(`(?i)invalid yaml`),
+	regexp.MustCompile(`(?i)yaml: unmarshal errors`),
+	regexp.MustCompile(`(?i)unexpected EOF`),
+	regexp.MustCompile(`(?i)tool not found`),
+	regexp.MustCompile(`(?i)Missing key at \[`),
+	regexp.MustCompile(`(?i)zrok finding create.*failed`),
+}
+
+// hardLogPatterns matches output that classifies as a hard failure (no
+// retry). Quota / auth / network. Mirrors the eval/run.sh is_quota_error
+// classifier so the dispatcher behaves consistently with the eval driver.
+var hardLogPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)rate.?limit`),
+	regexp.MustCompile(`(?i)quota`),
+	regexp.MustCompile(`(?i)too many requests`),
+	regexp.MustCompile(`\b429\b`),
+	regexp.MustCompile(`(?i)overloaded`),
+	regexp.MustCompile(`(?i)capacity`),
+	regexp.MustCompile(`(?i)billing`),
+	regexp.MustCompile(`(?i)credit`),
+	regexp.MustCompile(`(?i)401\b.*(unauth|invalid.?key)`),
+	regexp.MustCompile(`(?i)403\b.*(forbidden|denied)`),
+}
 
 // DispatchConfig controls a single `Dispatch` invocation.
 type DispatchConfig struct {
@@ -62,6 +117,19 @@ type AgentResult struct {
 	Duration time.Duration
 	LogPath  string
 	Err      error
+
+	// Retries counts how many corrective re-invocations the dispatcher
+	// performed for this agent. 0 means the first attempt succeeded (or
+	// failed in a way that didn't qualify for retry). The dispatcher
+	// caps retries at 1 today; the field is an int so a future cap
+	// change doesn't reshape the result type.
+	Retries int
+
+	// RetryReason names the failure pattern that triggered the retry
+	// (e.g. "SchemaError", "yaml unmarshal errors"). Empty when no
+	// retry occurred. Useful for the run summary / manifest so we can
+	// see which agents needed scaffolding and which didn't.
+	RetryReason string
 }
 
 // PhaseResult is the outcome of one phase.
@@ -238,7 +306,7 @@ func jsonHasFindings(out []byte) bool {
 func runSequential(ctx context.Context, agents []string, cfg DispatchConfig) []AgentResult {
 	results := make([]AgentResult, 0, len(agents))
 	for _, name := range agents {
-		results = append(results, runAgent(ctx, name, defaultUserTurn(cfg.UserTurn), cfg))
+		results = append(results, runAgentWithRetry(ctx, name, defaultUserTurn(cfg.UserTurn), cfg))
 	}
 	return results
 }
@@ -266,7 +334,7 @@ func runParallel(ctx context.Context, agents []string, cfg DispatchConfig) []Age
 				sem <- struct{}{}
 				defer func() { <-sem }()
 			}
-			results[i] = runAgent(ctx, name, defaultUserTurn(cfg.UserTurn), cfg)
+			results[i] = runAgentWithRetry(ctx, name, defaultUserTurn(cfg.UserTurn), cfg)
 		}()
 	}
 	wg.Wait()
@@ -281,9 +349,116 @@ func runFanout(ctx context.Context, agentName string, ids []string, cfg Dispatch
 	results := make([]AgentResult, 0, len(ids))
 	for _, id := range ids {
 		turn := fmt.Sprintf("%s Specifically: review finding %s.", defaultUserTurn(cfg.UserTurn), id)
-		results = append(results, runAgent(ctx, agentName, turn, cfg))
+		results = append(results, runAgentWithRetry(ctx, agentName, turn, cfg))
 	}
 	return results
+}
+
+// runAgentWithRetry wraps runAgent with at most one corrective re-prompt
+// for failures classified as recoverable. Hard failures (quota / auth /
+// network) are surfaced as-is. Successes and "agent ran clean, just
+// didn't file anything" outcomes are passed through unchanged — a
+// legitimate empty review is not a retry trigger.
+//
+// The retry budget is hard-coded to 1. Beyond 1 the cost of "agent that
+// can't follow the contract" exceeds the marginal yield; we'd rather
+// surface the failure to a human (or an upstream eval signal) than burn
+// dollars on a third attempt.
+//
+// On retry, the second invocation's log appends to the first via the
+// dispatcher's separator (see appendRetryToLog). The combined log is what
+// gets surfaced in the run summary so debugging shows both attempts.
+func runAgentWithRetry(ctx context.Context, agentName, userTurn string, cfg DispatchConfig) AgentResult {
+	res := runAgent(ctx, agentName, userTurn, cfg)
+
+	// Successful first attempt — done.
+	if res.Err == nil {
+		return res
+	}
+
+	logBytes, _ := os.ReadFile(res.LogPath)
+	category, reason := classifyFailure(res.ExitCode, logBytes)
+
+	switch category {
+	case failureRecoverable:
+		fmt.Fprintf(cfg.Stdout, "    ↻ %s recoverable failure (%s) — retrying once\n", agentName, reason)
+		appendRetryToLog(res.LogPath, reason)
+		correctedTurn := correctiveUserTurn(userTurn, reason)
+		retry := runAgent(ctx, agentName, correctedTurn, cfg)
+		retry.Retries = 1
+		retry.RetryReason = reason
+		return retry
+
+	default:
+		// Hard failure or anything else — pass the first attempt's result
+		// through unchanged so the caller sees the original error /
+		// exit code.
+		return res
+	}
+}
+
+// classifyFailure inspects subprocess outcome and decides whether retry is
+// warranted. Hard patterns are checked first — quota errors that also
+// happen to contain a parser-error substring should be treated as hard.
+func classifyFailure(exitCode int, logBytes []byte) (failureCategory, string) {
+	if exitCode == 0 {
+		// Exit 0 = clean run. No retry regardless of log content — if
+		// the agent legitimately found nothing, retrying won't change
+		// that.
+		return failureNone, ""
+	}
+	for _, re := range hardLogPatterns {
+		if m := re.Find(logBytes); m != nil {
+			return failureHard, string(m)
+		}
+	}
+	for _, re := range retryableLogPatterns {
+		if m := re.Find(logBytes); m != nil {
+			return failureRecoverable, string(m)
+		}
+	}
+	// Non-zero exit but no recognized pattern — treat as hard so we don't
+	// burn cost retrying an unknown failure mode. Patterns can be
+	// expanded as new modes surface in real runs.
+	return failureHard, fmt.Sprintf("exit=%d", exitCode)
+}
+
+// appendRetryToLog writes a visible separator to the agent's log file
+// before the retry attempt overwrites it via os.Create. Without this, the
+// retry's log content silently replaces the first attempt and debugging
+// is harder.
+//
+// The actual log file gets truncated by runAgent's os.Create — so this
+// function reads the current contents, prepends them to a saved
+// `.attempt-1` file alongside the live log, and writes a header into the
+// live log noting the retry. The saved file is opt-in archaeology for
+// when something goes wrong post-mortem.
+func appendRetryToLog(logPath, reason string) {
+	first, err := os.ReadFile(logPath)
+	if err != nil {
+		return
+	}
+	archivePath := logPath + ".attempt-1"
+	_ = os.WriteFile(archivePath, first, 0o644)
+	// The live log will be re-truncated by os.Create in the retry's
+	// runAgent. So we don't write anything here — the archive is the
+	// preserved-record path.
+	_ = reason // reason already surfaced via cfg.Stdout in runAgentWithRetry
+}
+
+// correctiveUserTurn builds the second-attempt prompt. Embeds the failure
+// reason so the model sees what went wrong, plus an explicit reminder of
+// the schema requirements that the centralized exemplar covers. Kept
+// short — long retry prompts make small models more confused, not less.
+func correctiveUserTurn(originalTurn, reason string) string {
+	return fmt.Sprintf(`Your previous attempt failed: %s
+
+Re-run with these corrections:
+- Task tool calls require BOTH "description" and "prompt" fields (no exceptions).
+- zrok finding create requires --title, --severity, --confidence, --cwe (with CWE- prefix), --file (project-relative), --line, --description, --created-by, and at least one --tag.
+- All YAML output (for stdin mode) must parse cleanly.
+
+This is your final retry. Original task: %s`, reason, originalTurn)
 }
 
 // defaultUserTurn returns the user-turn prompt the dispatcher passes when

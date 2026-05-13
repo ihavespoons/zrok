@@ -1007,11 +1007,14 @@ final PR comment regardless of which dispatch path produced them.`,
 		// Exit non-zero if any agent errored (subprocess failed), since
 		// "no findings filed" still counts as success — that's a
 		// legitimate result, not a failure.
-		var errored int
+		var errored, retried int
 		for _, ph := range result.Phases {
 			for _, ar := range ph.Agents {
 				if ar.Err != nil {
 					errored++
+				}
+				if ar.Retries > 0 {
+					retried++
 				}
 			}
 		}
@@ -1027,8 +1030,15 @@ final PR comment regardless of which dispatch path produced them.`,
 				if ar.Err != nil {
 					status = fmt.Sprintf("ERR exit=%d", ar.ExitCode)
 				}
-				fmt.Printf("    - %s: %s (%s)\n", ar.Agent, status, ar.Duration.Round(time.Second))
+				suffix := ""
+				if ar.Retries > 0 {
+					suffix = fmt.Sprintf(" [retried %d×: %s]", ar.Retries, ar.RetryReason)
+				}
+				fmt.Printf("    - %s: %s (%s)%s\n", ar.Agent, status, ar.Duration.Round(time.Second), suffix)
 			}
+		}
+		if retried > 0 {
+			fmt.Printf("\n%d agent(s) needed a corrective retry — typically a sign the model struggled with tool-call schema. See per-agent logs (.attempt-1 files preserve the first attempt) in %s\n", retried, logDir)
 		}
 		if errored > 0 {
 			exitError("%d agent invocation(s) failed — see per-agent logs in %s", errored, logDir)

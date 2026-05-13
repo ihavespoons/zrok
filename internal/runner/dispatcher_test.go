@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -135,6 +136,63 @@ func TestLookupRunner(t *testing.T) {
 				t.Errorf("runner name: got %q, want %q", r.Name(), c.wantName)
 			}
 		})
+	}
+}
+
+func TestClassifyFailure(t *testing.T) {
+	cases := []struct {
+		name      string
+		exitCode  int
+		log       string
+		wantCat   failureCategory
+		wantInLbl string // substring expected in the returned reason
+	}{
+		{"exit 0 is success", 0, "", failureNone, ""},
+		{"exit 0 with parse error in log still success", 0, "yaml: unmarshal errors", failureNone, ""},
+		{"SchemaError → recoverable", 1, "SchemaError(Missing key at [\"description\"])", failureRecoverable, "SchemaError"},
+		{"yaml unmarshal → recoverable", 1, "Error: yaml: unmarshal errors:\n  line 3: cannot unmarshal", failureRecoverable, "yaml: unmarshal errors"},
+		// "failed to parse" matches first (it's earlier in the patterns list);
+		// either reason is acceptable — both correctly classify as recoverable.
+		{"finding create failed → recoverable", 2, "zrok finding create: failed to parse YAML", failureRecoverable, "failed to parse"},
+		{"missing key gemma-style → recoverable", 1, "Missing key at [\"prompt\"]", failureRecoverable, "Missing key at ["},
+		{"quota → hard", 1, "Error: rate limit exceeded", failureHard, "rate limit"},
+		{"429 → hard", 1, "HTTP 429 Too Many Requests", failureHard, ""}, // matches either word boundary or "too many requests"
+		{"overloaded → hard", 1, "model is overloaded", failureHard, "overloaded"},
+		{"auth fail → hard", 1, "401 unauthorized: invalid api key", failureHard, ""},
+		{"hard wins when both present", 1, "rate limit exceeded\nyaml: unmarshal errors", failureHard, "rate limit"},
+		{"unknown failure → hard (no retry on unknown)", 1, "something weird happened", failureHard, "exit=1"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cat, reason := classifyFailure(c.exitCode, []byte(c.log))
+			if cat != c.wantCat {
+				t.Errorf("category: got %v, want %v (reason: %q)", cat, c.wantCat, reason)
+			}
+			if c.wantInLbl != "" && !strings.Contains(strings.ToLower(reason), strings.ToLower(c.wantInLbl)) {
+				t.Errorf("reason missing %q: got %q", c.wantInLbl, reason)
+			}
+		})
+	}
+}
+
+func TestCorrectiveUserTurnContainsScaffolding(t *testing.T) {
+	turn := correctiveUserTurn("original task", "SchemaError")
+	// Must mention what went wrong so the model can correct.
+	if !strings.Contains(turn, "SchemaError") {
+		t.Error("corrective turn missing failure reason")
+	}
+	// Must remind the model of the Task tool's required fields — this
+	// was the specific Gemma failure mode the retry was designed for.
+	if !strings.Contains(turn, "description") || !strings.Contains(turn, "prompt") {
+		t.Error("corrective turn missing Task tool field reminder")
+	}
+	// Must remind about zrok finding create schema (CWE- prefix etc.).
+	if !strings.Contains(turn, "CWE-") {
+		t.Error("corrective turn missing CWE- prefix reminder")
+	}
+	// Must echo the original task so the agent still knows what to do.
+	if !strings.Contains(turn, "original task") {
+		t.Error("corrective turn dropped the original task")
 	}
 }
 
