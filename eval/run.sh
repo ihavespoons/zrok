@@ -40,11 +40,7 @@ ZERO_FINDING_RUNS=0
 OPENCODE_MODEL="${OPENCODE_MODEL:-openrouter/deepseek/deepseek-v4-flash}"
 EVAL_PROFILE="${EVAL_PROFILE:-fast}"
 
-# Git empty-tree SHA — universal in every git repo. Using it as the diff
-# base makes ALL files in HEAD appear in `git diff --name-only`, which is
-# how we reuse `zrok review pr setup`'s changed-files plumbing for a
-# whole-fixture review.
-EMPTY_TREE_SHA="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+# (Eval synthesizes its own diff base per run; see run_single_eval below.)
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -126,17 +122,25 @@ run_single_eval() {
     echo "  Working directory: $run_dir"
     echo "  Fixture: $FIXTURE_PRESET"
 
-    # Copy fixture to isolated directory
-    cp -r "$FIXTURE_DIR"/* "$run_dir/"
-
-    # Make the fixture a git repo so `zrok review pr setup`'s git-diff plumbing
-    # has a HEAD to work against. Using EMPTY_TREE_SHA as the diff base makes
-    # every fixture file appear in "changed files", which reuses the dogfood
-    # orchestrator's per-PR scope for a whole-codebase review.
+    # Set up a synthetic two-commit git history so `zrok review pr setup`'s
+    # diff plumbing works:
+    #
+    #   HEAD~1 = empty commit (no files, the "base")
+    #   HEAD   = fixture as a single change (the "PR")
+    #
+    # Using `--base HEAD~1` then makes EVERY fixture file appear in
+    # `git diff --name-only HEAD~1...HEAD`, reusing the PR-mode plumbing
+    # for a whole-codebase review. The empty-tree SHA alone won't work
+    # here: `git diff A...B` uses the merge-base, and the empty tree has
+    # no shared history with HEAD.
     (cd "$run_dir" \
         && git init -q \
+        && git -c user.email=eval@zrok -c user.name=eval commit --allow-empty -qm eval-baseline)
+    cp -r "$FIXTURE_DIR"/* "$run_dir/"
+    (cd "$run_dir" \
         && git -c user.email=eval@zrok -c user.name=eval add -A \
-        && git -c user.email=eval@zrok -c user.name=eval commit -qm fixture-baseline)
+        && git -c user.email=eval@zrok -c user.name=eval commit -qm fixture)
+    local eval_base_ref="HEAD~1"
 
     # Initialize zrok project
     (cd "$run_dir" && "$ZROK_BIN" init >/dev/null)
@@ -158,7 +162,7 @@ run_single_eval() {
     # both places automatically.
     echo "  Setting up OpenCode agents (profile: $EVAL_PROFILE)..."
     if ! (cd "$run_dir" && "$ZROK_BIN" review pr setup \
-            --base "$EMPTY_TREE_SHA" \
+            --base "$eval_base_ref" \
             --runner opencode \
             --profile "$EVAL_PROFILE" \
             --json > "${run_dir}/setup.json" 2>"${run_dir}/setup-err.log"); then
