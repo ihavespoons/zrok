@@ -69,6 +69,8 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 		inlinePrompts, _ := cmd.Flags().GetBool("inline-prompts")
 		promptsDirFlag, _ := cmd.Flags().GetString("prompts-dir")
 		runner, _ := cmd.Flags().GetString("runner")
+		allowAgentRules, _ := cmd.Flags().GetBool("allow-agent-rules")
+		allowAgentExceptions, _ := cmd.Flags().GetBool("allow-agent-exceptions")
 		runner = strings.ToLower(strings.TrimSpace(runner))
 		switch runner {
 		case "", "none", "opencode":
@@ -151,8 +153,19 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 			}
 		}
 		if runner == "opencode" {
+			// CLI flags override stored project config. The action passes
+			// --allow-agent-rules / --allow-agent-exceptions from its
+			// inputs, so per-workflow toggling works even when project.yaml
+			// hasn't been touched.
+			effective := p.Config.AllowAgentWrites
+			if cmd.Flags().Changed("allow-agent-rules") {
+				effective.Rules = allowAgentRules
+			}
+			if cmd.Flags().Changed("allow-agent-exceptions") {
+				effective.Exceptions = allowAgentExceptions
+			}
 			orchestratorPath := filepath.Join(runnerAgentsDir, "zrok-orchestrator.md")
-			orchestrator := renderOpenCodeOrchestrator(base, changed, suggested, p.Config.AllowAgentWrites)
+			orchestrator := renderOpenCodeOrchestrator(base, changed, suggested, effective)
 			if err := os.WriteFile(orchestratorPath, []byte(orchestrator), 0644); err != nil {
 				exitError("failed to write OpenCode orchestrator: %v", err)
 			}
@@ -621,6 +634,8 @@ func init() {
 	reviewPrSetupCmd.Flags().Bool("inline-prompts", false, "Embed agent prompts in JSON output instead of writing to disk")
 	reviewPrSetupCmd.Flags().String("prompts-dir", "", "Directory to write per-agent prompt files (default: .zrok/review/prompts)")
 	reviewPrSetupCmd.Flags().String("runner", "", "Also emit runner-specific agent files (supported: opencode)")
+	reviewPrSetupCmd.Flags().Bool("allow-agent-rules", false, "Allow the orchestrator to dispatch `zrok rule add` (overrides project.yaml when set)")
+	reviewPrSetupCmd.Flags().Bool("allow-agent-exceptions", false, "Allow the orchestrator to dispatch `zrok exception add` (overrides project.yaml when set)")
 
 	reviewPrReportCmd.Flags().String("base", "", "Base git ref to diff against (e.g. origin/main)")
 	reviewPrReportCmd.Flags().Int("top-n", 10, "Maximum findings to inline in the PR comment")
