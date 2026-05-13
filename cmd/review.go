@@ -127,12 +127,49 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 				"validation-agent": true,
 				"review-agent":     true,
 			}
-			kept := suggested[:0]
+			// Hard cap on agent count in fast mode. Observed in dogfood:
+			// even with explicit "dispatch in parallel" prompt wording,
+			// smaller models (Gemma 4 31B, GPT-4o-mini class) emit Task
+			// calls sequentially, so 11 agents = 11 sequential ~30s calls
+			// = 5+ min in just analysis. Capping to N keeps fast-profile
+			// genuinely fast at the cost of coverage; deep profile keeps
+			// the full set for thorough off-CI reviews.
+			//
+			// Priority order — agents that hit the highest-signal CWE
+			// classes for typical repos. sast-triage-agent is kept
+			// separately (it dedups opengrep output, low cost, distinct
+			// value). Order matters: when the suggested set has more
+			// than the cap, the *first* matches survive.
+			const fastMaxAgents = 5
+			priority := []string{
+				"sast-triage-agent",
+				"injection-agent",
+				"security-agent",
+				"guards-agent",
+				"architecture-agent",
+				"config-agent",
+				"ssrf-agent",
+				"content-agent",
+				"dependencies-agent",
+				"logging-agent",
+				"references-agent",
+				"concurrency-agent",
+				"resource-exhaustion-agent",
+			}
+			inSuggested := map[string]bool{}
 			for _, n := range suggested {
-				if skip[n] {
-					continue
+				if !skip[n] {
+					inSuggested[n] = true
 				}
-				kept = append(kept, n)
+			}
+			kept := suggested[:0]
+			for _, n := range priority {
+				if len(kept) >= fastMaxAgents {
+					break
+				}
+				if inSuggested[n] {
+					kept = append(kept, n)
+				}
 			}
 			suggested = kept
 		}
