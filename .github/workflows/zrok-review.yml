@@ -62,5 +62,10 @@ jobs:
           # the review pipeline, the review breaks visibly, which is the
           # signal we want.
           zrok-ref: ${{ github.head_ref }}
+          # zrok is a Go codebase, so point opengrep at the go-specific
+          # rule pack rather than the default "security" tree (which is
+          # mostly Python). The action's Scanner tolerates partial-config
+          # exits and emits a warning rather than failing the run.
+          opengrep-config: go
           severity-threshold: high
           block-on: ''       # advisory only — promote later

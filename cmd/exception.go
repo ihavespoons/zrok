@@ -70,7 +70,9 @@ var exceptionAddCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			outputJSON(saved)
+			if err := outputJSON(saved); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 			return
 		}
 		fmt.Printf("Added %s (expires %s)\n", saved.ID, saved.Expires.Format("2006-01-02"))
@@ -94,7 +96,9 @@ var exceptionListCmd = &cobra.Command{
 		exception.SortByExpires(list)
 
 		if jsonOutput {
-			outputJSON(list)
+			if err := outputJSON(list); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 			return
 		}
 		if len(list) == 0 {
@@ -136,7 +140,9 @@ var exceptionRemoveCmd = &cobra.Command{
 			exitError("%v", err)
 		}
 		if jsonOutput {
-			outputJSON(map[string]string{"removed": args[0]})
+			if err := outputJSON(map[string]string{"removed": args[0]}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 			return
 		}
 		fmt.Printf("Removed %s\n", args[0])
@@ -157,7 +163,9 @@ var exceptionExpireCmd = &cobra.Command{
 			exitError("%v", err)
 		}
 		if jsonOutput {
-			outputJSON(map[string]any{"removed": removed, "count": len(removed)})
+			if err := outputJSON(map[string]any{"removed": removed, "count": len(removed)}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 			return
 		}
 		if len(removed) == 0 {

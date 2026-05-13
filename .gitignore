@@ -38,3 +38,11 @@ Thumbs.db
 # Debug
 debug
 *.log
+
+# Experimental zrok run state (local-only, not for committing)
+.zrok-prerun*/
+.zrok-run*-selfreview/
+
+# Claude Code skill cache
+.claude/
+

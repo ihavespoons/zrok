@@ -61,35 +61,55 @@ func (s *Scanner) Scan(targets []string) ([]finding.Finding, error) {
 		return nil, fmt.Errorf("sast: tempfile: %w", err)
 	}
 	tmpPath := tmp.Name()
-	tmp.Close()
-	defer os.Remove(tmpPath)
+	_ = tmp.Close()
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	args := s.buildArgs(tmpPath, targets)
 
 	var stderr bytes.Buffer
 	cmd := exec.Command(bin, args...)
 	cmd.Stderr = &stderr
-	// Opengrep exit codes: 0 = no findings, 1 = findings present (not an
-	// error from our perspective), other = real failure. cmd.Run treats any
-	// non-zero exit as ExitError, so we inspect rather than blanket-fail.
-	if err := cmd.Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			if exitErr.ExitCode() > 1 {
-				return nil, fmt.Errorf("sast: opengrep exited %d: %s", exitErr.ExitCode(), strings.TrimSpace(stderr.String()))
-			}
-		} else {
-			return nil, fmt.Errorf("sast: opengrep: %w", err)
-		}
+	// Opengrep exit codes vary: 0 = clean, 1 = findings (not an error from
+	// our perspective), 2+ = various run problems (rules didn't parse,
+	// language unsupported in the config, etc.). We don't blanket-fail on
+	// non-zero — instead we try to parse whatever SARIF was written. A
+	// partial scan is still useful, especially in mixed-language repos
+	// where some configs apply and others don't.
+	runErr := cmd.Run()
+	var exitCode int
+	if exitErr, ok := runErr.(*exec.ExitError); ok {
+		exitCode = exitErr.ExitCode()
+	} else if runErr != nil {
+		// Non-exit error (couldn't launch process, etc.) — that's a real
+		// problem; nothing was scanned.
+		return nil, fmt.Errorf("sast: opengrep: %w", runErr)
 	}
 
-	data, err := os.ReadFile(tmpPath)
-	if err != nil {
-		return nil, fmt.Errorf("sast: read SARIF output: %w", err)
-	}
-	if len(data) == 0 {
+	data, readErr := os.ReadFile(tmpPath)
+	if readErr != nil || len(data) == 0 {
+		// No SARIF output AND opengrep exited non-zero — that's a real
+		// failure; surface stderr so the user can act on it.
+		if exitCode > 1 {
+			return nil, fmt.Errorf("sast: opengrep exited %d with no SARIF output: %s", exitCode, strings.TrimSpace(stderr.String()))
+		}
 		return nil, nil
 	}
-	return ParseSARIF(data)
+
+	findings, parseErr := ParseSARIF(data)
+	if parseErr != nil {
+		if exitCode > 1 {
+			return nil, fmt.Errorf("sast: opengrep exited %d and SARIF parse failed: %v (stderr: %s)", exitCode, parseErr, strings.TrimSpace(stderr.String()))
+		}
+		return nil, parseErr
+	}
+	// Non-fatal exit code with usable SARIF: log a warning to stderr so the
+	// caller knows opengrep complained about something, but return the
+	// findings rather than aborting the whole run.
+	if exitCode > 1 {
+		fmt.Fprintf(os.Stderr, "warning: opengrep exited %d but produced %d finding(s); stderr: %s\n",
+			exitCode, len(findings), strings.TrimSpace(stderr.String()))
+	}
+	return findings, nil
 }
 
 // buildArgs assembles the opengrep CLI arguments. Extracted so tests can
@@ -130,7 +150,7 @@ func ParseSARIF(data []byte) ([]finding.Finding, error) {
 }
 
 func convertResult(r sarifResult, rules map[string]sarifRule) finding.Finding {
-	rule, _ := rules[r.RuleID]
+	rule := rules[r.RuleID]
 
 	// Prefer the result message — it's the rule author's actual guidance.
 	// opengrep populates rule.shortDescription with a synthetic

@@ -538,7 +538,7 @@ func renderPRComment(findings []finding.Finding, topN int, threshold finding.Sev
 	for _, f := range findings {
 		bySeverity[f.Severity]++
 	}
-	b.WriteString(fmt.Sprintf("Found **%d** finding(s) in this PR", len(findings)))
+	fmt.Fprintf(&b, "Found **%d** finding(s) in this PR", len(findings))
 	var counts []string
 	for _, sev := range []finding.Severity{finding.SeverityCritical, finding.SeverityHigh, finding.SeverityMedium, finding.SeverityLow, finding.SeverityInfo} {
 		if n := bySeverity[sev]; n > 0 {
@@ -566,13 +566,13 @@ func renderPRComment(findings []finding.Finding, topN int, threshold finding.Sev
 	}
 
 	if shown == 0 {
-		b.WriteString(fmt.Sprintf("_All %d finding(s) are below the `%s` severity threshold. See full SARIF report for details._\n\n", len(findings), threshold))
+		fmt.Fprintf(&b, "_All %d finding(s) are below the `%s` severity threshold. See full SARIF report for details._\n\n", len(findings), threshold)
 	} else if shown < len(findings) {
-		b.WriteString(fmt.Sprintf("_… and %d more finding(s). See full SARIF report for details._\n\n", len(findings)-shown))
+		fmt.Fprintf(&b, "_… and %d more finding(s). See full SARIF report for details._\n\n", len(findings)-shown)
 	}
 
 	if sarifLink != "" {
-		b.WriteString(fmt.Sprintf("[View all findings in code-scanning](%s)\n", sarifLink))
+		fmt.Fprintf(&b, "[View all findings in code-scanning](%s)\n", sarifLink)
 	}
 	return b.String()
 }
@@ -584,7 +584,7 @@ func renderFindingBlock(n int, f finding.Finding) string {
 	if f.CWE != "" {
 		cweSuffix = fmt.Sprintf(" (%s)", f.CWE)
 	}
-	b.WriteString(fmt.Sprintf("### %d. [%s] %s%s\n", n, badge, f.Title, cweSuffix))
+	fmt.Fprintf(&b, "### %d. [%s] %s%s\n", n, badge, f.Title, cweSuffix)
 
 	loc := fmt.Sprintf("`%s:%d", f.Location.File, f.Location.LineStart)
 	if f.Location.LineEnd > f.Location.LineStart {

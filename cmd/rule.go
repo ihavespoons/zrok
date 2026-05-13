@@ -79,10 +79,12 @@ during scan.`,
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]any{
+			if err := outputJSON(map[string]any{
 				"slug":       slug,
 				"created_by": createdBy,
-			})
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 			return
 		}
 		fmt.Printf("Added rule %s (by %s)\n", slug, createdBy)
@@ -103,7 +105,9 @@ var ruleListCmd = &cobra.Command{
 			exitError("%v", err)
 		}
 		if jsonOutput {
-			outputJSON(list)
+			if err := outputJSON(list); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 			return
 		}
 		if len(list) == 0 {
@@ -140,7 +144,9 @@ var ruleRemoveCmd = &cobra.Command{
 			exitError("%v", err)
 		}
 		if jsonOutput {
-			outputJSON(map[string]string{"removed": args[0]})
+			if err := outputJSON(map[string]string{"removed": args[0]}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 			return
 		}
 		fmt.Printf("Removed rule %s\n", args[0])
@@ -170,7 +176,9 @@ it; the rule file itself is preserved for archaeology.`,
 			exitError("%v", err)
 		}
 		if jsonOutput {
-			outputJSON(map[string]any{"slug": args[0], "verdict": verdict, "note": note})
+			if err := outputJSON(map[string]any{"slug": args[0], "verdict": verdict, "note": note}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 			return
 		}
 		fmt.Printf("Annotated %s: verdict=%s\n", args[0], verdict)
@@ -253,7 +261,9 @@ zrok rule annotate.`,
 		}
 
 		if jsonOutput {
-			outputJSON(entries)
+			if err := outputJSON(entries); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 			return
 		}
 		if len(entries) == 0 {

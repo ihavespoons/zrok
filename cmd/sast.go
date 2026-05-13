@@ -53,7 +53,9 @@ across SAST + LLM dedup automatically in SARIF code-scanning uploads.`,
 			}
 			if len(changed) == 0 {
 				if jsonOutput {
-					outputJSON(map[string]any{"total": 0, "created": 0, "diff_base": diffBase})
+					if err := outputJSON(map[string]any{"total": 0, "created": 0, "diff_base": diffBase}); err != nil {
+					exitError("failed to encode JSON: %v", err)
+				}
 				} else {
 					fmt.Printf("No changed files since %s — skipping SAST scan.\n", diffBase)
 				}
@@ -109,14 +111,16 @@ across SAST + LLM dedup automatically in SARIF code-scanning uploads.`,
 		}
 
 		if jsonOutput {
-			outputJSON(map[string]any{
-				"total":         len(results),
-				"created":       created,
-				"skipped":       skipped,
-				"by_severity":   bySeverity,
-				"diff_base":     diffBase,
-				"target_count":  len(targets),
-			})
+			if err := outputJSON(map[string]any{
+				"total":        len(results),
+				"created":      created,
+				"skipped":      skipped,
+				"by_severity":  bySeverity,
+				"diff_base":    diffBase,
+				"target_count": len(targets),
+			}); err != nil {
+				exitError("failed to encode JSON: %v", err)
+			}
 			return
 		}
 

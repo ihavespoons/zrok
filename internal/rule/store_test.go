@@ -17,10 +17,10 @@ func newTestStore(t *testing.T) (*Store, func()) {
 	}
 	p, err := project.Initialize(dir)
 	if err != nil {
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
 		t.Fatalf("project init: %v", err)
 	}
-	return NewStore(p), func() { os.RemoveAll(dir) }
+	return NewStore(p), func() { _ = os.RemoveAll(dir) }
 }
 
 const validRule = `rules:
