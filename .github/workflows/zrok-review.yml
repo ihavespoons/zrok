@@ -41,28 +41,15 @@ jobs:
       - uses: diffsec/zrok-review-action@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          # OpenRouter via OpenCode's openai-compatible adapter. Lets us
-          # pick any model OpenRouter routes to without provider-specific
-          # plumbing.
+          # OpenRouter is a BUILT-IN provider in OpenCode (it uses the
+          # dedicated @openrouter/ai-sdk-provider package internally). So
+          # no opencode-config needed — just set the env var and reference
+          # the model by `openrouter/<openrouter-slug>`. Previous attempts
+          # forced `npm: @ai-sdk/openai-compatible` for this provider id,
+          # which overrode the built-in implementation and broke the
+          # streaming handshake (silent opencode runs with zero output).
           opencode-env: |
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
-          opencode-config: |
-            {
-              "$schema": "https://opencode.ai/config.json",
-              "provider": {
-                "openrouter": {
-                  "npm": "@ai-sdk/openai-compatible",
-                  "name": "OpenRouter",
-                  "options": {
-                    "baseURL": "https://openrouter.ai/api/v1",
-                    "apiKey": "{env:OPENROUTER_API_KEY}"
-                  },
-                  "models": {
-                    "google/gemma-4-31b-it": { "name": "Gemma 4 31B Instruct" }
-                  }
-                }
-              }
-            }
           model: openrouter/google/gemma-4-31b-it
           # Dogfood: review with the PR's own zrok code. If a PR breaks
           # the review pipeline, the review breaks visibly, which is the
