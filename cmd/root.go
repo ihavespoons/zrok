@@ -61,6 +61,12 @@ func outputJSON(data interface{}) error {
 	return encoder.Encode(data)
 }
 
+// jsonMarshalIndent is the byte-returning counterpart used when callers
+// need to write JSON to a file rather than stdout.
+func jsonMarshalIndent(data interface{}) ([]byte, error) {
+	return json.MarshalIndent(data, "", "  ")
+}
+
 // exitError prints an error message and exits
 func exitError(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
