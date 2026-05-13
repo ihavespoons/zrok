@@ -288,6 +288,42 @@ func isEmptyClassification(c project.ProjectClassification) bool {
 	return len(c.Types) == 0 && len(c.Traits) == 0
 }
 
+// taskToolSchemaGuidance is appended verbatim to every orchestrator prompt
+// (fast and deep profiles). Observed in dogfood run 25782922914: smaller
+// models (Gemma 4 31B IT specifically) emit Task-tool calls with only a
+// `prompt` field, omitting the required `description`, which causes
+// SchemaError(Missing key at ["description"]) and every subagent dispatch
+// fails silently. Explicit schema guidance + an incorrect-call example is
+// the cheapest mitigation that helps any model parse the tool contract,
+// without forcing a model swap.
+//
+// Update this single function — never inline copies — so the guidance
+// stays consistent across both orchestrator profiles.
+func taskToolSchemaGuidance() string {
+	var b strings.Builder
+	b.WriteString("## Subagent dispatch — Task tool schema (CRITICAL)\n\n")
+	b.WriteString("When you dispatch a subagent via the Task tool, the call MUST include ")
+	b.WriteString("BOTH of these fields. Omitting either causes the dispatch to fail with ")
+	b.WriteString("`SchemaError(Missing key at [...])` and no subagent runs.\n\n")
+	b.WriteString("| Field | Required | Purpose |\n")
+	b.WriteString("|---|---|---|\n")
+	b.WriteString("| `description` | **yes** | short label (≤8 words) describing the work — e.g. \"audit SQL queries for injection\" |\n")
+	b.WriteString("| `prompt` | **yes** | full instructions for the subagent, typically an @-mention plus context |\n\n")
+	b.WriteString("**Correct call:**\n\n")
+	b.WriteString("    Task(\n")
+	b.WriteString("        description=\"audit SQL queries for injection\",\n")
+	b.WriteString("        prompt=\"@injection-agent: review the changed files for SQL injection. Scope: see Changed Files in your system prompt.\"\n")
+	b.WriteString("    )\n\n")
+	b.WriteString("**Incorrect call (will be REJECTED):**\n\n")
+	b.WriteString("    Task(\n")
+	b.WriteString("        prompt=\"@injection-agent: review the changed files...\"\n")
+	b.WriteString("    )  # ← missing `description`, dispatch fails silently\n\n")
+	b.WriteString("If you can't think of a good description, use the subagent name plus the ")
+	b.WriteString("verb — e.g. `description=\"injection-agent: scan diff\"`. Anything is better ")
+	b.WriteString("than omitting it.\n\n")
+	return b.String()
+}
+
 // renderOpenCodeOrchestratorFast is the slim orchestrator for advisory CI
 // runs. It drops the recon and validation phases entirely — analysis agents
 // work directly from the changed-files list inlined in the prompt, and the
@@ -334,7 +370,11 @@ func renderOpenCodeOrchestratorFast(base string, changedFiles, suggestedAgents [
 	for _, name := range suggestedAgents {
 		fmt.Fprintf(&b, "- `@%s`\n", name)
 	}
-	b.WriteString("\n## Workflow (2 phases, dispatch all subagents in parallel)\n")
+	b.WriteString("\n")
+
+	b.WriteString(taskToolSchemaGuidance())
+
+	b.WriteString("## Workflow (2 phases, dispatch all subagents in parallel)\n")
 	b.WriteString("1. **SAST triage (skip if no opengrep findings).** Run:\n")
 	b.WriteString("       zrok finding list --created-by opengrep --status open --json\n")
 	b.WriteString("   If non-empty AND `@sast-triage-agent` is listed above, dispatch it once. ")
@@ -501,6 +541,8 @@ func renderOpenCodeOrchestrator(base string, changedFiles, suggestedAgents []str
 	b.WriteString("via @-mention in a single message. Do NOT call them sequentially ")
 	b.WriteString("— the whole point of having multiple specialized agents is the ")
 	b.WriteString("parallel coverage. Findings dedup via fingerprint downstream.\n\n")
+
+	b.WriteString(taskToolSchemaGuidance())
 
 	b.WriteString("## Workflow (lean for CI; depth-on-demand)\n")
 	b.WriteString("1. **Recon.** Dispatch `@recon-agent`. It is scoped to the changed-file ")

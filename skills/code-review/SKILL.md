@@ -45,6 +45,43 @@ zrok index build
 
 ---
 
+## Task tool schema (read this once before dispatching anything)
+
+Every `Task` tool invocation in this workflow MUST include three fields.
+Omitting any of them causes the dispatch to fail silently or produce a
+`SchemaError` and the subagent never runs.
+
+| Field | Required | Purpose |
+|---|---|---|
+| `subagent_type` | **yes** | which agent type to spawn — almost always `"general-purpose"` for zrok flows |
+| `description` | **yes** | short label (≤8 words) — e.g. `"injection-agent: scan diff"` |
+| `prompt` | **yes** | the full prompt to hand to the subagent (typically `zrok agent prompt <name>` output + per-task context) |
+
+**Correct call:**
+
+```
+Task tool:
+- subagent_type: "general-purpose"
+- description: "injection-agent: scan diff"
+- prompt: |
+    You are running as the injection-agent...
+```
+
+**Incorrect (rejected):**
+
+```
+Task tool:
+- subagent_type: "general-purpose"
+- prompt: |
+    You are running as the injection-agent...
+```
+↑ Missing `description` — dispatch fails. If you can't think of a label,
+use `"<agent-name>: <verb>"` (e.g. `"validation-agent: triage findings"`).
+
+The phase sections below use the correct three-field form in every example.
+
+---
+
 ## Phase 1: Project Setup
 
 ```bash
