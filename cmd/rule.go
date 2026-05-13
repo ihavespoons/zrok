@@ -178,6 +178,104 @@ it; the rule file itself is preserved for archaeology.`,
 	},
 }
 
+// ruleAuditEntry is the per-rule payload `zrok rule audit` emits. The rule-
+// judge-agent reads this (typically via --json) to assess each rule and
+// decide a verdict.
+type ruleAuditEntry struct {
+	Slug       string    `json:"slug"`
+	CreatedBy  string    `json:"created_by"`
+	CreatedAt  time.Time `json:"created_at"`
+	CreatedFor string    `json:"created_for,omitempty"`
+	Reasoning  string    `json:"reasoning,omitempty"`
+
+	// Prior judge assessment.
+	Verdict     rule.Verdict `json:"verdict,omitempty"`
+	VerdictNote string       `json:"verdict_note,omitempty"`
+	LastAuditAt time.Time    `json:"last_audit_at,omitempty"`
+
+	// Activity signals (populated when zrok tracks them; zero otherwise).
+	TriggerCount int `json:"trigger_count"`
+	FPCount      int `json:"fp_count"`
+
+	Disabled bool   `json:"disabled"`
+	RuleBody string `json:"rule_body"` // raw opengrep YAML content
+}
+
+var ruleAuditCmd = &cobra.Command{
+	Use:   "audit",
+	Short: "Emit current rule state for the rule-judge-agent to assess",
+	Long: `Outputs a structured view of every project-local rule — provenance,
+verdict history, and rule body — designed to be consumed by the
+rule-judge-agent. With --json (recommended), the agent can parse the result
+in one call and emit annotate verdicts for each rule.
+
+This command makes no changes. The judge applies verdicts via
+zrok rule annotate.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		p, err := project.EnsureActive()
+		if err != nil {
+			exitError("%v", err)
+		}
+		store := rule.NewStore(p)
+		metas, err := store.List()
+		if err != nil {
+			exitError("%v", err)
+		}
+		entries := make([]ruleAuditEntry, 0, len(metas))
+		for _, m := range metas {
+			body, err := store.ReadRule(m.Slug)
+			if err != nil {
+				continue
+			}
+			entries = append(entries, ruleAuditEntry{
+				Slug:         m.Slug,
+				CreatedBy:    m.CreatedBy,
+				CreatedAt:    m.CreatedAt,
+				CreatedFor:   m.CreatedFor,
+				Reasoning:    m.Reasoning,
+				Verdict:      m.Verdict,
+				VerdictNote:  m.VerdictNote,
+				LastAuditAt:  m.LastAuditAt,
+				TriggerCount: m.TriggerCount,
+				FPCount:      m.FPCount,
+				Disabled:     m.Disabled,
+				RuleBody:     string(body),
+			})
+		}
+
+		if jsonOutput {
+			outputJSON(entries)
+			return
+		}
+		if len(entries) == 0 {
+			fmt.Println("No project-local rules to audit")
+			return
+		}
+		for _, e := range entries {
+			fmt.Printf("=== %s ===\n", e.Slug)
+			fmt.Printf("  created_by:   %s\n", e.CreatedBy)
+			fmt.Printf("  created_at:   %s\n", e.CreatedAt.Format(time.RFC3339))
+			if e.CreatedFor != "" {
+				fmt.Printf("  created_for:  %s\n", e.CreatedFor)
+			}
+			if e.Reasoning != "" {
+				fmt.Printf("  reasoning:    %s\n", e.Reasoning)
+			}
+			fmt.Printf("  verdict:      %s\n", string(e.Verdict))
+			if e.VerdictNote != "" {
+				fmt.Printf("  verdict_note: %s\n", e.VerdictNote)
+			}
+			if !e.LastAuditAt.IsZero() {
+				fmt.Printf("  last_audit:   %s\n", e.LastAuditAt.Format(time.RFC3339))
+			}
+			fmt.Printf("  triggers:     %d (fp: %d)\n", e.TriggerCount, e.FPCount)
+			fmt.Printf("  disabled:     %v\n", e.Disabled)
+			fmt.Println()
+		}
+		fmt.Printf("%d rule(s)\n", len(entries))
+	},
+}
+
 func defaultCreatedBy() string {
 	if u := strings.TrimSpace(os.Getenv("USER")); u != "" {
 		return "human:" + u
@@ -191,6 +289,7 @@ func init() {
 	ruleCmd.AddCommand(ruleListCmd)
 	ruleCmd.AddCommand(ruleRemoveCmd)
 	ruleCmd.AddCommand(ruleAnnotateCmd)
+	ruleCmd.AddCommand(ruleAuditCmd)
 
 	ruleAddCmd.Flags().String("file", "-", "Path to rule YAML (default: stdin)")
 	ruleAddCmd.Flags().String("created-by", "", "Attribution (e.g. agent:injection-agent or human:alice). Defaults to human:$USER.")
