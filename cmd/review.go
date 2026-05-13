@@ -71,6 +71,7 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 		runner, _ := cmd.Flags().GetString("runner")
 		allowAgentRules, _ := cmd.Flags().GetBool("allow-agent-rules")
 		allowAgentExceptions, _ := cmd.Flags().GetBool("allow-agent-exceptions")
+		includeAgents, _ := cmd.Flags().GetStringSlice("include-agent")
 		runner = strings.ToLower(strings.TrimSpace(runner))
 		switch runner {
 		case "", "none", "opencode":
@@ -104,6 +105,27 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 
 		classification := p.Config.Classification
 		suggested := agent.SuggestAgents(p, classification)
+
+		// Force-include named agents (e.g. rule-judge-agent for periodic
+		// audit workflows). The set is union'd into `suggested` so the
+		// downstream materialization writes the agent file and the
+		// orchestrator references it in @-mention dispatch.
+		if len(includeAgents) > 0 {
+			seen := map[string]bool{}
+			for _, n := range suggested {
+				seen[n] = true
+			}
+			for _, n := range includeAgents {
+				if seen[n] {
+					continue
+				}
+				if cfg := agent.GetBuiltinAgent(n); cfg == nil {
+					exitError("--include-agent %q: no agent with that name", n)
+				}
+				suggested = append(suggested, n)
+				seen[n] = true
+			}
+		}
 
 		// Render each agent's prompt. Default: write to disk (small JSON
 		// output, friendly to CI step output limits). With --inline-prompts:
@@ -636,6 +658,7 @@ func init() {
 	reviewPrSetupCmd.Flags().String("runner", "", "Also emit runner-specific agent files (supported: opencode)")
 	reviewPrSetupCmd.Flags().Bool("allow-agent-rules", false, "Allow the orchestrator to dispatch `zrok rule add` (overrides project.yaml when set)")
 	reviewPrSetupCmd.Flags().Bool("allow-agent-exceptions", false, "Allow the orchestrator to dispatch `zrok exception add` (overrides project.yaml when set)")
+	reviewPrSetupCmd.Flags().StringSlice("include-agent", nil, "Force-include an agent that wouldn't normally be suggested (repeatable, e.g. --include-agent rule-judge-agent)")
 
 	reviewPrReportCmd.Flags().String("base", "", "Base git ref to diff against (e.g. origin/main)")
 	reviewPrReportCmd.Flags().Int("top-n", 10, "Maximum findings to inline in the PR comment")
