@@ -111,7 +111,12 @@ func buildDispatchPlan(profile string, suggested []string) runner.DispatchPlan {
 		})
 	}
 
-	if profile == "deep" && len(validation) > 0 {
+	// Validation runs in both fast and deep profiles when validation-agent
+	// is suggested. The original "fast = skip validation" decision came
+	// from LLM-orchestrator wall-clock cost, but on the deterministic
+	// dispatcher path the FP-reduction value is worth the 2-3 min cost
+	// even on advisory CI runs.
+	if len(validation) > 0 {
 		plan.Phases = append(plan.Phases, runner.DispatchPhase{
 			Name:   "validation",
 			Mode:   runner.ModeSequential,
@@ -201,18 +206,25 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 		classification := p.Config.Classification
 		suggested := agent.SuggestAgents(p, classification)
 
-		// Fast profile: skip the workflow agents (recon, validation,
-		// review). They're high-cost relative to the marginal signal
-		// they add to an advisory CI run — recon's broad mapping was
-		// the biggest time sink in observed runs, and validation's
-		// triage step adds 5-10 min per run for diminishing returns
-		// when the report step already filters by severity threshold.
-		// sast-triage-agent stays — it's cheap and high-signal.
+		// Fast profile: skip recon and per-finding review only. Recon's
+		// broad mapping was the biggest time sink in observed runs;
+		// per-finding review-agent is expensive (one LLM run per
+		// confirmed-critical finding) for marginal signal beyond what
+		// validation's triage gives.
+		//
+		// validation-agent is KEPT in fast profile now. Empirically the
+		// FP rate without validation is large enough to hurt PR-comment
+		// signal-to-noise more than the 2-3 min validation step costs
+		// (qwen3-coder-plus on OWASP: 24 FPs in 43 findings without
+		// validation). Both runner modes get the precision lift —
+		// the deterministic dispatcher invokes it as a sequential
+		// phase via the DispatchPlan; the LLM orchestrator is told
+		// to dispatch it after analysis completes.
+		// sast-triage-agent stays too — it's cheap and high-signal.
 		if profile == "fast" {
 			skip := map[string]bool{
-				"recon-agent":      true,
-				"validation-agent": true,
-				"review-agent":     true,
+				"recon-agent":  true,
+				"review-agent": true,
 			}
 			// Hard cap on agent count in fast mode. Observed in dogfood:
 			// even with explicit "dispatch in parallel" prompt wording,
@@ -257,6 +269,13 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 				if inSuggested[n] {
 					kept = append(kept, n)
 				}
+			}
+			// validation-agent is appended after the cap because it runs
+			// in its own sequential phase (post-analysis triage), not as
+			// part of the parallel analysis dispatch. The 5-agent cap
+			// targets parallel cost, not phase count.
+			if inSuggested["validation-agent"] {
+				kept = append(kept, "validation-agent")
 			}
 			suggested = kept
 		}
@@ -588,22 +607,26 @@ func buildOrchestratorBodyFast(base string, changedFiles, suggestedAgents []stri
 	b.WriteString(taskToolSchemaGuidance())
 	b.WriteString(zrokCommandExemplars(allowWrites))
 
-	b.WriteString("## Workflow (2 phases, dispatch all subagents in parallel)\n")
+	b.WriteString("## Workflow (3 phases)\n")
 	b.WriteString("1. **SAST triage (skip if no opengrep findings).** Run:\n")
 	b.WriteString("       zrok finding list --created-by opengrep --status open --json\n")
 	b.WriteString("   If non-empty AND `@sast-triage-agent` is listed above, dispatch it once. ")
 	b.WriteString("If the list is empty, skip this phase entirely.\n")
-	b.WriteString("2. **Parallel analysis.** Dispatch EVERY remaining analysis subagent ")
-	b.WriteString("(everything except sast-triage-agent) **in a single message via @-mention**. ")
+	b.WriteString("2. **Parallel analysis.** Dispatch EVERY analysis subagent ")
+	b.WriteString("(everything except sast-triage-agent and validation-agent) ")
+	b.WriteString("**in a single message via @-mention**. ")
 	b.WriteString("Do NOT call them sequentially — that defeats the parallel dispatch. ")
 	b.WriteString("Each agent creates findings via `zrok finding create`; their output is ")
-	b.WriteString("persisted, you do not need to relay it.\n\n")
+	b.WriteString("persisted, you do not need to relay it.\n")
+	b.WriteString("3. **Validation triage.** After phase 2 completes, dispatch ")
+	b.WriteString("`@validation-agent` once to mark false positives, dedup cross-agent ")
+	b.WriteString("findings, and set fix-priority. This phase is what keeps the PR comment ")
+	b.WriteString("signal-to-noise high — skipping it floods reviewers with FPs.\n\n")
 
 	b.WriteString("## What you do NOT do in this profile\n")
 	b.WriteString("- No recon phase. Agents work from the changed-files list above.\n")
-	b.WriteString("- No validation-agent triage. The report step renders findings as-is.\n")
 	b.WriteString("- No per-finding review-agent. Severity is set by the analysis agents.\n")
-	b.WriteString("- No long summary at the end. Exit when analysis dispatch completes.\n\n")
+	b.WriteString("- No long summary at the end. Exit when validation dispatch completes.\n\n")
 
 	if allowWrites.Rules || allowWrites.Exceptions {
 		b.WriteString("## Project-mutating commands (opt-in)\n")
