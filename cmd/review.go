@@ -116,13 +116,13 @@ is consumed by the CI driver (Claude Code, OpenCode) to spawn agents.`,
 				exitError("failed to create prompts dir: %v", err)
 			}
 		}
-		// Runner-specific agent files (e.g. .opencode/agent/<name>.md) sit
+		// Runner-specific agent files (e.g. .opencode/agents/<name>.md) sit
 		// next to the project root, where the runner expects them.
 		runnerAgentsDir := ""
 		if runner == "opencode" {
 			runnerAgentsDir = filepath.Join(p.RootPath, ".opencode", "agent")
 			if err := os.MkdirAll(runnerAgentsDir, 0755); err != nil {
-				exitError("failed to create .opencode/agent dir: %v", err)
+				exitError("failed to create .opencode/agents dir: %v", err)
 			}
 		}
 		for _, name := range suggested {
@@ -234,7 +234,7 @@ permission:
     "wc *": allow
     "sort *": allow
     "uniq *": allow
-    "*": ask
+    "*": deny
 ---
 %s`, description, prompt)
 }
@@ -259,7 +259,7 @@ func renderOpenCodeOrchestrator(base string, changedFiles, suggestedAgents []str
 	} {
 		fmt.Fprintf(&b, "    %q: allow\n", allow)
 	}
-	b.WriteString("    \"*\": ask\n")
+	b.WriteString("    \"*\": deny\n")
 	b.WriteString("---\n")
 	b.WriteString("You are the zrok review orchestrator for a pull request.\n\n")
 
