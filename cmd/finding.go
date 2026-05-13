@@ -522,12 +522,30 @@ var findingShowCmd = &cobra.Command{
 			exitError("%v", err)
 		}
 
+		// Surface active suppression so reviewers see immediately when a
+		// finding has been dismissed by an exception.
+		excStore := exception.NewStore(p)
+		suppression, _ := excStore.Match(*f)
+
 		if jsonOutput {
-			if err := outputJSON(f); err != nil {
+			payload := map[string]any{"finding": f}
+			if suppression != nil {
+				payload["suppressed_by"] = map[string]any{
+					"exception_id": suppression.ID,
+					"reason":       suppression.Reason,
+					"expires":      suppression.Expires,
+					"approved_by":  suppression.ApprovedBy,
+				}
+			}
+			if err := outputJSON(payload); err != nil {
 				exitError("failed to encode JSON: %v", err)
 			}
 		} else {
 			fmt.Printf("%s %s\n", getSeverityBadge(f.Severity), f.Title)
+			if suppression != nil {
+				fmt.Printf("SUPPRESSED by %s — %s (expires %s)\n",
+					suppression.ID, suppression.Reason, suppression.Expires.Format("2006-01-02"))
+			}
 			fmt.Printf("ID: %s\n", f.ID)
 			fmt.Printf("Status: %s\n", f.Status)
 			fmt.Printf("Confidence: %s\n", f.Confidence)
