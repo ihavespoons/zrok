@@ -57,7 +57,10 @@ jobs:
                 }
               }
             }
-          model: zai/glm-5.1
+          # glm-5-turbo for CI: dramatically faster than glm-5.1 with
+          # acceptable quality for the bounded validation/triage decisions
+          # the orchestrator makes. Use glm-5.1 for deep local reviews.
+          model: zai/glm-5-turbo
           # Dogfood: review with the PR's own zrok code. If a PR breaks
           # the review pipeline, the review breaks visibly, which is the
           # signal we want.
