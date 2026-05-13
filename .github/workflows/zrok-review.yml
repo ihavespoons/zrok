@@ -32,8 +32,32 @@ jobs:
 
       - uses: diffsec/zrok-review-action@main
         with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Z.AI Coding Plan — GLM-5.1. The coding-plan endpoint differs
+          # from standard z.ai, so we define it as a custom provider here
+          # rather than relying on a committed opencode.json.
+          opencode-env: |
+            ZAI_API_KEY=${{ secrets.ZAI_API_KEY }}
+          opencode-config: |
+            {
+              "$schema": "https://opencode.ai/config.json",
+              "provider": {
+                "zai": {
+                  "npm": "@ai-sdk/openai-compatible",
+                  "name": "Z.AI Coding Plan",
+                  "options": {
+                    "baseURL": "https://api.z.ai/api/coding/paas/v4",
+                    "apiKey": "{env:ZAI_API_KEY}"
+                  },
+                  "models": {
+                    "glm-5.1": { "name": "GLM-5.1" },
+                    "glm-5-turbo": { "name": "GLM-5-Turbo" },
+                    "glm-4.7": { "name": "GLM-4.7" }
+                  }
+                }
+              }
+            }
+          model: zai/glm-5.1
           # Dogfood: review with the PR's own zrok code. If a PR breaks
           # the review pipeline, the review breaks visibly, which is the
           # signal we want.
