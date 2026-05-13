@@ -171,6 +171,16 @@ run_single_eval() {
         return 1
     fi
 
+    # Run opengrep before the orchestrator so SAST findings are in the
+    # store when sast-triage-agent queries them. Mirrors the dogfood
+    # action's separate opengrep step. Non-zero exits are tolerated.
+    local sast_config="${EVAL_SAST_CONFIG:-p/python}"
+    echo "  Running zrok sast (config: $sast_config)..."
+    (cd "$run_dir" && "$ZROK_BIN" sast --config "$sast_config" > "${run_dir}/sast.log" 2>&1) || true
+    local sast_count
+    sast_count=$(cd "$run_dir" && "$ZROK_BIN" finding list --created-by opengrep --json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("total",0))' 2>/dev/null || echo "?")
+    echo "  SAST findings imported: $sast_count"
+
     # Run the orchestrator. opencode reads OPENROUTER_API_KEY from env and
     # uses its built-in openrouter provider — no opencode.json needed.
     echo "  Running OpenCode orchestrator (model: $OPENCODE_MODEL)..."
@@ -188,7 +198,12 @@ run_single_eval() {
             sleep "$backoff"
         fi
 
-        if (cd "$run_dir" && opencode run --agent zrok-orchestrator \
+        # Put the zrok binary's directory on PATH so the orchestrator and
+        # its subagents can call `zrok finding list` / `zrok rule add` /
+        # etc. from inside the tmp working directory.
+        local zrok_bin_dir
+        zrok_bin_dir="$(cd "$(dirname "$ZROK_BIN")" && pwd)"
+        if (cd "$run_dir" && PATH="${zrok_bin_dir}:${PATH}" opencode run --agent zrok-orchestrator \
                 --model "$OPENCODE_MODEL" \
                 "Run a security review of this codebase using the listed subagents. Scope: every file in your system prompt's Changed Files block. Work autonomously and exit when analysis dispatch completes." \
                 > "${run_dir}/opencode-output.log" 2>&1); then
