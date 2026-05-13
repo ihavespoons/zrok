@@ -71,6 +71,134 @@ func TestStoreCreate(t *testing.T) {
 	}
 }
 
+// TestStoreCreateDedupSameCreator covers the case where a single agent
+// files the same finding twice in one run (observed pattern: LLM agents
+// emit "SQL Injection in BenchmarkTest00099" twice with the same
+// CWE+file+title, both with --created-by security-agent). The second
+// Create should no-op, mutate the caller's struct to reflect the
+// existing finding, and leave the store with one row.
+func TestStoreCreateDedupSameCreator(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+	store := NewStore(p)
+
+	first := &Finding{
+		Title:      "SQL Injection in user lookup",
+		Severity:   SeverityHigh,
+		Confidence: ConfidenceHigh,
+		CWE:        "CWE-89",
+		CreatedBy:  "security-agent",
+		Location:   Location{File: "src/api/users.py", LineStart: 42},
+	}
+	if err := store.Create(first); err != nil {
+		t.Fatalf("first Create: %v", err)
+	}
+	if first.ID != "FIND-001" {
+		t.Fatalf("first ID: got %q, want FIND-001", first.ID)
+	}
+
+	// Same fingerprint (same CWE/file/normalized-title) AND same creator.
+	// Different line number — fingerprint deliberately ignores line. This
+	// must dedup, not create a second row.
+	dup := &Finding{
+		Title:      "SQL injection in user lookup", // case-different, normalized to same
+		Severity:   SeverityCritical,               // even severity changes don't unstuck dedup
+		Confidence: ConfidenceMedium,
+		CWE:        "CWE-89",
+		CreatedBy:  "security-agent",
+		Location:   Location{File: "src/api/users.py", LineStart: 45},
+	}
+	if err := store.Create(dup); err != nil {
+		t.Fatalf("dup Create: %v", err)
+	}
+	if dup.ID != first.ID {
+		t.Errorf("dedup did not return existing ID: got %q, want %q", dup.ID, first.ID)
+	}
+
+	// Store must still contain only one finding.
+	result, err := store.List(nil)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(result.Findings) != 1 {
+		t.Fatalf("expected 1 finding after dedup, got %d", len(result.Findings))
+	}
+}
+
+// TestStoreCreateDedupDifferentCreatorsCoexist confirms cross-agent
+// findings are NOT deduped. Two agents independently flagging the same
+// vuln is signal we want to preserve — it's the validation phase's job
+// to consolidate cross-agent findings, not the store's.
+func TestStoreCreateDedupDifferentCreatorsCoexist(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+	store := NewStore(p)
+
+	mk := func(creator string) *Finding {
+		return &Finding{
+			Title:      "SQL Injection in user lookup",
+			Severity:   SeverityHigh,
+			Confidence: ConfidenceHigh,
+			CWE:        "CWE-89",
+			CreatedBy:  creator,
+			Location:   Location{File: "src/api/users.py", LineStart: 42},
+		}
+	}
+
+	a := mk("security-agent")
+	b := mk("injection-agent")
+	if err := store.Create(a); err != nil {
+		t.Fatalf("first Create: %v", err)
+	}
+	if err := store.Create(b); err != nil {
+		t.Fatalf("second Create: %v", err)
+	}
+	if a.ID == b.ID {
+		t.Errorf("different creators should produce distinct findings; both got %q", a.ID)
+	}
+	result, err := store.List(nil)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(result.Findings) != 2 {
+		t.Errorf("expected 2 findings (one per creator), got %d", len(result.Findings))
+	}
+}
+
+// TestStoreCreateDedupSkipsEmptyCreator confirms that findings with no
+// created_by attribution don't trigger the dedup path. If they did, any
+// two unattributed findings with same CWE+file would collapse, losing
+// signal. Today many opengrep findings (pre-cmd/sast.go fix) and
+// hand-created findings legitimately have CreatedBy="".
+func TestStoreCreateDedupSkipsEmptyCreator(t *testing.T) {
+	p, cleanup := setupTestProject(t)
+	defer cleanup()
+	store := NewStore(p)
+
+	mk := func() *Finding {
+		return &Finding{
+			Title:      "SQL Injection in user lookup",
+			Severity:   SeverityHigh,
+			Confidence: ConfidenceHigh,
+			CWE:        "CWE-89",
+			CreatedBy:  "",
+			Location:   Location{File: "src/api/users.py", LineStart: 42},
+		}
+	}
+
+	a := mk()
+	b := mk()
+	if err := store.Create(a); err != nil {
+		t.Fatalf("first Create: %v", err)
+	}
+	if err := store.Create(b); err != nil {
+		t.Fatalf("second Create: %v", err)
+	}
+	if a.ID == b.ID {
+		t.Errorf("unattributed findings should NOT dedup; both got %q", a.ID)
+	}
+}
+
 func TestStoreCreateWithID(t *testing.T) {
 	p, cleanup := setupTestProject(t)
 	defer cleanup()

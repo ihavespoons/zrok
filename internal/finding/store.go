@@ -30,8 +30,40 @@ func NewStore(p *project.Project) *Store {
 	}
 }
 
-// Create creates a new finding
+// Create creates a new finding.
+//
+// Dedup: if a finding with the same fingerprint AND the same created_by
+// already exists in the store, Create silently no-ops and the caller's
+// passed-in struct is mutated to reflect the existing finding (ID,
+// timestamps, fingerprint). This matches what callers reasonably expect
+// when an LLM agent files the same vuln twice in a single run — the
+// store should hold one row, not N. Dedup is scoped to "same creator"
+// deliberately: when two different agents independently flag the same
+// vuln, that's a confidence signal worth preserving until the validation
+// phase consolidates them.
 func (s *Store) Create(f *Finding) error {
+	// Validate first so a malformed input can't even attempt dedup.
+	if err := s.validate(f); err != nil {
+		return err
+	}
+
+	// Compute fingerprint up-front so dedup check sees the same hash
+	// that gets persisted (no double computation).
+	f.Fingerprint = Fingerprint(*f)
+
+	// Dedup: same fingerprint + same created_by → return existing.
+	// CreatedBy="" findings (legacy / unattributed) skip dedup since the
+	// match would be too coarse — any two unattributed findings on the
+	// same CWE+file would collapse, which discards signal.
+	if f.CreatedBy != "" {
+		if existing, found, err := s.findByFingerprintAndCreator(f.Fingerprint, f.CreatedBy); err != nil {
+			return err
+		} else if found {
+			*f = *existing
+			return nil
+		}
+	}
+
 	// Generate ID if not provided
 	if f.ID == "" {
 		id, err := s.generateID()
@@ -39,11 +71,6 @@ func (s *Store) Create(f *Finding) error {
 			return err
 		}
 		f.ID = id
-	}
-
-	// Validate
-	if err := s.validate(f); err != nil {
-		return err
 	}
 
 	// Check if already exists
@@ -58,9 +85,35 @@ func (s *Store) Create(f *Finding) error {
 	now := time.Now()
 	f.CreatedAt = now
 	f.UpdatedAt = now
-	f.Fingerprint = Fingerprint(*f)
 
 	return s.save(f)
+}
+
+// findByFingerprintAndCreator returns the first stored finding with the
+// given fingerprint+creator pair. Used by Create() to no-op a duplicate
+// file from the same agent. Returns (nil, false, nil) when no match
+// exists — that's the common case.
+func (s *Store) findByFingerprintAndCreator(fingerprint, createdBy string) (*Finding, bool, error) {
+	if fingerprint == "" || createdBy == "" {
+		return nil, false, nil
+	}
+	result, err := s.List(&FilterOptions{CreatedBy: createdBy})
+	if err != nil {
+		return nil, false, fmt.Errorf("dedup lookup: %w", err)
+	}
+	for i := range result.Findings {
+		existing := &result.Findings[i]
+		// Some stored findings may pre-date the fingerprint field; recompute
+		// rather than trust .Fingerprint blindly so dedup catches them too.
+		fp := existing.Fingerprint
+		if fp == "" {
+			fp = Fingerprint(*existing)
+		}
+		if fp == fingerprint {
+			return existing, true, nil
+		}
+	}
+	return nil, false, nil
 }
 
 // Read reads a finding by ID
