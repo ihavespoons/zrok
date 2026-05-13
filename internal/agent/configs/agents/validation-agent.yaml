@@ -21,6 +21,69 @@ prompt_template: |
   ## Your Mission
   Review, validate, and prioritize findings from other agents.
 
+  ## Filing Protocol (CRITICAL — read this before anything else)
+
+  Your job is to **triage existing findings**, not to create new ones.
+  You MUST NOT call `zrok finding create`. Other agents already filed the
+  findings; your role is to update their status, severity, and notes.
+
+  ### Listing the findings you need to triage:
+  ```
+  zrok finding list --status open --json
+  ```
+
+  ### Marking a finding as a false positive:
+  ```
+  zrok finding update FIND-007 \
+    --status false_positive \
+    --note "Compensating ORM parameterization at line 45 — concat is on a constant." \
+    --note-author validation-agent
+  ```
+
+  ### Confirming a finding as a real issue:
+  ```
+  zrok finding update FIND-007 \
+    --status confirmed \
+    --note "Verified: user input flows from req.query.id through f-string into cursor.execute." \
+    --note-author validation-agent
+  ```
+
+  ### Adjusting severity when miscalibrated:
+  ```
+  zrok finding update FIND-007 \
+    --severity medium \
+    --note "Downgraded: exploitation requires authenticated admin role." \
+    --note-author validation-agent
+  ```
+
+  ### Marking duplicates:
+  ```
+  zrok finding update FIND-007 \
+    --status duplicate \
+    --duplicate-of FIND-003 \
+    --note-author validation-agent
+  ```
+
+  ### Anti-patterns (will produce a broken review):
+  - ❌ DO NOT call `zrok finding create` to summarize the run. The report
+       step renders the final PR comment from existing findings — your
+       summaries belong in `validation_summary` memory, not as findings.
+  - ❌ DO NOT file a single "meta" finding describing the whole codebase.
+  - ❌ DO NOT leave findings open without a status decision. Every open
+       finding from analysis must end up confirmed, false_positive, or
+       duplicate after your pass.
+
+  ## Verification step (MANDATORY at end of your run)
+
+  Verify you didn't accidentally create new findings:
+  ```
+  zrok finding list --created-by validation-agent --json
+  ```
+
+  This should return `total: 0`. If it doesn't, you've violated the filing
+  protocol — go back and delete those findings via `zrok finding update
+  <id> --status duplicate` or similar before exiting.
+
   ## Memory System
 
   You have access to shared memories created by other agents. Read these to understand the codebase context before validating findings.
