@@ -1,0 +1,42 @@
+# Dogfood: review every PR to zrok using zrok itself, via the
+# diffsec/zrok-review-action composite action. The action builds zrok from
+# the PR's own branch (head_ref) — so if the PR breaks the review
+# pipeline, it breaks its own review and that signal surfaces immediately.
+#
+# Advisory-only at first (block-on empty). Promote to block-on: critical
+# once we trust the LLM agents enough not to false-positive a stop-the-PR
+# verdict.
+#
+# Fork PRs are skipped — secrets aren't exposed to pull_request runs from
+# forks anyway, and we'd rather skip-with-warning than fail noisily.
+
+name: zrok security review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write       # post the review comment
+  security-events: write     # upload SARIF to code-scanning
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # action needs the base ref for `git diff`
+
+      - uses: diffsec/zrok-review-action@main
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Dogfood: review with the PR's own zrok code. If a PR breaks
+          # the review pipeline, the review breaks visibly, which is the
+          # signal we want.
+          zrok-ref: ${{ github.head_ref }}
+          severity-threshold: high
+          block-on: ''       # advisory only — promote later
