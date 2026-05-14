@@ -496,6 +496,16 @@ func TestRejectInvalidCreatedBy(t *testing.T) {
 		{"human prefix with username accepted", "human:alice", false},
 		{"bot prefix with name accepted", "bot:dependabot", false},
 		{"specific agent with 'scanner' substring accepted", "deps-vulnscanner-agent", false},
+		// OWASP v6 evasion patterns: model compounded runtime name with hyphen
+		// to bypass the exact-match list. Both must be rejected.
+		{"runtime compound `opencode-security-agent` rejected", "opencode-security-agent", true},
+		{"runtime compound `opencode-security-review` rejected", "opencode-security-review", true},
+		{"runtime compound `claude-injection-agent` rejected", "claude-injection-agent", true},
+		{"runtime compound `qwen3-security-agent` rejected", "qwen3-security-agent", true},
+		{"runtime compound with agent: prefix `agent:opencode-foo` rejected", "agent:opencode-foo", true},
+		// Confirm we don't over-match: legitimate names that contain
+		// "opencode" as a substring (not prefix) should still pass.
+		{"substring not prefix accepted", "my-opencode-helper-agent", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -296,6 +296,19 @@ var invalidCreatedByValues = map[string]string{
 	"analyzer":        "this is a generic role — name the specific agent",
 }
 
+// runtimeForbiddenPrefixes are leading components that, when followed by a
+// hyphen, indicate the model is constructing a compound name out of the
+// runtime/provider/family in an attempt to evade the exact-match
+// rejection. Observed in OWASP v6: `opencode-security-agent`,
+// `opencode-security-review` — qwen3-coder-plus prepending the runtime
+// when the exact name `opencode` was rejected. Reject the compound forms
+// too so the model has to use the real agent name.
+var runtimeForbiddenPrefixes = []string{
+	"opencode-", "claude-", "claude_code-",
+	"anthropic-", "openai-", "openrouter-",
+	"qwen-", "qwen3-", "deepseek-", "gpt-", "gemma-",
+}
+
 // rejectInvalidCreatedBy returns an empty string when value is acceptable,
 // or a human-readable reason string when it's rejected. The accepted
 // values are anything not in the invalid set; that includes specific
@@ -317,6 +330,28 @@ func rejectInvalidCreatedBy(value string) string {
 			if suffix == "" {
 				return "prefix `" + prefix + "` with no identity after it"
 			}
+			// Run the runtime-compound check on the suffix too.
+			if compoundReason := rejectRuntimeCompound(suffix); compoundReason != "" {
+				return "after `" + prefix + "` prefix: " + compoundReason
+			}
+		}
+	}
+	// Reject compound names that start with a runtime/provider/family
+	// followed by a hyphen (e.g. opencode-security-agent). These were
+	// observed in OWASP runs as evasions of the exact-match list.
+	if compoundReason := rejectRuntimeCompound(normalised); compoundReason != "" {
+		return compoundReason
+	}
+	return ""
+}
+
+// rejectRuntimeCompound returns a reason when value starts with one of the
+// forbidden runtime/provider/family prefixes followed by a hyphen.
+// Empty string means accepted.
+func rejectRuntimeCompound(value string) string {
+	for _, p := range runtimeForbiddenPrefixes {
+		if strings.HasPrefix(value, p) {
+			return "the `" + strings.TrimSuffix(p, "-") + "-` prefix is the runtime/provider/model family; use only your agent's actual name (e.g. injection-agent)"
 		}
 	}
 	return ""
