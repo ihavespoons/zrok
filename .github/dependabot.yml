@@ -1,0 +1,22 @@
+# Dependabot scope. The OWASP fixture at eval/fixtures/owasp-subset/ and
+# the smaller vulnerable-app fixture at eval/fixtures/vulnerable-app/
+# both contain intentionally-vulnerable Python code with pinned-old
+# requirements.txt — they exist to give the eval real CVEs to detect,
+# not to be kept up-to-date. Dependabot's default behavior is to scan
+# the whole tree, so explicitly enumerating only the ecosystems we
+# actually depend on (gomod at root, github-actions at root) keeps
+# fixture deps out of the PR queue.
+
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
