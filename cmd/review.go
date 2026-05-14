@@ -1016,6 +1016,7 @@ final PR comment regardless of which dispatch path produced them.`,
 			MaxParallel:     maxParallel,
 			PerAgentTimeout: perAgentTimeout,
 			UserTurn:        userTurn,
+			ChangedFiles:    setup.ChangedFiles,
 		}
 
 		fmt.Printf("Dispatching %d phases (runner=%s, model=%s, max-parallel=%d)\n",

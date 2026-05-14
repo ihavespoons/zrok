@@ -231,11 +231,20 @@ run_single_eval() {
                 # .zrok/review/agents/<name>.log inside run_dir; the
                 # combined log captured here is the dispatcher's own
                 # progress output, useful for the quota-error grep.
+                #
+                # --per-agent-timeout 10m caps any one subagent's
+                # subprocess. Observed in OWASP runs that qwen3-coder-plus
+                # occasionally hangs mid-conversation (the API connection
+                # stalls and opencode silently waits); without a timeout
+                # the dispatcher waits forever. 10m is well past the
+                # typical 2-4min per-agent runtime so legitimate slow
+                # responses still complete.
                 run_log="${run_dir}/pr-run-output.log"
                 if (cd "$run_dir" && PATH="${zrok_bin_dir}:${PATH}" "$ZROK_BIN" review pr run \
                         --runner opencode \
                         --model "$OPENCODE_MODEL" \
                         --max-parallel 6 \
+                        --per-agent-timeout 10m \
                         > "$run_log" 2>&1); then
                     run_ok=true
                 fi

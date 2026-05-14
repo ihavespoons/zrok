@@ -105,6 +105,15 @@ type DispatchConfig struct {
 	// used per phase.
 	UserTurn string
 
+	// ChangedFiles is the in-scope file list, injected into the per-agent
+	// user-turn so subagents know which files to review. In orchestrator
+	// mode the orchestrator's system prompt carries this; in dispatcher
+	// mode each subagent gets it directly in the user-turn since there's
+	// no orchestrator-level prompt to inherit context from. Empty means
+	// "no explicit scope" — agents will fall back to exploring on their
+	// own (degraded recall on weaker models).
+	ChangedFiles []string
+
 	// Stdout is where progress lines ("=== phase N: analysis === ...")
 	// are written. Defaults to os.Stdout if nil.
 	Stdout io.Writer
@@ -306,7 +315,7 @@ func jsonHasFindings(out []byte) bool {
 func runSequential(ctx context.Context, agents []string, cfg DispatchConfig) []AgentResult {
 	results := make([]AgentResult, 0, len(agents))
 	for _, name := range agents {
-		results = append(results, runAgentWithRetry(ctx, name, defaultUserTurn(cfg.UserTurn), cfg))
+		results = append(results, runAgentWithRetry(ctx, name, defaultUserTurn(cfg.UserTurn, cfg.ChangedFiles), cfg))
 	}
 	return results
 }
@@ -334,7 +343,7 @@ func runParallel(ctx context.Context, agents []string, cfg DispatchConfig) []Age
 				sem <- struct{}{}
 				defer func() { <-sem }()
 			}
-			results[i] = runAgentWithRetry(ctx, name, defaultUserTurn(cfg.UserTurn), cfg)
+			results[i] = runAgentWithRetry(ctx, name, defaultUserTurn(cfg.UserTurn, cfg.ChangedFiles), cfg)
 		}()
 	}
 	wg.Wait()
@@ -348,7 +357,7 @@ func runParallel(ctx context.Context, agents []string, cfg DispatchConfig) []Age
 func runFanout(ctx context.Context, agentName string, ids []string, cfg DispatchConfig) []AgentResult {
 	results := make([]AgentResult, 0, len(ids))
 	for _, id := range ids {
-		turn := fmt.Sprintf("%s Specifically: review finding %s.", defaultUserTurn(cfg.UserTurn), id)
+		turn := fmt.Sprintf("%s Specifically: review finding %s.", defaultUserTurn(cfg.UserTurn, cfg.ChangedFiles), id)
 		results = append(results, runAgentWithRetry(ctx, agentName, turn, cfg))
 	}
 	return results
@@ -465,11 +474,32 @@ This is your final retry. Original task: %s`, reason, originalTurn)
 // the caller hasn't set one. Kept short and runner-agnostic — the agent's
 // own system prompt (loaded from .opencode/agents/<name>.md or
 // .claude/agents/<name>.md by the runner) carries the bulk of context.
-func defaultUserTurn(userTurn string) string {
+//
+// When changedFiles is non-empty, the list is inlined verbatim so weak
+// models that wouldn't otherwise explore the tree have an explicit scope
+// to work through. Without this, an OWASP-eval-scale fixture (70 files)
+// can produce widely different recall run-to-run depending on whether
+// the model decides to enumerate the tree itself.
+func defaultUserTurn(userTurn string, changedFiles []string) string {
 	if userTurn != "" {
 		return userTurn
 	}
-	return "Run a security review of the codebase per your agent system prompt. Scope is the changed files block. File findings via zrok finding create. Exit when analysis is complete."
+	var b strings.Builder
+	b.WriteString("Run a security review per your agent system prompt. ")
+	b.WriteString("File findings via zrok finding create with --created-by set to your agent name. ")
+	b.WriteString("Exit when analysis is complete.")
+	if len(changedFiles) > 0 {
+		b.WriteString("\n\n## In-scope files (review EVERY file in this list)\n")
+		for _, f := range changedFiles {
+			b.WriteString("- ")
+			b.WriteString(f)
+			b.WriteString("\n")
+		}
+		b.WriteString("\nDo NOT skip files because they look similar — each file is a distinct test case ")
+		b.WriteString("and may contain different vulnerability patterns. Out-of-scope findings are filtered out by ")
+		b.WriteString("the report step, so spending tokens on them is waste; in-scope findings missed cost recall directly.")
+	}
+	return b.String()
 }
 
 // runAgent invokes one subagent and returns the result. Logs are
