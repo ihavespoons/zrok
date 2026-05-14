@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/finding"
+	"github.com/ihavespoons/quokka/internal/finding"
 )
 
 func createTestFindings() []finding.Finding {
@@ -116,7 +116,7 @@ func TestSARIFExport(t *testing.T) {
 	}
 
 	run := sarif.Runs[0]
-	if run.Tool.Driver.Name != "zrok" {
+	if run.Tool.Driver.Name != "quokka" {
 		t.Errorf("unexpected tool name: %s", run.Tool.Driver.Name)
 	}
 
@@ -224,7 +224,7 @@ func TestJSONExport(t *testing.T) {
 	}
 
 	// Check metadata
-	if report.Metadata.Tool != "zrok" {
+	if report.Metadata.Tool != "quokka" {
 		t.Errorf("unexpected tool: %s", report.Metadata.Tool)
 	}
 	if report.Metadata.ProjectName != "test-project" {

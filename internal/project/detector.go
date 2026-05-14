@@ -434,7 +434,7 @@ func (d *Detector) detectAuth() ([]string, error) {
 		// Skip hidden dirs and common ignore patterns
 		if info.IsDir() {
 			name := info.Name()
-			if name == ".git" || name == "node_modules" || name == "vendor" || name == ".zrok" {
+			if name == ".git" || name == "node_modules" || name == "vendor" || name == ".quokka" {
 				return filepath.SkipDir
 			}
 			return nil
@@ -500,7 +500,7 @@ func (d *Detector) DetectSensitiveAreas() ([]SensitiveArea, error) {
 
 		if info.IsDir() {
 			name := info.Name()
-			if name == ".git" || name == "node_modules" || name == "vendor" || name == ".zrok" {
+			if name == ".git" || name == "node_modules" || name == "vendor" || name == ".quokka" {
 				return filepath.SkipDir
 			}
 

@@ -22,7 +22,7 @@ prompt_template: |
 
   Run this once to see every project-local rule and its current state:
 
-      zrok rule audit --json
+      quokka rule audit --json
 
   The output contains, per rule:
     - slug
@@ -48,7 +48,7 @@ prompt_template: |
   - **Pattern breadth.** Look at the rule's pattern. Will it match almost any
     line in a typical file? Or is it tightly scoped to a specific call
     signature?
-  - **Currency.** Use `zrok search "<pattern fragment>" --regex` to see if
+  - **Currency.** Use `quokka search "<pattern fragment>" --regex` to see if
     the pattern still appears in the current codebase. If it doesn't, the
     rule may be retired safely.
   - **FP ratio.** If trigger_count > 0 and fp_count/trigger_count is high,
@@ -66,7 +66,7 @@ prompt_template: |
 
   For each rule:
 
-      zrok rule annotate <slug> --verdict <keep|refine|retire|escalate> \
+      quokka rule annotate <slug> --verdict <keep|refine|retire|escalate> \
         --note "<one-line reasoning>"
 
   Notes matter — the human reviewing the audit-run PR will read them.
@@ -75,6 +75,6 @@ prompt_template: |
 
   - Don't create new rules — that's the analysis agents' job.
   - Don't edit rule YAML directly — only `annotate` is yours.
-  - Don't run `zrok sast` to generate evidence — that's expensive and the
+  - Don't run `quokka sast` to generate evidence — that's expensive and the
     trigger data should already be present in the audit output.
   - Don't fetch URLs or run network commands.

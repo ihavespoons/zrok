@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/project"
 	"gopkg.in/yaml.v3"
 )
 
@@ -39,7 +39,7 @@ type Store struct {
 //
 // Unlike older versions of this function, NewStore does NOT launch a
 // background reindex goroutine. Callers that need full-text search must call
-// Reindex(ctx) explicitly (e.g. `zrok memory reindex` or before
+// Reindex(ctx) explicitly (e.g. `quokka memory reindex` or before
 // memory.Search). If the on-disk index is detected as empty but YAML
 // memories exist, a one-line warning is emitted to stderr suggesting an
 // explicit reindex.
@@ -69,7 +69,7 @@ func NewStore(p *project.Project) *Store {
 			if hasAny := store.hasAnyMemoriesOnDisk(); hasAny {
 				fmt.Fprintln(os.Stderr,
 					"Notice: memory search index is empty but memories exist on disk. "+
-						"Run `zrok memory reindex` to rebuild the index.")
+						"Run `quokka memory reindex` to rebuild the index.")
 			}
 		}
 	}

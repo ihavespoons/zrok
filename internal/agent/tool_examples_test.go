@@ -4,12 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/zrok/internal/memory"
+	"github.com/ihavespoons/quokka/internal/memory"
 )
 
 // TestToolExamplesContainRequiredFlags asserts that every centralized
 // exemplar contains the flags the corresponding CLI command actually
-// requires. Catches "we added a required flag to zrok finding create and
+// requires. Catches "we added a required flag to quokka finding create and
 // forgot to update the example" drift.
 func TestToolExamplesContainRequiredFlags(t *testing.T) {
 	type check struct {
@@ -23,7 +23,7 @@ func TestToolExamplesContainRequiredFlags(t *testing.T) {
 			"FindingCreateExample",
 			FindingCreateExample("test-agent"),
 			[]string{
-				"zrok finding create",
+				"quokka finding create",
 				"--title", "--severity", "--confidence",
 				"--cwe", "--file", "--line",
 				"--description", "--remediation",
@@ -39,27 +39,27 @@ func TestToolExamplesContainRequiredFlags(t *testing.T) {
 		{
 			"FindingListExample",
 			FindingListExample("test-agent"),
-			[]string{"zrok finding list", "--created-by test-agent", "--json"},
+			[]string{"quokka finding list", "--created-by test-agent", "--json"},
 		},
 		{
 			"FindingUpdateNoteExample",
 			FindingUpdateNoteExample("test-agent"),
-			[]string{"zrok finding update", "--note", "--note-author test-agent"},
+			[]string{"quokka finding update", "--note", "--note-author test-agent"},
 		},
 		{
 			"RuleAddExample",
 			RuleAddExample("test-agent"),
-			[]string{"zrok rule add", "--created-by agent:test-agent", "--reasoning", "rules:", "pattern:"},
+			[]string{"quokka rule add", "--created-by agent:test-agent", "--reasoning", "rules:", "pattern:"},
 		},
 		{
 			"ExceptionAddFingerprintExample",
 			ExceptionAddFingerprintExample("test-agent"),
-			[]string{"zrok exception add", "--fingerprint", "--reason", "--expires", "--approved-by agent:test-agent"},
+			[]string{"quokka exception add", "--fingerprint", "--reason", "--expires", "--approved-by agent:test-agent"},
 		},
 		{
 			"ExceptionAddPathGlobExample",
 			ExceptionAddPathGlobExample("test-agent"),
-			[]string{"zrok exception add", "--path-glob", "--cwe", "--reason", "--expires", "--approved-by agent:test-agent"},
+			[]string{"quokka exception add", "--path-glob", "--cwe", "--reason", "--expires", "--approved-by agent:test-agent"},
 		},
 		{
 			"TaskToolExample",
@@ -202,12 +202,12 @@ func TestAnalysisAgentPromptsContainExemplars(t *testing.T) {
 	}
 
 	mustContain := []string{
-		"zrok finding create",
+		"quokka finding create",
 		"--title",
 		"--severity",
 		"--cwe",
 		"--created-by",
-		"zrok finding list",
+		"quokka finding list",
 	}
 	// Anti-pattern: prose `...` placeholders mean we forgot to template the
 	// exemplar in. This regex catches "create --title ..." style fragments.

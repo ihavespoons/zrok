@@ -56,7 +56,7 @@ func TestEvaluateGateEmptyVsNonEmpty(t *testing.T) {
 
 func TestEvaluateGateSurfacesErrors(t *testing.T) {
 	// Non-zero exit from the gate command is propagated as an error.
-	// This is intentional — a failing gate likely means zrok isn't on
+	// This is intentional — a failing gate likely means quokka isn't on
 	// PATH or the project isn't initialized, and silently skipping the
 	// phase would hide that.
 	ctx := context.Background()
@@ -172,7 +172,7 @@ func TestTriageAuthorForPhase(t *testing.T) {
 // passed to opencode and produced 7-second no-op dispatcher runs
 // because the subprocess saw a mangled environment. This test
 // reproduces the conditions: many env entries (the OS env is
-// typically 30-60 entries) with at least one ZROK_AGENT_NAME-prefixed
+// typically 30-60 entries) with at least one QUOKKA_AGENT_NAME-prefixed
 // entry to filter, and asserts the returned slice has all the
 // original entries plus the new one, all readable as valid KEY=VALUE.
 func TestAgentEnvDoesNotCorruptInherited(t *testing.T) {
@@ -180,36 +180,36 @@ func TestAgentEnvDoesNotCorruptInherited(t *testing.T) {
 	// aliasing bug. The bug shows up when filtering happens early in
 	// the iteration and subsequent reads from `env` (now the alias)
 	// see what the appends wrote.
-	t.Setenv("ZROK_AGENT_NAME", "stale-pre-existing")
-	t.Setenv("ZROK_TEST_CANARY_1", "alpha")
-	t.Setenv("ZROK_TEST_CANARY_2", "beta")
+	t.Setenv("QUOKKA_AGENT_NAME", "stale-pre-existing")
+	t.Setenv("QUOKKA_TEST_CANARY_1", "alpha")
+	t.Setenv("QUOKKA_TEST_CANARY_2", "beta")
 
 	out := agentEnv("injection-agent")
 
-	// New ZROK_AGENT_NAME must appear exactly once with the new value.
+	// New QUOKKA_AGENT_NAME must appear exactly once with the new value.
 	var found int
 	var foundValue string
 	for _, kv := range out {
-		if strings.HasPrefix(kv, "ZROK_AGENT_NAME=") {
+		if strings.HasPrefix(kv, "QUOKKA_AGENT_NAME=") {
 			found++
-			foundValue = strings.TrimPrefix(kv, "ZROK_AGENT_NAME=")
+			foundValue = strings.TrimPrefix(kv, "QUOKKA_AGENT_NAME=")
 		}
 	}
 	if found != 1 {
-		t.Errorf("ZROK_AGENT_NAME appears %d times in output, want 1", found)
+		t.Errorf("QUOKKA_AGENT_NAME appears %d times in output, want 1", found)
 	}
 	if foundValue != "injection-agent" {
-		t.Errorf("ZROK_AGENT_NAME value: got %q, want injection-agent", foundValue)
+		t.Errorf("QUOKKA_AGENT_NAME value: got %q, want injection-agent", foundValue)
 	}
 
 	// The canary values must come through unchanged — proof the
 	// for-range read clean copies, not slice-aliased mutations.
 	var canary1, canary2 string
 	for _, kv := range out {
-		if v, ok := strings.CutPrefix(kv, "ZROK_TEST_CANARY_1="); ok {
+		if v, ok := strings.CutPrefix(kv, "QUOKKA_TEST_CANARY_1="); ok {
 			canary1 = v
 		}
-		if v, ok := strings.CutPrefix(kv, "ZROK_TEST_CANARY_2="); ok {
+		if v, ok := strings.CutPrefix(kv, "QUOKKA_TEST_CANARY_2="); ok {
 			canary2 = v
 		}
 	}
@@ -229,12 +229,12 @@ func TestAgentEnvDoesNotCorruptInherited(t *testing.T) {
 // TestAgentEnvEmptyAgentNameReturnsInherited covers the no-op case
 // where the dispatcher passes an empty agent name (shouldn't happen
 // in practice but the guard exists). Output should equal os.Environ()
-// — no ZROK_AGENT_NAME added.
+// — no QUOKKA_AGENT_NAME added.
 func TestAgentEnvEmptyAgentNameReturnsInherited(t *testing.T) {
 	out := agentEnv("")
 	for _, kv := range out {
-		if strings.HasPrefix(kv, "ZROK_AGENT_NAME=") {
-			// If env already had ZROK_AGENT_NAME from the parent shell,
+		if strings.HasPrefix(kv, "QUOKKA_AGENT_NAME=") {
+			// If env already had QUOKKA_AGENT_NAME from the parent shell,
 			// we leave it. That's fine — agentName="" means caller
 			// didn't want to override.
 			return
@@ -260,7 +260,7 @@ func TestClassifyFailure(t *testing.T) {
 		{"yaml unmarshal → recoverable", 1, "Error: yaml: unmarshal errors:\n  line 3: cannot unmarshal", failureRecoverable, "yaml: unmarshal errors"},
 		// "failed to parse" matches first (it's earlier in the patterns list);
 		// either reason is acceptable — both correctly classify as recoverable.
-		{"finding create failed → recoverable", 2, "zrok finding create: failed to parse YAML", failureRecoverable, "failed to parse"},
+		{"finding create failed → recoverable", 2, "quokka finding create: failed to parse YAML", failureRecoverable, "failed to parse"},
 		{"missing key gemma-style → recoverable", 1, "Missing key at [\"prompt\"]", failureRecoverable, "Missing key at ["},
 		{"quota → hard", 1, "Error: rate limit exceeded", failureHard, "rate limit"},
 		{"429 → hard", 1, "HTTP 429 Too Many Requests", failureHard, ""}, // matches either word boundary or "too many requests"
@@ -293,7 +293,7 @@ func TestCorrectiveUserTurnContainsScaffolding(t *testing.T) {
 	if !strings.Contains(turn, "description") || !strings.Contains(turn, "prompt") {
 		t.Error("corrective turn missing Task tool field reminder")
 	}
-	// Must remind about zrok finding create schema (CWE- prefix etc.).
+	// Must remind about quokka finding create schema (CWE- prefix etc.).
 	if !strings.Contains(turn, "CWE-") {
 		t.Error("corrective turn missing CWE- prefix reminder")
 	}
@@ -334,7 +334,7 @@ func TestRunnerInvocationShape(t *testing.T) {
 		args   []string
 	}{
 		{NewOpenCodeRunner(), "opencode", []string{"run", "--agent", "injection-agent", "--model", "gpt-4o", "do work"}},
-		{NewClaudeRunner(), "claude", []string{"-p", "--agent", "injection-agent", "--model", "sonnet", "do work"}},
+		{NewClaudeRunner(), "claude", []string{"-p", "--agent", "injection-agent", "--permission-mode", "bypassPermissions", "--model", "sonnet", "do work"}},
 	}
 	for _, c := range cases {
 		t.Run(c.runner.Name(), func(t *testing.T) {

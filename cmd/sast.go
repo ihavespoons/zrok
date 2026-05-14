@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/project"
-	"github.com/ihavespoons/zrok/internal/rule"
-	"github.com/ihavespoons/zrok/internal/sast"
+	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/ihavespoons/quokka/internal/rule"
+	"github.com/ihavespoons/quokka/internal/sast"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +15,7 @@ var sastCmd = &cobra.Command{
 	Use:   "sast",
 	Short: "Run a deterministic SAST scan and persist findings",
 	Long: `Runs an opengrep-driven static analysis scan against the project and
-persists findings into the zrok store.
+persists findings into the quokka store.
 
 Findings created here have created_by="opengrep" and status="open", so the
 sast-triage-agent can later mark false positives or confirm them. They flow
@@ -67,7 +67,7 @@ across SAST + LLM dedup automatically in SARIF code-scanning uploads.`,
 			}
 		}
 
-		// Merge project-local rules. Each enabled rule under .zrok/rules/
+		// Merge project-local rules. Each enabled rule under .quokka/rules/
 		// becomes an extra --config to opengrep, so org-specific rules
 		// apply automatically alongside the user's chosen ruleset. Retired
 		// rules (verdict=retire on their metadata) are skipped here.
@@ -127,7 +127,7 @@ across SAST + LLM dedup automatically in SARIF code-scanning uploads.`,
 
 		fmt.Printf("opengrep scan complete\n")
 		if len(localRulePaths) > 0 {
-			fmt.Printf("  + %d project-local rule(s) from .zrok/rules\n", len(localRulePaths))
+			fmt.Printf("  + %d project-local rule(s) from .quokka/rules\n", len(localRulePaths))
 		}
 		fmt.Printf("  results:  %d\n", len(results))
 		fmt.Printf("  created:  %d\n", created)

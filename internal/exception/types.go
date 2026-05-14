@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Exception is one entry in .zrok/exceptions.yaml. It can be keyed by
+// Exception is one entry in .quokka/exceptions.yaml. It can be keyed by
 // Fingerprint XOR (PathGlob + CWE). The store enforces this exclusivity at
 // write time so callers don't need to revalidate it.
 type Exception struct {

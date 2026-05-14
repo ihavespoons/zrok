@@ -1,10 +1,10 @@
 // Package rule manages project-local opengrep rules and their provenance.
 //
-// Rules live as opengrep-compatible YAML files in .zrok/rules/<slug>.yaml.
+// Rules live as opengrep-compatible YAML files in .quokka/rules/<slug>.yaml.
 // Each rule has a sidecar metadata file <slug>.zmeta.yaml that records who
 // authored it, why, and any verdict from the rule-judge-agent. Splitting
 // metadata into a sidecar keeps the rule file pure opengrep syntax — the
-// SAST runner can scan the directory without seeing zrok-internal fields.
+// SAST runner can scan the directory without seeing quokka-internal fields.
 package rule
 
 import (
@@ -52,8 +52,8 @@ func IsValidVerdict(v Verdict) bool {
 }
 
 // Meta is the sidecar provenance and judge state for a rule. Stored in
-// .zrok/rules/<slug>.zmeta.yaml — opengrep ignores it (different extension)
-// while zrok uses it to track origin, trigger counts, and verdicts over time.
+// .quokka/rules/<slug>.zmeta.yaml — opengrep ignores it (different extension)
+// while quokka uses it to track origin, trigger counts, and verdicts over time.
 type Meta struct {
 	Slug         string    `yaml:"slug" json:"slug"`
 	CreatedBy    string    `yaml:"created_by" json:"created_by"`         // e.g. "agent:injection-agent" or "human:alice"
@@ -84,7 +84,7 @@ func (m Meta) Validate() error {
 	return nil
 }
 
-// RuleFile is the parsed shape of the opengrep YAML at .zrok/rules/<slug>.yaml.
+// RuleFile is the parsed shape of the opengrep YAML at .quokka/rules/<slug>.yaml.
 // We only validate enough structure to fail-fast on syntactic mistakes;
 // opengrep does real semantic validation when scanning.
 type RuleFile struct {
@@ -92,7 +92,7 @@ type RuleFile struct {
 }
 
 // RuleEntry is one rule definition inside a RuleFile. The full opengrep rule
-// schema is large; we only model the fields zrok cares about for validation
+// schema is large; we only model the fields quokka cares about for validation
 // and listing. Unknown fields are preserved on disk as raw YAML.
 type RuleEntry struct {
 	ID        string   `yaml:"id" json:"id"`
@@ -106,9 +106,9 @@ type RuleEntry struct {
 }
 
 // ValidateStructure checks that the file has the required opengrep shape.
-// Fails fast on malformed input so zrok rule add rejects bad rules at
+// Fails fast on malformed input so quokka rule add rejects bad rules at
 // authoring time instead of leaving the user to discover the failure on
-// the next zrok sast run.
+// the next quokka sast run.
 func (rf RuleFile) ValidateStructure() error {
 	if len(rf.Rules) == 0 {
 		return fmt.Errorf("rule file must define at least one rule under \"rules:\"")

@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/project"
-	"github.com/ihavespoons/zrok/internal/treesitter"
+	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/ihavespoons/quokka/internal/treesitter"
 )
 
 // TreeSitterExtractor extracts symbols using tree-sitter.
@@ -123,7 +123,7 @@ func (e *TreeSitterExtractor) resolvePath(path string) string {
 
 func (e *TreeSitterExtractor) shouldIgnore(name string) bool {
 	ignorePatterns := []string{
-		"node_modules", "vendor", ".git", ".zrok",
+		"node_modules", "vendor", ".git", ".quokka",
 		"__pycache__", "target", "dist", "build",
 	}
 	return slices.Contains(ignorePatterns, name)

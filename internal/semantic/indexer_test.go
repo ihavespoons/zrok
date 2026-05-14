@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/chunk"
-	"github.com/ihavespoons/zrok/internal/project"
-	"github.com/ihavespoons/zrok/internal/vectordb"
+	"github.com/ihavespoons/quokka/internal/chunk"
+	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/ihavespoons/quokka/internal/vectordb"
 )
 
 // newTestIndexer builds an Indexer without an embedding provider. The
@@ -19,7 +19,7 @@ import (
 func newTestIndexer(t *testing.T) (*Indexer, func()) {
 	t.Helper()
 
-	tmp, err := os.MkdirTemp("", "zrok-semantic-*")
+	tmp, err := os.MkdirTemp("", "quokka-semantic-*")
 	if err != nil {
 		t.Fatalf("temp dir: %v", err)
 	}
@@ -31,7 +31,7 @@ func newTestIndexer(t *testing.T) (*Indexer, func()) {
 		t.Fatalf("project init: %v", err)
 	}
 
-	storePath := filepath.Join(tmp, ".zrok", "index")
+	storePath := filepath.Join(tmp, ".quokka", "index")
 	cfg := vectordb.DefaultStoreConfig(storePath, 4) // tiny dimension is fine
 	store, err := vectordb.NewHNSWStore(cfg)
 	if err != nil {

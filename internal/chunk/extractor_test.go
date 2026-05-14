@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/project"
 )
 
 // TestExtractTreeSitterSkipsOversizedFiles verifies the chunk extractor

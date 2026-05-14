@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/exception"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/exception"
+	"github.com/ihavespoons/quokka/internal/project"
 	"github.com/spf13/cobra"
 )
 

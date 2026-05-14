@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/chunk"
-	"github.com/ihavespoons/zrok/internal/project"
-	"github.com/ihavespoons/zrok/internal/semantic"
-	"github.com/ihavespoons/zrok/internal/vectordb"
+	"github.com/ihavespoons/quokka/internal/chunk"
+	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/ihavespoons/quokka/internal/semantic"
+	"github.com/ihavespoons/quokka/internal/vectordb"
 	"github.com/spf13/cobra"
 )
 
@@ -23,10 +23,10 @@ Semantic search uses embeddings to find code that matches the meaning
 of your query, not just exact text matches.
 
 Examples:
-  zrok semantic "authentication middleware"
-  zrok semantic "SQL injection vulnerabilities" --multi-hop
-  zrok semantic "error handling" --type function
-  zrok semantic "database connection" --file "*.go"`,
+  quokka semantic "authentication middleware"
+  quokka semantic "SQL injection vulnerabilities" --multi-hop
+  quokka semantic "error handling" --type function
+  quokka semantic "database connection" --file "*.go"`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		p, err := project.EnsureActive()
@@ -35,7 +35,7 @@ Examples:
 		}
 
 		if !p.Config.Index.Enabled {
-			exitError("semantic indexing is not enabled. Run 'zrok index enable' first")
+			exitError("semantic indexing is not enabled. Run 'quokka index enable' first")
 		}
 
 		query := args[0]

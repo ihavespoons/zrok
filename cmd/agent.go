@@ -5,10 +5,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/agent"
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/memory"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/agent"
+	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/ihavespoons/quokka/internal/memory"
+	"github.com/ihavespoons/quokka/internal/project"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -263,7 +263,7 @@ var agentGenerateCmd = &cobra.Command{
 		}
 
 		if p.Config == nil {
-			exitError("project not onboarded, run 'zrok onboard' first")
+			exitError("project not onboarded, run 'quokka onboard' first")
 		}
 
 		// Get recommended agents based on tech stack
@@ -307,7 +307,7 @@ var agentGenerateCmd = &cobra.Command{
 				}
 			}
 			fmt.Println()
-			fmt.Println("Generate prompts with: zrok agent prompt <name>")
+			fmt.Println("Generate prompts with: quokka agent prompt <name>")
 		}
 	},
 }
@@ -318,7 +318,7 @@ var agentVerifyMemoriesCmd = &cobra.Command{
 	Use:   "verify-memories [agent-name]",
 	Short: "Verify that an agent's expected context memories exist",
 	Long: `Verify that all memories listed in an agent's context_memories field
-have been created in the project's .zrok/memories/ directory.
+have been created in the project's .quokka/memories/ directory.
 
 Use --all to verify every analysis-phase agent at once.
 
@@ -381,11 +381,11 @@ Exit code is 0 if all expected memories are present, 1 otherwise.`,
 
 // agentRecordTimingCmd is a lightweight hook the orchestrating skill can call
 // to record per-agent execution timings. The data is written to
-// .zrok/run-state.json and later merged into the eval run manifest.
+// .quokka/run-state.json and later merged into the eval run manifest.
 var agentRecordTimingCmd = &cobra.Command{
 	Use:   "record-timing <agent-name>",
 	Short: "Record start or end timing for an agent invocation",
-	Long: `Record per-agent execution timing into .zrok/run-state.json.
+	Long: `Record per-agent execution timing into .quokka/run-state.json.
 
 Call with --start before spawning an agent, and --end after it completes.
 The eval scorer merges this data into the run manifest as best-effort timing.

@@ -7,19 +7,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/project"
-	"github.com/ihavespoons/zrok/internal/rule"
-	"github.com/ihavespoons/zrok/internal/sast"
+	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/ihavespoons/quokka/internal/rule"
+	"github.com/ihavespoons/quokka/internal/sast"
 	"github.com/spf13/cobra"
 )
 
 var ruleCmd = &cobra.Command{
 	Use:   "rule",
 	Short: "Manage project-local opengrep rules",
-	Long: `Rules live as opengrep-compatible YAML files in .zrok/rules/<slug>.yaml.
+	Long: `Rules live as opengrep-compatible YAML files in .quokka/rules/<slug>.yaml.
 Each has a sidecar <slug>.zmeta.yaml recording provenance (who authored it,
-why, for which PR) and any judge verdict. zrok sast picks up enabled rules
+why, for which PR) and any judge verdict. quokka sast picks up enabled rules
 automatically; retired rules stay on disk but are skipped at scan time.`,
 }
 
@@ -27,7 +27,7 @@ var ruleAddCmd = &cobra.Command{
 	Use:   "add <slug>",
 	Short: "Add a new opengrep rule",
 	Long: `Reads opengrep-format YAML from --file or stdin and stores it as
-.zrok/rules/<slug>.yaml with a metadata sidecar capturing provenance.
+.quokka/rules/<slug>.yaml with a metadata sidecar capturing provenance.
 
 The rule YAML is validated for minimal opengrep structure (top-level
 "rules:" list, each with id/message/pattern) before being written —
@@ -157,7 +157,7 @@ var ruleAnnotateCmd = &cobra.Command{
 	Use:   "annotate <slug>",
 	Short: "Set the rule-judge-agent verdict on a rule",
 	Long: `Records a verdict (keep / refine / retire / escalate) on the rule's
-metadata. Retire marks the rule disabled, so subsequent zrok sast runs skip
+metadata. Retire marks the rule disabled, so subsequent quokka sast runs skip
 it; the rule file itself is preserved for archaeology.`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -183,12 +183,12 @@ it; the rule file itself is preserved for archaeology.`,
 		}
 		fmt.Printf("Annotated %s: verdict=%s\n", args[0], verdict)
 		if verdict == rule.VerdictRetire {
-			fmt.Println("(Rule will be skipped by zrok sast — file preserved.)")
+			fmt.Println("(Rule will be skipped by quokka sast — file preserved.)")
 		}
 	},
 }
 
-// ruleAuditEntry is the per-rule payload `zrok rule audit` emits. The rule-
+// ruleAuditEntry is the per-rule payload `quokka rule audit` emits. The rule-
 // judge-agent reads this (typically via --json) to assess each rule and
 // decide a verdict.
 type ruleAuditEntry struct {
@@ -203,7 +203,7 @@ type ruleAuditEntry struct {
 	VerdictNote string       `json:"verdict_note,omitempty"`
 	LastAuditAt time.Time    `json:"last_audit_at,omitempty"`
 
-	// Activity signals (populated when zrok tracks them; zero otherwise).
+	// Activity signals (populated when quokka tracks them; zero otherwise).
 	TriggerCount int `json:"trigger_count"`
 	FPCount      int `json:"fp_count"`
 
@@ -220,7 +220,7 @@ rule-judge-agent. With --json (recommended), the agent can parse the result
 in one call and emit annotate verdicts for each rule.
 
 This command makes no changes. The judge applies verdicts via
-zrok rule annotate.`,
+quokka rule annotate.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		p, err := project.EnsureActive()
 		if err != nil {
@@ -324,7 +324,7 @@ func computeRuleCounts(p *project.Project, rs *rule.Store) (triggers, fps map[st
 			}
 			id := strings.TrimPrefix(tag, sast.OpengrepRuleTagPrefix)
 			// Opengrep prefixes rule IDs with their file path
-			// (e.g. "tmp.rdbg..zrok.zrok-admin-default-creds"), so we
+			// (e.g. "tmp.rdbg..quokka.quokka-admin-default-creds"), so we
 			// also accept a match on the dotted suffix.
 			if s, ok := idToSlug[id]; ok {
 				slug = s

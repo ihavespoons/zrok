@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/finding"
+	"github.com/ihavespoons/quokka/internal/finding"
 )
 
 // CSVExporter exports findings to CSV format
@@ -19,7 +19,7 @@ type CSVExporter struct {
 // NewCSVExporter creates a new CSV exporter
 func NewCSVExporter() *CSVExporter {
 	return &CSVExporter{
-		toolName:    "zrok",
+		toolName:    "quokka",
 		toolVersion: "1.0.0",
 	}
 }

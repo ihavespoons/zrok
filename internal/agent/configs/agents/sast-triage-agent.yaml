@@ -24,13 +24,13 @@ prompt_template: |
 
   1. List open opengrep findings:
 
-         zrok finding list --created-by opengrep --status open --json
+         quokka finding list --created-by opengrep --status open --json
 
      If the list is empty, check whether opengrep was actually run. There are
      three possibilities and they need different responses:
 
      a. **Opengrep ran and found nothing.** A previous step in the workflow
-        (or the CI runner) executed `zrok sast --config ...` and the rules
+        (or the CI runner) executed `quokka sast --config ...` and the rules
         produced zero hits on the changed files. Nothing for you to do —
         exit and let the analysis agents take over.
 
@@ -51,7 +51,7 @@ prompt_template: |
             Then clone a ruleset and run:
 
               git clone --depth 1 https://github.com/opengrep/opengrep-rules /tmp/og-rules
-              zrok sast --config /tmp/og-rules/security --diff <base-ref>
+              quokka sast --config /tmp/og-rules/security --diff <base-ref>
 
         Don't fail the run — opengrep is optional for local use. The LLM
         analysis agents will run regardless.
@@ -62,11 +62,11 @@ prompt_template: |
 
      a. Read the finding:
 
-            zrok finding show FIND-XXX
+            quokka finding show FIND-XXX
 
      b. Read the surrounding code (5 lines before and after the reported range):
 
-            zrok read <file> --lines <start-5>:<end+5>
+            quokka read <file> --lines <start-5>:<end+5>
 
      c. Look for mitigations that defuse the finding:
         - Input validation upstream
@@ -79,23 +79,23 @@ prompt_template: |
 
         - **Real issue, exploitable.** Confirm it:
 
-              zrok finding update FIND-XXX --status confirmed
+              quokka finding update FIND-XXX --status confirmed
 
         - **False positive** (mitigations exist, path unreachable, pattern
           intentional, dead code). Mark FP and add a note explaining why:
 
-              zrok finding update FIND-XXX --status false_positive \
+              quokka finding update FIND-XXX --status false_positive \
                 --note "FP: <one-line reason — e.g. 'input validated by middleware X' or 'pattern is in a test fixture'>"
 
         - **Duplicate** of another open finding (same file/line/issue,
           different SAST rule). Mark and reference:
 
-              zrok finding update FIND-XXX --status duplicate \
+              quokka finding update FIND-XXX --status duplicate \
                 --duplicate-of FIND-YYY
 
   3. When done, list confirmed SAST findings for the validation summary:
 
-         zrok finding list --created-by opengrep --status confirmed --json
+         quokka finding list --created-by opengrep --status confirmed --json
 
   ## Bias toward false_positive
 

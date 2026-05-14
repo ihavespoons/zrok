@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/finding"
+	"github.com/ihavespoons/quokka/internal/finding"
 )
 
 // SARIF format structures (SARIF 2.1.0)
@@ -65,7 +65,7 @@ type SarifResult struct {
 // visible. Preferred over dropping the result entirely — keeps the audit
 // trail of "this was flagged but suppressed because X."
 type SarifSuppression struct {
-	Kind          string `json:"kind"`                    // "external" (zrok exceptions are external suppressions)
+	Kind          string `json:"kind"`                    // "external" (quokka exceptions are external suppressions)
 	Status        string `json:"status,omitempty"`        // "accepted" — we wouldn't be emitting it otherwise
 	Justification string `json:"justification,omitempty"` // the exception's reason
 }
@@ -129,7 +129,7 @@ type SARIFExporter struct {
 // NewSARIFExporter creates a new SARIF exporter
 func NewSARIFExporter() *SARIFExporter {
 	return &SARIFExporter{
-		toolName:    "zrok",
+		toolName:    "quokka",
 		toolVersion: "1.0.0",
 	}
 }

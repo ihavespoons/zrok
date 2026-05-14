@@ -1,4 +1,4 @@
-// Package scorer compares zrok findings against ground truth vulnerabilities
+// Package scorer compares quokka findings against ground truth vulnerabilities
 // and produces evaluation metrics.
 package scorer
 
@@ -45,7 +45,7 @@ type MatchingConfig struct {
 	TitleSimilarityThreshold float64 `yaml:"title_similarity_threshold"`
 }
 
-// RunFindings represents the JSON export from a single zrok run
+// RunFindings represents the JSON export from a single quokka run
 type RunFindings struct {
 	Metadata struct {
 		Tool        string `json:"tool"`

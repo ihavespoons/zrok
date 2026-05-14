@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/finding"
+	"github.com/ihavespoons/quokka/internal/finding"
 )
 
 // JSONReport represents a JSON export report
@@ -39,7 +39,7 @@ type JSONExporter struct {
 // NewJSONExporter creates a new JSON exporter
 func NewJSONExporter() *JSONExporter {
 	return &JSONExporter{
-		toolName:    "zrok",
+		toolName:    "quokka",
 		toolVersion: "1.0.0",
 	}
 }

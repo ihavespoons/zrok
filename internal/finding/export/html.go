@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/finding"
+	"github.com/ihavespoons/quokka/internal/finding"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -21,7 +21,7 @@ type HTMLExporter struct {
 // NewHTMLExporter creates a new HTML exporter
 func NewHTMLExporter() *HTMLExporter {
 	return &HTMLExporter{
-		toolName:    "zrok",
+		toolName:    "quokka",
 		toolVersion: "1.0.0",
 	}
 }

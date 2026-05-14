@@ -9,17 +9,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/ihavespoons/quokka/internal/project"
 	"gopkg.in/yaml.v3"
 )
 
-// fileName is the on-disk file under .zrok/ holding all exceptions.
+// fileName is the on-disk file under .quokka/ holding all exceptions.
 const fileName = "exceptions.yaml"
 
-// Store persists exceptions to .zrok/exceptions.yaml. All operations are
+// Store persists exceptions to .quokka/exceptions.yaml. All operations are
 // file-locked at the OS level only by atomic-replace semantics — the store
-// reads, mutates in memory, and writes the full file back. For zrok's
+// reads, mutates in memory, and writes the full file back. For quokka's
 // expected scale (dozens, maybe hundreds of exceptions) this is fine and
 // keeps the API simple.
 type Store struct {
@@ -28,7 +28,7 @@ type Store struct {
 
 // NewStore creates a new exception store rooted at the given project.
 func NewStore(p *project.Project) *Store {
-	return &Store{path: filepath.Join(p.GetZrokPath(), fileName)}
+	return &Store{path: filepath.Join(p.GetQuokkaPath(), fileName)}
 }
 
 // fileShape is the on-disk YAML layout. Wrapping the list in a struct keeps

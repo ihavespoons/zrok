@@ -20,9 +20,9 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/ihavespoons/zrok/cmd.version={{.Version}}
-      - -X github.com/ihavespoons/zrok/cmd.commit={{.Commit}}
-      - -X github.com/ihavespoons/zrok/cmd.date={{.Date}}
+      - -X github.com/ihavespoons/quokka/cmd.version={{.Version}}
+      - -X github.com/ihavespoons/quokka/cmd.commit={{.Commit}}
+      - -X github.com/ihavespoons/quokka/cmd.date={{.Date}}
 
 archives:
   - format: tar.gz
@@ -53,23 +53,23 @@ release:
 
     **Homebrew (macOS/Linux):**
     ```bash
-    brew install ihavespoons/tap/zrok
+    brew install ihavespoons/tap/quokka
     ```
 
     **Go install:**
     ```bash
-    go install github.com/ihavespoons/zrok@latest
+    go install github.com/ihavespoons/quokka@latest
     ```
 
 brews:
-  - name: zrok
+  - name: quokka
     repository:
       owner: ihavespoons
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/ihavespoons/zrok"
+    homepage: "https://github.com/ihavespoons/quokka"
     description: "LLM-assisted code review tool with agent orchestration"
     license: "Apache-2.0"
     test: |
-      system "#{bin}/zrok", "--version"
+      system "#{bin}/quokka", "--version"

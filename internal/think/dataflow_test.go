@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/ihavespoons/quokka/internal/project"
 )
 
 // regexpCompileCaseInsensitive compiles a regex with the (?i) flag, mirroring
@@ -19,7 +19,7 @@ func regexpCompileCaseInsensitive(pat string) (*regexp.Regexp, error) {
 }
 
 // writeTempProject creates a minimal project rooted in t.TempDir() and
-// returns the project plus the root path. The project has .zrok/ scaffolding
+// returns the project plus the root path. The project has .quokka/ scaffolding
 // but no memories or findings unless added by the caller.
 func writeTempProject(t *testing.T) (*project.Project, string) {
 	t.Helper()

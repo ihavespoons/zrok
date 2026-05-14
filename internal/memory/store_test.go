@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/project"
 )
 
 func setupTestProject(t *testing.T) (*project.Project, func()) {
 	t.Helper()
 
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}

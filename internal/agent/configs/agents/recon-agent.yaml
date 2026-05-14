@@ -55,7 +55,7 @@ prompt_template: |
 
   1. **project_overview** (context) - Comprehensive project description:
      ```bash
-     zrok memory write project_overview --type context --content "
+     quokka memory write project_overview --type context --content "
      # Project Overview
 
      ## Description
@@ -74,7 +74,7 @@ prompt_template: |
 
   2. **tech_stack** (stack) - Detailed technology analysis:
      ```bash
-     zrok memory write tech_stack --type stack --content "
+     quokka memory write tech_stack --type stack --content "
      # Technology Stack
 
      ## Languages
@@ -96,7 +96,7 @@ prompt_template: |
 
   3. **coding_standards** (pattern) - Observed coding conventions:
      ```bash
-     zrok memory write coding_standards --type pattern --content "
+     quokka memory write coding_standards --type pattern --content "
      # Coding Standards
 
      ## Naming Conventions
@@ -115,7 +115,7 @@ prompt_template: |
 
   4. **api_endpoints** (context) - Entry points discovered:
      ```bash
-     zrok memory write api_endpoints --type context --content "
+     quokka memory write api_endpoints --type context --content "
      # API Endpoints
 
      ## REST Endpoints
@@ -134,7 +134,7 @@ prompt_template: |
 
   5. **auth_patterns** (pattern) - Authentication/authorization patterns:
      ```bash
-     zrok memory write auth_patterns --type pattern --content "
+     quokka memory write auth_patterns --type pattern --content "
      # Authentication & Authorization
 
      ## Authentication Method
@@ -153,7 +153,7 @@ prompt_template: |
 
   6. **review_targets** (context) - Areas needing security review:
      ```bash
-     zrok memory write review_targets --type context --content "
+     quokka memory write review_targets --type context --content "
      # Priority Review Targets
 
      ## High Priority
@@ -174,7 +174,7 @@ prompt_template: |
 
   After creating the 6 required shared memories, write one ADDITIONAL memory
   per applicable analysis agent. Naming convention:
-    zrok memory write <agent>_targets --type context --content "..."
+    quokka memory write <agent>_targets --type context --content "..."
 
   Where `<agent>` is the agent's short name (injection, security, content,
   guards, config, references, architecture, ssrf, logging, dependencies,
@@ -217,17 +217,17 @@ prompt_template: |
   ## Reconnaissance Workflow
 
   ### 1. Structure Mapping
-  - List project directories: `zrok list . --recursive --depth 3`
+  - List project directories: `quokka list . --recursive --depth 3`
   - Identify main entry points (main.go, index.js, app.py, etc.)
-  - Find configuration files: `zrok find "*.config.*" "*.yaml" "*.json"`
+  - Find configuration files: `quokka find "*.config.*" "*.yaml" "*.json"`
   - Locate test directories
 
   ### 2. Tech Stack Discovery
   - Examine dependency manifests:
-    - `zrok read go.mod` (Go)
-    - `zrok read package.json` (Node.js)
-    - `zrok read requirements.txt` or `zrok read pyproject.toml` (Python)
-    - `zrok read Gemfile` (Ruby)
+    - `quokka read go.mod` (Go)
+    - `quokka read package.json` (Node.js)
+    - `quokka read requirements.txt` or `quokka read pyproject.toml` (Python)
+    - `quokka read Gemfile` (Ruby)
   - Find build configurations (Dockerfile, docker-compose.yaml, CI configs)
   - Note build tools and task runners
 
@@ -238,7 +238,7 @@ prompt_template: |
   - This helps determine the project type (web-app, api-service, cli-tool, library, worker)
   - Write a **dependency_analysis** memory with your findings:
     ```bash
-    zrok memory write dependency_analysis --type context --content "
+    quokka memory write dependency_analysis --type context --content "
     # Dependency Analysis
 
     ## Classified Dependencies
@@ -264,9 +264,9 @@ prompt_template: |
   - Identify testing patterns
 
   ### 4. Boundary Identification
-  - Search for API definitions: `zrok search "func.*Handler" --regex` or similar
-  - Locate auth code: `zrok search "auth" "login" "session" "token"`
-  - Identify data access layers: `zrok search "database" "query" "repository"`
+  - Search for API definitions: `quokka search "func.*Handler" --regex` or similar
+  - Locate auth code: `quokka search "auth" "login" "session" "token"`
+  - Identify data access layers: `quokka search "database" "query" "repository"`
   - Note external integrations
 
   ### 5. Security Surface Analysis

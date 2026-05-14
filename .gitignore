@@ -1,6 +1,6 @@
 # Binaries
-zrok
-zrok.exe
+quokka
+quokka.exe
 *.exe
 *.exe~
 *.dll
@@ -29,7 +29,7 @@ go.work
 Thumbs.db
 
 # Project-specific
-.zrok/
+.quokka/
 
 # Test artifacts
 /tmp/
@@ -39,9 +39,9 @@ Thumbs.db
 debug
 *.log
 
-# Experimental zrok run state (local-only, not for committing)
-.zrok-prerun*/
-.zrok-run*-selfreview/
+# Experimental quokka run state (local-only, not for committing)
+.quokka-prerun*/
+.quokka-run*-selfreview/
 
 # Claude Code skill cache
 .claude/

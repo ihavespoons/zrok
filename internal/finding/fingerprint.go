@@ -12,7 +12,7 @@ import (
 const FingerprintVersion = "v1"
 
 // FingerprintKey is the property name used in SARIF partialFingerprints.
-const FingerprintKey = "zrokFingerprint/" + FingerprintVersion
+const FingerprintKey = "quokkaFingerprint/" + FingerprintVersion
 
 // noSymbolSentinel keeps the fingerprint stable when Location.Function is unset.
 // Using a fixed token rather than "" makes accidental collisions less likely.

@@ -81,7 +81,7 @@ func (claudeRunner) AgentInvocation(ctx context.Context, workDir, agentName, mod
 	// "successful" runs that produced only a permission-request reply.
 	// opencode handles this by running tools silently in non-interactive
 	// mode; claude requires the explicit opt-out. Security model: the
-	// trust boundary is zrok's `review pr run`, not the per-agent
+	// trust boundary is quokka's `review pr run`, not the per-agent
 	// subprocess — the dispatcher's caller (CI, human, eval script) is
 	// responsible for vetting the agent set.
 	args := []string{"-p", "--agent", agentName, "--permission-mode", "bypassPermissions"}
@@ -99,7 +99,7 @@ func (claudeRunner) AgentInvocation(ctx context.Context, workDir, agentName, mod
 
 // agentEnv builds the env slice for a per-agent subprocess. It inherits
 // the parent's env (so OPENROUTER_API_KEY etc. propagate) and adds
-// ZROK_AGENT_NAME=<agentName>. The CLI's `zrok finding create` reads
+// QUOKKA_AGENT_NAME=<agentName>. The CLI's `quokka finding create` reads
 // this env to auto-default --created-by, which closes the entire class
 // of "LLM forgets / guesses / fabricates its own name" attribution
 // failures observed across OWASP v5-v9 (opencode, opencode-security-
@@ -111,7 +111,7 @@ func agentEnv(agentName string) []string {
 	if agentName == "" {
 		return parent
 	}
-	// Filter out any leaked ZROK_AGENT_NAME from the parent shell so the
+	// Filter out any leaked QUOKKA_AGENT_NAME from the parent shell so the
 	// dispatcher's value is authoritative. Build into a fresh slice
 	// rather than reusing parent's backing array — `filtered := parent[:0]`
 	// would alias the underlying array, and appends below would
@@ -120,11 +120,11 @@ func agentEnv(agentName string) []string {
 	// no-op dispatcher runs (OWASP v11).
 	filtered := make([]string, 0, len(parent)+1)
 	for _, kv := range parent {
-		if !strings.HasPrefix(kv, "ZROK_AGENT_NAME=") {
+		if !strings.HasPrefix(kv, "QUOKKA_AGENT_NAME=") {
 			filtered = append(filtered, kv)
 		}
 	}
-	return append(filtered, "ZROK_AGENT_NAME="+agentName)
+	return append(filtered, "QUOKKA_AGENT_NAME="+agentName)
 }
 
 // LookupRunner returns the Runner for the given name, or an error if

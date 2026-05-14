@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/project"
 )
 
 // Finder handles file and content search operations
@@ -326,7 +326,7 @@ func (f *Finder) shouldIgnore(name string) bool {
 		"node_modules",
 		"vendor",
 		".git",
-		".zrok",
+		".quokka",
 		"__pycache__",
 		".pytest_cache",
 		".mypy_cache",

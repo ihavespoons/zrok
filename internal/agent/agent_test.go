@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/zrok/internal/memory"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/memory"
+	"github.com/ihavespoons/quokka/internal/project"
 )
 
 func setupTestProject(t *testing.T) (*project.Project, func()) {
 	t.Helper()
 
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -659,7 +659,7 @@ func TestTruncateMemory(t *testing.T) {
 	if len(result) > 4096 {
 		t.Errorf("truncated result too long: %d bytes", len(result))
 	}
-	expectedMarker := "[... truncated — full content: zrok memory read my_memory]"
+	expectedMarker := "[... truncated — full content: quokka memory read my_memory]"
 	if !strings.Contains(result, expectedMarker) {
 		t.Error("truncated result missing truncation marker")
 	}
@@ -701,7 +701,7 @@ func TestBuildPromptDataMemoryTruncation(t *testing.T) {
 		t.Error("prompt should not contain the full large memory")
 	}
 
-	expectedMarker := "zrok memory read big_memory"
+	expectedMarker := "quokka memory read big_memory"
 	if !strings.Contains(prompt, expectedMarker) {
 		t.Error("prompt should contain truncation marker referencing memory name")
 	}

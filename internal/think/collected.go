@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/agent"
-	"github.com/ihavespoons/zrok/internal/memory"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/agent"
+	"github.com/ihavespoons/quokka/internal/memory"
+	"github.com/ihavespoons/quokka/internal/project"
 )
 
 // CollectedOptions configures the collected-context audit.

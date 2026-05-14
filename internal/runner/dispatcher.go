@@ -24,7 +24,7 @@ const (
 	// failureRecoverable: the subprocess hit a parser/schema/tool error that
 	// a corrective re-prompt is likely to fix on the second try. Examples:
 	// SchemaError on the Task tool, malformed YAML rejected by
-	// `zrok finding create`, "tool not found" because the model spelled a
+	// `quokka finding create`, "tool not found" because the model spelled a
 	// command wrong.
 	failureRecoverable
 
@@ -49,7 +49,7 @@ var retryableLogPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)unexpected EOF`),
 	regexp.MustCompile(`(?i)tool not found`),
 	regexp.MustCompile(`(?i)Missing key at \[`),
-	regexp.MustCompile(`(?i)zrok finding create.*failed`),
+	regexp.MustCompile(`(?i)quokka finding create.*failed`),
 }
 
 // hardLogPatterns matches output that classifies as a hard failure (no
@@ -237,7 +237,7 @@ func Dispatch(ctx context.Context, plan DispatchPlan, cfg DispatchConfig) (Dispa
 
 		// Post-phase triage-plan apply: validation-agent and
 		// sast-triage-agent emit JSON triage plans to disk rather than
-		// calling `zrok finding update` (LLMs reliably emit JSON, do
+		// calling `quokka finding update` (LLMs reliably emit JSON, do
 		// not reliably execute update CLI calls — see commits c9639ec,
 		// 437655c). After these phases complete, look for a triage
 		// plan and apply it deterministically.
@@ -263,15 +263,15 @@ func triageAuthorForPhase(phaseName string) string {
 	return ""
 }
 
-// applyTriagePlan looks for .zrok/review/triage-plan.json under WorkDir
-// and runs `zrok finding triage --plan <path>` to apply it. Missing
+// applyTriagePlan looks for .quokka/review/triage-plan.json under WorkDir
+// and runs `quokka finding triage --plan <path>` to apply it. Missing
 // file is logged as a warning, not a fatal error — the agent might
 // have legitimately decided there was nothing to triage (e.g. zero
 // open findings), or the agent might have failed to comply (still
 // better to surface that as a one-line warning and continue than to
 // abort the run).
 func applyTriagePlan(ctx context.Context, cfg DispatchConfig, author string) {
-	planPath := filepath.Join(cfg.WorkDir, ".zrok", "review", "triage-plan.json")
+	planPath := filepath.Join(cfg.WorkDir, ".quokka", "review", "triage-plan.json")
 	if _, err := os.Stat(planPath); err != nil {
 		fmt.Fprintf(cfg.Stdout, "  no triage plan written by %s (looked at %s) — skipping apply\n", author, planPath)
 		return
@@ -279,7 +279,7 @@ func applyTriagePlan(ctx context.Context, cfg DispatchConfig, author string) {
 	fmt.Fprintf(cfg.Stdout, "  applying triage plan from %s (author=%s)\n", planPath, author)
 
 	args := []string{"finding", "triage", "--plan", planPath, "--author", author}
-	cmd := exec.CommandContext(ctx, "zrok", args...)
+	cmd := exec.CommandContext(ctx, "quokka", args...)
 	cmd.Dir = cfg.WorkDir
 	cmd.Env = os.Environ()
 	cmd.Stdout = cfg.Stdout
@@ -314,9 +314,9 @@ func evaluateGate(ctx context.Context, gate, workDir string) (bool, error) {
 	cmd.Env = os.Environ()
 	out, err := cmd.Output()
 	if err != nil {
-		// `zrok finding list --created-by X --json` returns valid JSON
+		// `quokka finding list --created-by X --json` returns valid JSON
 		// even when no findings exist; a real error here means something
-		// else is wrong (zrok not on PATH, project not initialized).
+		// else is wrong (quokka not on PATH, project not initialized).
 		// Propagate so the user can see and fix it rather than silently
 		// skipping the phase.
 		return false, fmt.Errorf("run gate %q: %w", gate, err)
@@ -325,7 +325,7 @@ func evaluateGate(ctx context.Context, gate, workDir string) (bool, error) {
 }
 
 // dynamicFanoutItems runs the dynamic-source command and extracts the
-// finding IDs from its JSON output. Expects the standard zrok finding
+// finding IDs from its JSON output. Expects the standard quokka finding
 // list JSON shape: {"findings": [{"id": "FIND-001", ...}, ...]}.
 func dynamicFanoutItems(ctx context.Context, source, workDir string) ([]string, error) {
 	if source == "" {
@@ -357,7 +357,7 @@ func dynamicFanoutItems(ctx context.Context, source, workDir string) ([]string, 
 
 // jsonHasFindings inspects the parsed JSON output of a gate command and
 // returns true if it indicates non-empty results. Handles both shapes
-// `zrok finding list` emits: {"total": N, "findings": [...]} and
+// `quokka finding list` emits: {"total": N, "findings": [...]} and
 // {"findings": null, "total": 0, "suppressed_count": 0}.
 func jsonHasFindings(out []byte) bool {
 	trimmed := strings.TrimSpace(string(out))
@@ -545,7 +545,7 @@ func correctiveUserTurn(originalTurn, reason, agentName string) string {
 
 Re-run with these corrections:
 - Task tool calls require BOTH "description" and "prompt" fields (no exceptions).
-- zrok finding create requires --title, --severity, --confidence, --cwe (with CWE- prefix), --file (project-relative path, not absolute), --line, --description, --created-by, and at least one --tag.
+- quokka finding create requires --title, --severity, --confidence, --cwe (with CWE- prefix), --file (project-relative path, not absolute), --line, --description, --created-by, and at least one --tag.
 - --created-by must be %s.
 - All YAML output (for stdin mode) must parse cleanly.
 
@@ -568,7 +568,7 @@ func defaultUserTurn(userTurn string, changedFiles []string) string {
 	}
 	var b strings.Builder
 	b.WriteString("Run a security review per your agent system prompt. ")
-	b.WriteString("File findings via `zrok finding create` EXACTLY as the Filing Protocol section of your system prompt describes — copy that exemplar; do not invent your own --created-by value. ")
+	b.WriteString("File findings via `quokka finding create` EXACTLY as the Filing Protocol section of your system prompt describes — copy that exemplar; do not invent your own --created-by value. ")
 	b.WriteString("Exit when analysis is complete.")
 	if len(changedFiles) > 0 {
 		b.WriteString("\n\n## In-scope files (review EVERY file in this list)\n")

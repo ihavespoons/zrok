@@ -13,13 +13,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/agent"
-	"github.com/ihavespoons/zrok/internal/embedding"
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/finding/export"
-	"github.com/ihavespoons/zrok/internal/memory"
-	"github.com/ihavespoons/zrok/internal/project"
-	"github.com/ihavespoons/zrok/internal/semantic"
+	"github.com/ihavespoons/quokka/internal/agent"
+	"github.com/ihavespoons/quokka/internal/embedding"
+	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/ihavespoons/quokka/internal/finding/export"
+	"github.com/ihavespoons/quokka/internal/memory"
+	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/ihavespoons/quokka/internal/semantic"
 )
 
 //go:embed static/*

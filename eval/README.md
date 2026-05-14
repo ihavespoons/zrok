@@ -1,6 +1,6 @@
-# zrok Evaluation Framework
+# quokka Evaluation Framework
 
-Measures the consistency and accuracy of zrok code reviews by running evaluations against test applications with known vulnerabilities, then comparing findings to ground truth.
+Measures the consistency and accuracy of quokka code reviews by running evaluations against test applications with known vulnerabilities, then comparing findings to ground truth.
 
 ## Test Fixtures
 
@@ -26,7 +26,7 @@ on demand instead.
 
 ```bash
 # Prerequisites
-go build -o zrok .
+go build -o quokka .
 git submodule update --init  # Pulls OWASP Benchmark
 npm install -g opencode-ai@latest
 export OPENROUTER_API_KEY=...   # opencode reads this directly

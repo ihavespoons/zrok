@@ -7,7 +7,7 @@ import (
 )
 
 func TestDetectorDetectGo(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -71,7 +71,7 @@ require (
 }
 
 func TestDetectorDetectNode(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestDetectorDetectNode(t *testing.T) {
 }
 
 func TestDetectorDetectPython(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -187,7 +187,7 @@ sqlalchemy==2.0.0
 }
 
 func TestDetectorDetectDatabases(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -239,7 +239,7 @@ services:
 }
 
 func TestDetectorDetectInfrastructure(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestDetectorDetectInfrastructure(t *testing.T) {
 }
 
 func TestDetectorDetectSensitiveAreas(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -362,7 +362,7 @@ func TestDetectorDetectSensitiveAreas(t *testing.T) {
 }
 
 func TestDetectorEmptyProject(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}

@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/ihavespoons/quokka/internal/project"
 )
 
 func newTestStore(t *testing.T) (*Store, func()) {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "zrok-exc-*")
+	dir, err := os.MkdirTemp("", "quokka-exc-*")
 	if err != nil {
 		t.Fatalf("mkdtemp: %v", err)
 	}

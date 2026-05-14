@@ -26,14 +26,14 @@ prompt_template: |
   **Step 1 — read the work queue:**
 
   ```
-  zrok finding list --status open --json
+  quokka finding list --status open --json
   ```
 
   This returns every finding the analysis agents filed. Read all of them.
   Open the files referenced in `location.file` and verify each finding
   against the code.
 
-  **Step 2 — write your decisions to `.zrok/review/triage-plan.json`:**
+  **Step 2 — write your decisions to `.quokka/review/triage-plan.json`:**
 
   Exactly this JSON shape. Every open finding from step 1 must appear
   here with a status decision. The dispatcher will read this file when
@@ -72,13 +72,13 @@ prompt_template: |
   }
   ```
 
-  Write the file with `cat << 'EOF' > .zrok/review/triage-plan.json` or
+  Write the file with `cat << 'EOF' > .quokka/review/triage-plan.json` or
   whatever your runtime allows. The directory already exists.
 
   **Step 3 — write a validation_summary memory:**
 
   ```
-  zrok memory write validation_summary --type context --content "Triaged N findings: X confirmed, Y false-positive, Z duplicate. Notable patterns: ..."
+  quokka memory write validation_summary --type context --content "Triaged N findings: X confirmed, Y false-positive, Z duplicate. Notable patterns: ..."
   ```
 
   That's it. Exit. The dispatcher applies your plan.
@@ -105,8 +105,8 @@ prompt_template: |
 
   ## Anti-patterns (will produce a broken review)
 
-  - ❌ DO NOT call `zrok finding create` — you are not adding findings.
-  - ❌ DO NOT call `zrok finding update` — the dispatcher applies your
+  - ❌ DO NOT call `quokka finding create` — you are not adding findings.
+  - ❌ DO NOT call `quokka finding update` — the dispatcher applies your
     plan after you exit. Calling update yourself is duplicative and the
     CLI's `--created-by` allowlist will reject most attempts.
   - ❌ DO NOT skip findings. Every finding returned by step 1 must have
@@ -115,7 +115,7 @@ prompt_template: |
   - ❌ DO NOT write a "summary" finding describing the codebase. The
     overall summary belongs in the `validation_summary` memory.
   - ❌ DO NOT invent finding IDs. Use only the IDs returned by step 1's
-    `zrok finding list` call. IDs the dispatcher can't find are
+    `quokka finding list` call. IDs the dispatcher can't find are
     silently skipped (still better than fabricating updates).
 
   ## Memory System
@@ -123,9 +123,9 @@ prompt_template: |
   You have access to shared memories created by other agents. Read these to understand the codebase context before validating findings.
 
   ### Reading Memories
-  - `zrok memory list` - See all available memories
-  - `zrok memory read <name>` - Read a specific memory
-  - `zrok memory search "<query>"` - Search memory contents
+  - `quokka memory list` - See all available memories
+  - `quokka memory read <name>` - Read a specific memory
+  - `quokka memory search "<query>"` - Search memory contents
 
   ### Important Memories for Validation
   - **auth_patterns**: Understand auth implementation to validate security findings
@@ -134,7 +134,7 @@ prompt_template: |
   ### Creating Memories
   When you discover patterns during validation:
   ```bash
-  zrok memory write <name> --type <context|pattern|stack> --content "..."
+  quokka memory write <name> --type <context|pattern|stack> --content "..."
   ```
 
   Suggested memories to create:
@@ -193,7 +193,7 @@ prompt_template: |
 
   2. **Dead or unreachable code**
      - Feature flag is disabled, code path never executes
-     - Function is never called (check with `zrok symbols find` or `zrok search`)
+     - Function is never called (check with `quokka symbols find` or `quokka search`)
      - Test code or example code, not production
      - Deprecated code behind version checks
 
@@ -261,6 +261,6 @@ prompt_template: |
   All of the above (validation process, FP patterns, criteria, priority
   framework) describes the DECISIONS you make. The MECHANISM for
   applying those decisions is exactly the one in "Step 2" at the top:
-  write `.zrok/review/triage-plan.json` with one decision entry per
-  finding. No `zrok finding update` calls; the dispatcher applies your
+  write `.quokka/review/triage-plan.json` with one decision entry per
+  finding. No `quokka finding update` calls; the dispatcher applies your
   plan when you exit.

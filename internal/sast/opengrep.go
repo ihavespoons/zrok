@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/finding"
+	"github.com/ihavespoons/quokka/internal/finding"
 )
 
 // Scanner runs opengrep against a project and converts its SARIF output into
-// zrok findings. The scanner itself doesn't write to the store — callers
+// quokka findings. The scanner itself doesn't write to the store — callers
 // decide what to do with the results, which makes it easy to apply diff
 // scoping or dedup before persisting.
 type Scanner struct {
@@ -25,7 +25,7 @@ type Scanner struct {
 	Config string
 
 	// ExtraConfigs are additional --config arguments appended after Config.
-	// Used by cmd/sast.go to merge in project-local rules from .zrok/rules/
+	// Used by cmd/sast.go to merge in project-local rules from .quokka/rules/
 	// alongside the user's chosen ruleset, so org-specific rules apply
 	// automatically without users re-specifying them.
 	ExtraConfigs []string
@@ -65,7 +65,7 @@ func (s *Scanner) Scan(targets []string) ([]finding.Finding, error) {
 	}
 
 	// opengrep writes SARIF to a file, not stdout, so we use a tempfile.
-	tmp, err := os.CreateTemp("", "zrok-opengrep-*.sarif")
+	tmp, err := os.CreateTemp("", "quokka-opengrep-*.sarif")
 	if err != nil {
 		return nil, fmt.Errorf("sast: tempfile: %w", err)
 	}
@@ -144,7 +144,7 @@ func (s *Scanner) buildArgs(sarifOutPath string, targets []string) []string {
 	return args
 }
 
-// ParseSARIF converts an opengrep SARIF blob into zrok findings. Exposed so
+// ParseSARIF converts an opengrep SARIF blob into quokka findings. Exposed so
 // callers can drive opengrep separately (or feed in canned SARIF for tests).
 func ParseSARIF(data []byte) ([]finding.Finding, error) {
 	var log sarifLog

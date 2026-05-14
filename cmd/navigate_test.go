@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/zrok/internal/navigate"
+	"github.com/ihavespoons/quokka/internal/navigate"
 )
 
 // TestNormalizeListPathsRelativeInput verifies that when the user passes a
 // relative dir inside the project, output paths are normalized to be
 // relative to the project root.
 func TestNormalizeListPathsRelativeInput(t *testing.T) {
-	tmp, err := os.MkdirTemp("", "zrok-listpaths-*")
+	tmp, err := os.MkdirTemp("", "quokka-listpaths-*")
 	if err != nil {
 		t.Fatalf("temp: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestNormalizeListPathsRelativeInput(t *testing.T) {
 // absolute path inside the project is passed, output paths become
 // project-root-relative (not absolute).
 func TestNormalizeListPathsAbsoluteInputInsideProject(t *testing.T) {
-	tmp, err := os.MkdirTemp("", "zrok-listpaths-*")
+	tmp, err := os.MkdirTemp("", "quokka-listpaths-*")
 	if err != nil {
 		t.Fatalf("temp: %v", err)
 	}
@@ -90,13 +90,13 @@ func TestNormalizeListPathsAbsoluteInputInsideProject(t *testing.T) {
 // TestNormalizeListPathsOutsideProject verifies that when the listed dir is
 // outside the project root, paths are kept relative to the input dir.
 func TestNormalizeListPathsOutsideProject(t *testing.T) {
-	projRoot, err := os.MkdirTemp("", "zrok-listpaths-proj-*")
+	projRoot, err := os.MkdirTemp("", "quokka-listpaths-proj-*")
 	if err != nil {
 		t.Fatalf("temp: %v", err)
 	}
 	defer func() { _ = os.RemoveAll(projRoot) }()
 
-	outsideDir, err := os.MkdirTemp("", "zrok-listpaths-outside-*")
+	outsideDir, err := os.MkdirTemp("", "quokka-listpaths-outside-*")
 	if err != nil {
 		t.Fatalf("temp: %v", err)
 	}

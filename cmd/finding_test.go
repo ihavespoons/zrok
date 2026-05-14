@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/ihavespoons/quokka/internal/project"
 	"github.com/spf13/cobra"
 )
 
 func setupFindingTestProject(t *testing.T) (*project.Project, func()) {
 	t.Helper()
-	tmp, err := os.MkdirTemp("", "zrok-cmd-finding-*")
+	tmp, err := os.MkdirTemp("", "quokka-cmd-finding-*")
 	if err != nil {
 		t.Fatalf("temp dir: %v", err)
 	}
@@ -633,7 +633,7 @@ func applyTriageDecisionsForTest(t *testing.T, store *finding.Store, plan triage
 
 // TestEnforceCreatedByFallback covers the forgiving fallback that
 // closes the LLM-misattribution failure mode: when an agent fabricates
-// a wrong --created-by but the dispatcher set ZROK_AGENT_NAME to the
+// a wrong --created-by but the dispatcher set QUOKKA_AGENT_NAME to the
 // right value, we use env + warn rather than fail.
 func TestEnforceCreatedByFallback(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -688,7 +688,7 @@ func TestEnforceCreatedByFallback(t *testing.T) {
 	for _, c := range cases {
 		c := c
 		t.Run(c.name, func(t *testing.T) {
-			t.Setenv("ZROK_AGENT_NAME", c.envValue)
+			t.Setenv("QUOKKA_AGENT_NAME", c.envValue)
 			eff, reason, fellBack, envHint := enforceCreatedBy(p, c.explicitValue)
 			if eff != c.wantEffective {
 				t.Errorf("effective: got %q, want %q", eff, c.wantEffective)

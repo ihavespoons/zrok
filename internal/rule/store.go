@@ -8,16 +8,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/project"
 	"gopkg.in/yaml.v3"
 )
 
-// dirName is the on-disk subdirectory under .zrok/ holding rule files.
+// dirName is the on-disk subdirectory under .quokka/ holding rule files.
 const dirName = "rules"
 
-// metaSuffix is the file-extension marker that distinguishes zrok metadata
+// metaSuffix is the file-extension marker that distinguishes quokka metadata
 // sidecars from opengrep rule files in the same directory. Using a distinct
-// extension means `opengrep scan --config .zrok/rules` won't try to parse
+// extension means `opengrep scan --config .quokka/rules` won't try to parse
 // our metadata as rules.
 const metaSuffix = ".zmeta.yaml"
 
@@ -25,18 +25,18 @@ const metaSuffix = ".zmeta.yaml"
 // rules dir matching this (and not the metaSuffix) is treated as a rule.
 const ruleSuffix = ".yaml"
 
-// Store manages .zrok/rules/<slug>.yaml + <slug>.zmeta.yaml pairs.
+// Store manages .quokka/rules/<slug>.yaml + <slug>.zmeta.yaml pairs.
 type Store struct {
 	dir string
 }
 
-// NewStore constructs a Store rooted at the given project's .zrok/rules/.
+// NewStore constructs a Store rooted at the given project's .quokka/rules/.
 func NewStore(p *project.Project) *Store {
-	return &Store{dir: filepath.Join(p.GetZrokPath(), dirName)}
+	return &Store{dir: filepath.Join(p.GetQuokkaPath(), dirName)}
 }
 
 // Dir returns the on-disk directory holding rule files. Exposed because
-// `zrok sast --config <dir>` callers need it to point opengrep at the
+// `quokka sast --config <dir>` callers need it to point opengrep at the
 // merged rule path.
 func (s *Store) Dir() string { return s.dir }
 
@@ -179,7 +179,7 @@ func (s *Store) List() ([]Meta, error) {
 
 // Annotate updates only the judge-related fields on a rule's metadata.
 // The verdict can also flip Disabled on the rule itself (retire = disable);
-// because zrok doesn't directly edit the opengrep YAML to add a disabled
+// because quokka doesn't directly edit the opengrep YAML to add a disabled
 // field, we instead store it in metadata and apply it at scan time when
 // merging rules into the opengrep --config path.
 func (s *Store) Annotate(slug string, verdict Verdict, note string) error {
@@ -215,9 +215,9 @@ func (s *Store) EnabledRulePaths() ([]string, error) {
 }
 
 // ParseRuleIDs reads the rule file for a slug and returns every rule.id
-// declared inside. The internal IDs (e.g. "zrok-hand-built-sql") are what
+// declared inside. The internal IDs (e.g. "quokka-hand-built-sql") are what
 // opengrep emits as `ruleId` in SARIF results, so callers can map findings
-// back to the zrok rule slug that produced them.
+// back to the quokka rule slug that produced them.
 func (s *Store) ParseRuleIDs(slug string) ([]string, error) {
 	data, err := s.ReadRule(slug)
 	if err != nil {

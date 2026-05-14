@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/ihavespoons/quokka/internal/project"
 )
 
 func TestAnalyzeNext_RanksOpenHighSeverityFirst(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/project"
 )
 
 // ExtractionMethod specifies how to extract symbols
@@ -535,7 +535,7 @@ func (s *SymbolExtractor) resolvePath(path string) string {
 
 func (s *SymbolExtractor) shouldIgnore(name string) bool {
 	ignorePatterns := []string{
-		"node_modules", "vendor", ".git", ".zrok",
+		"node_modules", "vendor", ".git", ".quokka",
 		"__pycache__", "target", "dist", "build",
 	}
 	return slices.Contains(ignorePatterns, name)

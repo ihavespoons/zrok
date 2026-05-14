@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/project"
 	"gopkg.in/yaml.v3"
 )
 
@@ -103,7 +103,7 @@ func GetAgentsByVulnClass(vulnClass string) []AgentConfig {
 
 // SuggestAgents returns agent names that are applicable to the given project
 // classification. When p is non-nil, project-local agent YAMLs in
-// .zrok/agents/ shadow built-ins of the same name — so an override's
+// .quokka/agents/ shadow built-ins of the same name — so an override's
 // applicability rules (and any other field) win over the built-in. This is
 // what makes the override pattern coherent end-to-end: editing a local
 // security-agent.yaml to change applicability changes which PRs it runs on.

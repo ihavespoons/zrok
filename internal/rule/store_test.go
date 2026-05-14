@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/project"
 )
 
 func newTestStore(t *testing.T) (*Store, func()) {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "zrok-rule-*")
+	dir, err := os.MkdirTemp("", "quokka-rule-*")
 	if err != nil {
 		t.Fatalf("mkdtemp: %v", err)
 	}
@@ -24,7 +24,7 @@ func newTestStore(t *testing.T) (*Store, func()) {
 }
 
 const validRule = `rules:
-  - id: zrok-hand-built-sql
+  - id: quokka-hand-built-sql
     message: Hand-built SQL string — use parameterized queries.
     severity: ERROR
     languages: [python]
@@ -52,7 +52,7 @@ func TestStore_AddAndReadRule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadRule: %v", err)
 	}
-	if !strings.Contains(string(got), "zrok-hand-built-sql") {
+	if !strings.Contains(string(got), "quokka-hand-built-sql") {
 		t.Errorf("read content missing rule id, got: %s", got)
 	}
 	meta, err := s.ReadMeta("hand-built-sql")
@@ -229,11 +229,11 @@ func TestStore_EnabledRulePathsSkipsDisabled(t *testing.T) {
 }
 
 const multiRuleYAML = `rules:
-  - id: zrok-sql-concat
+  - id: quokka-sql-concat
     message: hand-built SQL
     severity: ERROR
     pattern: $DB.execute($X + $Y)
-  - id: zrok-fstring-sql
+  - id: quokka-fstring-sql
     message: f-string SQL
     severity: ERROR
     pattern: $DB.execute(f"$X")
@@ -249,8 +249,8 @@ func TestStore_ParseRuleIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseRuleIDs: %v", err)
 	}
-	if len(ids) != 2 || ids[0] != "zrok-sql-concat" || ids[1] != "zrok-fstring-sql" {
-		t.Errorf("expected [zrok-sql-concat zrok-fstring-sql], got %v", ids)
+	if len(ids) != 2 || ids[0] != "quokka-sql-concat" || ids[1] != "quokka-fstring-sql" {
+		t.Errorf("expected [quokka-sql-concat quokka-fstring-sql], got %v", ids)
 	}
 }
 
@@ -265,9 +265,9 @@ func TestStore_RuleIDToSlug(t *testing.T) {
 		t.Fatalf("RuleIDToSlug: %v", err)
 	}
 	cases := map[string]string{
-		"zrok-sql-concat":    "multi",
-		"zrok-fstring-sql":   "multi",
-		"zrok-hand-built-sql": "single",
+		"quokka-sql-concat":    "multi",
+		"quokka-fstring-sql":   "multi",
+		"quokka-hand-built-sql": "single",
 	}
 	for id, wantSlug := range cases {
 		if got := m[id]; got != wantSlug {

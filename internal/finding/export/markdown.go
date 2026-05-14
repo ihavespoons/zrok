@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/finding"
+	"github.com/ihavespoons/quokka/internal/finding"
 )
 
 // MarkdownExporter exports findings to Markdown format
@@ -18,7 +18,7 @@ type MarkdownExporter struct {
 // NewMarkdownExporter creates a new Markdown exporter
 func NewMarkdownExporter() *MarkdownExporter {
 	return &MarkdownExporter{
-		toolName:    "zrok",
+		toolName:    "quokka",
 		toolVersion: "1.0.0",
 	}
 }

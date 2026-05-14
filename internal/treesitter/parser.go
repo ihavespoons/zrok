@@ -14,7 +14,7 @@ import (
 // DefaultMaxFileSize is the default cap on source files passed to tree-sitter.
 // Files larger than this are skipped to avoid ballooning memory on
 // pathologically-large or generated/minified inputs. Override per-parser via
-// Parser.SetMaxFileSize, or globally via ZROK_TREESITTER_MAX_FILE_SIZE
+// Parser.SetMaxFileSize, or globally via QUOKKA_TREESITTER_MAX_FILE_SIZE
 // (bytes). 10 MB comfortably exceeds any reasonable hand-written source file.
 const DefaultMaxFileSize int64 = 10 * 1024 * 1024
 
@@ -46,10 +46,10 @@ func (p *Parser) SetMaxFileSize(n int64) {
 	p.maxFileSize = n
 }
 
-// getMaxFileSize reads ZROK_TREESITTER_MAX_FILE_SIZE (bytes) or falls back to
+// getMaxFileSize reads QUOKKA_TREESITTER_MAX_FILE_SIZE (bytes) or falls back to
 // DefaultMaxFileSize. Set to 0 or negative to disable the cap.
 func getMaxFileSize() int64 {
-	if v := os.Getenv("ZROK_TREESITTER_MAX_FILE_SIZE"); v != "" {
+	if v := os.Getenv("QUOKKA_TREESITTER_MAX_FILE_SIZE"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			return n
 		}

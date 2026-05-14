@@ -1,5 +1,5 @@
 // Package runner implements the deterministic dispatcher consumed by
-// `zrok review pr run`. It takes a DispatchPlan (emitted by `zrok review pr
+// `quokka review pr run`. It takes a DispatchPlan (emitted by `quokka review pr
 // setup`) and shells out to opencode or claude to invoke each subagent.
 // Replaces the orchestrator-LLM pattern for callers that want predictable,
 // model-agnostic dispatch. The orchestrator-LLM pattern remains supported
@@ -7,7 +7,7 @@
 package runner
 
 // DispatchPlan is the static execution schedule consumed by
-// `zrok review pr run`. Walked phase-by-phase, top to bottom.
+// `quokka review pr run`. Walked phase-by-phase, top to bottom.
 type DispatchPlan struct {
 	Profile string          `json:"profile"`
 	Phases  []DispatchPhase `json:"phases"`

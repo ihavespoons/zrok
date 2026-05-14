@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/agent"
-	"github.com/ihavespoons/zrok/internal/exception"
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/finding/export"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/agent"
+	"github.com/ihavespoons/quokka/internal/exception"
+	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/ihavespoons/quokka/internal/finding/export"
+	"github.com/ihavespoons/quokka/internal/project"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -37,11 +37,11 @@ var findingCreateCmd = &cobra.Command{
 
 Three input modes are supported:
 
-  1. YAML file:    zrok finding create -f finding.yaml
-  2. Stdin:        zrok finding create -          (also: -f -)
+  1. YAML file:    quokka finding create -f finding.yaml
+  2. Stdin:        quokka finding create -          (also: -f -)
   3. Flags (complete example — copy and edit values):
 
-       zrok finding create \
+       quokka finding create \
          --title "SQL injection in user lookup" \
          --severity high \
          --confidence high \
@@ -155,13 +155,13 @@ Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
 		}
 
 		// Validate --created-by against the agent registry. The CLI
-		// flag-mode path is reserved for LLM agents (zrok sast uses
+		// flag-mode path is reserved for LLM agents (quokka sast uses
 		// store.Create directly, bypassing the CLI), so the bar is
 		// positive identification — accepted values must be either:
-		//   - a registered agent name (built-in or .zrok/agents override), or
+		//   - a registered agent name (built-in or .quokka/agents override), or
 		//   - a `human:<id>` / `bot:<id>` prefixed identity.
 		//
-		// When the explicit value is rejected BUT ZROK_AGENT_NAME env is
+		// When the explicit value is rejected BUT QUOKKA_AGENT_NAME env is
 		// set to a valid agent (dispatcher injects this per-subprocess),
 		// we forgivingly fall back to env + warn rather than fail. This
 		// closes the OWASP-eval failure mode where qwen3-coder-plus
@@ -172,13 +172,13 @@ Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
 		eff, rejectReason, fellBack, envHint := enforceCreatedBy(p, f.CreatedBy)
 		if fellBack {
 			fmt.Fprintf(os.Stderr,
-				"warning: --created-by %q rejected (%s); using ZROK_AGENT_NAME=%q from dispatcher instead.\n",
+				"warning: --created-by %q rejected (%s); using QUOKKA_AGENT_NAME=%q from dispatcher instead.\n",
 				f.CreatedBy, rejectReason, envHint)
 			f.CreatedBy = eff
 		} else if rejectReason != "" {
 			var hint string
 			if envHint != "" {
-				hint = fmt.Sprintf(" (ZROK_AGENT_NAME=%q is set but is also not a registered agent.)", envHint)
+				hint = fmt.Sprintf(" (QUOKKA_AGENT_NAME=%q is set but is also not a registered agent.)", envHint)
 			} else {
 				hint = fmt.Sprintf(" Use the agent's name from its system prompt frontmatter (e.g. injection-agent), or `human:%s`.", os.Getenv("USER"))
 			}
@@ -279,13 +279,13 @@ func printSameFileHint(store *finding.Store, f *finding.Finding, w io.Writer) {
 	exampleID := others[0].ID
 	_, _ = fmt.Fprintf(w, "Consider whether the new finding adds new information or should be a\n")
 	_, _ = fmt.Fprintf(w, "--note on the existing finding via:\n")
-	_, _ = fmt.Fprintf(w, "  zrok finding update %s --note \"<your perspective>\"\n", exampleID)
+	_, _ = fmt.Fprintf(w, "  quokka finding update %s --note \"<your perspective>\"\n", exampleID)
 }
 
 // enforceCreatedBy validates an explicit --created-by value and decides
 // whether to:
 //   - accept it (rejectReason="")
-//   - swap it for the env-default ZROK_AGENT_NAME when the explicit value
+//   - swap it for the env-default QUOKKA_AGENT_NAME when the explicit value
 //     is invalid but env names a valid agent (fellBack=true; caller
 //     should warn but proceed)
 //   - reject outright (rejectReason set, fellBack=false)
@@ -297,10 +297,10 @@ func printSameFileHint(store *finding.Store, f *finding.Finding, w io.Writer) {
 // failure mode: LLM agents reliably fabricate wrong creator strings
 // (opencode, opencode-security-agent, opengrep, security-scanner) and
 // each iteration finds a new evasion. The dispatcher always knows the
-// right value via ZROK_AGENT_NAME; preferring it over the model's
+// right value via QUOKKA_AGENT_NAME; preferring it over the model's
 // guess makes the harness self-correcting.
 func enforceCreatedBy(p *project.Project, value string) (effective, rejectReason string, fellBack bool, envHint string) {
-	envHint = os.Getenv("ZROK_AGENT_NAME")
+	envHint = os.Getenv("QUOKKA_AGENT_NAME")
 	reason := rejectInvalidCreatedBy(p, value)
 	if reason == "" {
 		return value, "", false, envHint
@@ -315,7 +315,7 @@ func enforceCreatedBy(p *project.Project, value string) (effective, rejectReason
 
 // rejectInvalidCreatedBy returns "" if the value is an acceptable
 // --created-by, or a reason string if it should be rejected. The CLI
-// flag-mode path is for LLM agents (the `zrok sast` programmatic path
+// flag-mode path is for LLM agents (the `quokka sast` programmatic path
 // uses store.Create directly), so the bar is positive identification:
 // the value must be a registered agent name or a `human:`/`bot:`
 // prefixed identity. Tool names like `opengrep` are NOT acceptable here
@@ -364,7 +364,7 @@ func rejectInvalidCreatedBy(p *project.Project, value string) string {
 	}
 
 	// Registry check: must be a known agent (built-in or project-local
-	// override in .zrok/agents/). The ConfigManager already walks both.
+	// override in .quokka/agents/). The ConfigManager already walks both.
 	mgr := agent.NewConfigManager(p, "")
 	if _, err := mgr.Get(registryName); err == nil {
 		return "" // accepted: registered agent
@@ -372,7 +372,7 @@ func rejectInvalidCreatedBy(p *project.Project, value string) string {
 
 	// Not in registry: reject. Surface a hint about what would be
 	// accepted (registered name or human/bot prefix).
-	return "not a registered agent (no `" + registryName + "` in built-in registry or `.zrok/agents/`)"
+	return "not a registered agent (no `" + registryName + "` in built-in registry or `.quokka/agents/`)"
 }
 
 // isRuntimeOrProvider returns true when v matches a known LLM runtime,
@@ -440,7 +440,7 @@ func validateOwnsCWEs(p *project.Project, f *finding.Finding, strict bool) error
 // override surface small and well-defined.
 //
 // When --created-by is NOT passed AND f.CreatedBy is empty (after YAML
-// parse), the ZROK_AGENT_NAME env var is consulted — the dispatcher sets
+// parse), the QUOKKA_AGENT_NAME env var is consulted — the dispatcher sets
 // this per per-agent subprocess (see internal/runner/runner.go). This
 // makes attribution automatic for any CLI call from a dispatched agent
 // and eliminates the entire "LLM forgets/guesses its own name" failure
@@ -452,7 +452,7 @@ func applyFlagOverrides(cmd *cobra.Command, f *finding.Finding) {
 		}
 	}
 	if f.CreatedBy == "" {
-		if env := os.Getenv("ZROK_AGENT_NAME"); env != "" {
+		if env := os.Getenv("QUOKKA_AGENT_NAME"); env != "" {
 			f.CreatedBy = env
 		}
 	}
@@ -469,12 +469,12 @@ func buildFindingFromFlags(cmd *cobra.Command, title string) (finding.Finding, e
 	confidence, _ := cmd.Flags().GetString("confidence")
 	tags, _ := cmd.Flags().GetStringSlice("tag")
 	createdBy, _ := cmd.Flags().GetString("created-by")
-	// Fall back to ZROK_AGENT_NAME env when --created-by wasn't passed.
+	// Fall back to QUOKKA_AGENT_NAME env when --created-by wasn't passed.
 	// Set by the dispatcher per per-agent subprocess so attribution is
 	// automatic for any agent CLI call without the LLM having to echo
 	// its own name correctly.
 	if createdBy == "" {
-		createdBy = os.Getenv("ZROK_AGENT_NAME")
+		createdBy = os.Getenv("QUOKKA_AGENT_NAME")
 	}
 
 	f := finding.Finding{
@@ -569,11 +569,11 @@ to record the canonical finding ID.`,
 }
 
 // triagePlan is the on-disk shape produced by a triage agent and
-// consumed by `zrok finding triage`. Captures status / severity /
+// consumed by `quokka finding triage`. Captures status / severity /
 // duplicate-of / note overrides in one shot so the dispatcher can apply
 // them deterministically after the agent exits.
 //
-// Why we don't ask the agent to call `zrok finding update` per finding:
+// Why we don't ask the agent to call `quokka finding update` per finding:
 // LLM compliance with multi-call update flows is unreliable
 // (validation-agent updated 0 of 82 findings across OWASP v5-v8). LLMs
 // are much better at emitting structured output than at executing
@@ -598,7 +598,7 @@ type triageDecision struct {
 }
 
 // findingTriageCmd applies a JSON triage plan to existing findings.
-// Companion to `zrok finding update` (single-finding flags) — this is
+// Companion to `quokka finding update` (single-finding flags) — this is
 // the batch path used by validation-agent / sast-triage-agent.
 var findingTriageCmd = &cobra.Command{
 	Use:   "triage",
@@ -607,7 +607,7 @@ var findingTriageCmd = &cobra.Command{
 updates to the named findings. Designed as the deterministic counterpart to
 the LLM-as-updater pattern: a triage agent emits JSON, this command applies.
 
-Plan file shape (` + "`zrok finding triage --plan path/to/plan.json`" + `):
+Plan file shape (` + "`quokka finding triage --plan path/to/plan.json`" + `):
 
   {
     "version": 1,
@@ -626,7 +626,7 @@ Plan file shape (` + "`zrok finding triage --plan path/to/plan.json`" + `):
     ]
   }
 
-Default plan path: .zrok/review/triage-plan.json (where the dispatcher
+Default plan path: .quokka/review/triage-plan.json (where the dispatcher
 expects validation-agent and sast-triage-agent to write).
 
 Each decision is applied independently:
@@ -645,7 +645,7 @@ problem worth surfacing).`,
 
 		planPath, _ := cmd.Flags().GetString("plan")
 		if planPath == "" {
-			planPath = filepath.Join(p.GetZrokPath(), "review", "triage-plan.json")
+			planPath = filepath.Join(p.GetQuokkaPath(), "review", "triage-plan.json")
 		}
 		authorOverride, _ := cmd.Flags().GetString("author")
 
@@ -815,7 +815,7 @@ var findingListCmd = &cobra.Command{
 			result.Total = len(result.Findings)
 		}
 
-		// Apply suppression filter from .zrok/exceptions.yaml. By default
+		// Apply suppression filter from .quokka/exceptions.yaml. By default
 		// suppressed findings are hidden; --include-suppressed surfaces them
 		// with a SUPPRESSED tag so reviewers can see what was filtered.
 		includeSuppressed, _ := cmd.Flags().GetBool("include-suppressed")
@@ -1258,7 +1258,7 @@ func init() {
 	findingCmd.AddCommand(findingCreateCmd)
 	findingCmd.AddCommand(findingUpdateCmd)
 	findingCmd.AddCommand(findingTriageCmd)
-	findingTriageCmd.Flags().String("plan", "", "Path to triage plan JSON (default: .zrok/review/triage-plan.json)")
+	findingTriageCmd.Flags().String("plan", "", "Path to triage plan JSON (default: .quokka/review/triage-plan.json)")
 	findingTriageCmd.Flags().String("author", "", "Override the plan's `author` field for note attribution")
 	findingCmd.AddCommand(findingListCmd)
 	findingCmd.AddCommand(findingShowCmd)
@@ -1297,7 +1297,7 @@ func init() {
 	findingListCmd.Flags().String("file", "", "Filter by location file (exact match against finding's location.file)")
 	findingListCmd.Flags().String("diff", "", "Filter to findings in files changed since base ref (e.g., main)")
 	findingListCmd.Flags().String("created-by", "", "Filter by creator (e.g., opengrep, security-agent). Matches finding.created_by exactly.")
-	findingListCmd.Flags().Bool("include-suppressed", false, "Show findings that would be filtered by .zrok/exceptions.yaml")
+	findingListCmd.Flags().Bool("include-suppressed", false, "Show findings that would be filtered by .quokka/exceptions.yaml")
 
 	findingExportCmd.Flags().StringP("format", "f", "json", "Export format (sarif, json, md, html, csv)")
 	findingExportCmd.Flags().StringP("output", "o", "", "Output file (default: stdout)")

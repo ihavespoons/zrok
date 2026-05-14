@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/agent"
-	"github.com/ihavespoons/zrok/internal/memory"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/agent"
+	"github.com/ihavespoons/quokka/internal/memory"
+	"github.com/ihavespoons/quokka/internal/project"
 )
 
 // HypothesisOptions configures hypothesis generation.
@@ -167,7 +167,7 @@ func AnalyzeHypothesis(p *project.Project, opts HypothesisOptions) (*HypothesisR
 		}
 
 		rationale := buildRationale(entry, report.TechHints, evidence)
-		test := fmt.Sprintf(`zrok think dataflow --source "request\\.(form|args|cookies)\\.get" --sink "%s"`, entry.SinkRE)
+		test := fmt.Sprintf(`quokka think dataflow --source "request\\.(form|args|cookies)\\.get" --sink "%s"`, entry.SinkRE)
 
 		// Dedup evidence.
 		evidence = dedup(evidence)

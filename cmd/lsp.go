@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/navigate/lsp"
+	"github.com/ihavespoons/quokka/internal/navigate/lsp"
 	"github.com/spf13/cobra"
 )
 
@@ -87,8 +87,8 @@ var lspCmd = &cobra.Command{
 	Long: `Manage Language Server Protocol (LSP) servers for symbol extraction.
 
 LSP servers provide accurate code analysis for the 'symbols' command.
-Use 'zrok lsp status' to see which servers are installed.
-Use 'zrok lsp install <language>' to install a server.`,
+Use 'quokka lsp status' to see which servers are installed.
+Use 'quokka lsp install <language>' to install a server.`,
 }
 
 var lspStatusCmd = &cobra.Command{
@@ -137,8 +137,8 @@ var lspStatusCmd = &cobra.Command{
 		fmt.Printf("Installed: %d/%d servers\n", installed, len(seen))
 
 		if installed < len(seen) {
-			fmt.Println("\nRun 'zrok lsp install <language>' to install a server.")
-			fmt.Println("Run 'zrok lsp install --all' to install all servers.")
+			fmt.Println("\nRun 'quokka lsp install <language>' to install a server.")
+			fmt.Println("Run 'quokka lsp install --all' to install all servers.")
 		}
 	},
 }
@@ -184,10 +184,10 @@ var lspInstallCmd = &cobra.Command{
 	Long: `Install an LSP server for symbol extraction.
 
 Examples:
-  zrok lsp install go
-  zrok lsp install python
-  zrok lsp install typescript
-  zrok lsp install --all`,
+  quokka lsp install go
+  quokka lsp install python
+  quokka lsp install typescript
+  quokka lsp install --all`,
 	Run: func(cmd *cobra.Command, args []string) {
 		all, _ := cmd.Flags().GetBool("all")
 		dryRun, _ := cmd.Flags().GetBool("dry-run")

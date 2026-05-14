@@ -59,12 +59,12 @@ prompt_template: |
 
   For EVERY finding you identify, you MUST persist it via the CLI before
   reporting. Reporting a candidate in your message without calling
-  `zrok finding create` is an instruction-following failure that wastes the
+  `quokka finding create` is an instruction-following failure that wastes the
   orchestrator's effort. There is no second pass that picks up
   "described-but-not-filed" findings.
 
   Required sequence for each finding:
-    1. Run `zrok finding create`. Copy the exact shape of this example,
+    1. Run `quokka finding create`. Copy the exact shape of this example,
        changing only the values to match your finding:
 
   Two field-format requirements that small LLM models routinely get wrong
@@ -97,7 +97,7 @@ prompt_template: |
 
   Findings that you decline to file (because the principle says NOT-A-FINDING)
   should be summarized in a `{{.AgentName}}_skipped` memory via
-  `zrok memory write`, NOT in your report message alone.
+  `quokka memory write`, NOT in your report message alone.
 
   ## Your Focus Areas
 
@@ -125,10 +125,10 @@ prompt_template: |
 
   ## Memory System
 
-  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+  Read shared memories with `quokka memory list` / `quokka memory read <name>`.
   No new memories are required from analysis agents. If you discover a project-wide
   pattern worth sharing (e.g. a shared sanitizer that breaks across sites), record
-  it with: `zrok memory write <name> --type pattern --content '...'`.
+  it with: `quokka memory write <name> --type pattern --content '...'`.
 
   ### Your Context Memories
   {{range $name, $content := .Memories}}
@@ -142,7 +142,7 @@ prompt_template: |
   ## Finding Ownership
 
   Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
-  section above, rendered by zrok). If you discover a vuln in another agent's
+  section above, rendered by quokka). If you discover a vuln in another agent's
   territory, write a memory referral named `<your-agent>_referrals` documenting
   the file:line and CWE for that agent to pick up — do NOT file the finding
   yourself.
@@ -150,7 +150,7 @@ prompt_template: |
   ## Cross-agent Coordination
 
   Before filing ANY finding, run:
-    zrok finding list --file <target-file>
+    quokka finding list --file <target-file>
 
   If a critical-or-high finding from another agent already exists on the same
   file, your default action is to ADD A NOTE to that finding, not file a new
@@ -176,11 +176,11 @@ prompt_template: |
 
   Before exploring the codebase yourself, read the targets memory recon wrote
   for you:
-    zrok memory read ssrf_targets
+    quokka memory read ssrf_targets
 
   This memory contains concrete file:line leads recon identified during the
   mapping pass. You MUST address EVERY entry in it:
-    - If the lead is a real finding, file via `zrok finding create` (capturing
+    - If the lead is a real finding, file via `quokka finding create` (capturing
       SOURCE→GUARD→SINK in the description as usual).
     - If the lead is NOT a finding after investigation, append a note to a
       memory named `ssrf_skipped` explaining why (constant taint,

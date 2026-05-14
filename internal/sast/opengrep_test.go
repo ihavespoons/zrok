@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/zrok/internal/finding"
+	"github.com/ihavespoons/quokka/internal/finding"
 )
 
 // sampleSARIF mirrors what opengrep actually emits in production: the rule's
@@ -287,7 +287,7 @@ func TestScanner_RequiresConfig(t *testing.T) {
 func TestRelativizePath(t *testing.T) {
 	// Use a real tmpdir so the symlink behavior on macOS exercises the
 	// EvalSymlinks branch.
-	root, err := os.MkdirTemp("", "zrok-relpath-")
+	root, err := os.MkdirTemp("", "quokka-relpath-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +340,7 @@ func TestScanner_MissingBinaryGivesActionableError(t *testing.T) {
 func TestScanner_BuildArgsMergesExtraConfigs(t *testing.T) {
 	s := &Scanner{
 		Config:       "p/security",
-		ExtraConfigs: []string{"/proj/.zrok/rules/foo.yaml", "/proj/.zrok/rules/bar.yaml"},
+		ExtraConfigs: []string{"/proj/.quokka/rules/foo.yaml", "/proj/.quokka/rules/bar.yaml"},
 	}
 	args := s.buildArgs("/tmp/out.sarif", []string{"/proj/app.py"})
 	// Each --config appears with its value immediately after; we count them
@@ -351,7 +351,7 @@ func TestScanner_BuildArgsMergesExtraConfigs(t *testing.T) {
 			configValues = append(configValues, args[i+1])
 		}
 	}
-	want := []string{"p/security", "/proj/.zrok/rules/foo.yaml", "/proj/.zrok/rules/bar.yaml"}
+	want := []string{"p/security", "/proj/.quokka/rules/foo.yaml", "/proj/.quokka/rules/bar.yaml"}
 	if len(configValues) != len(want) {
 		t.Fatalf("got %d --config values, want %d: %v", len(configValues), len(want), configValues)
 	}

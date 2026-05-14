@@ -1,5 +1,5 @@
-# Dogfood: review every PR to zrok using zrok itself, via the
-# diffsec/zrok-review-action composite action. The action builds zrok from
+# Dogfood: review every PR to quokka using quokka itself, via the
+# diffsec/quokka-review-action composite action. The action builds quokka from
 # the PR's own branch (head_ref) — so if the PR breaks the review
 # pipeline, it breaks its own review and that signal surfaces immediately.
 #
@@ -10,7 +10,7 @@
 # Fork PRs are skipped — secrets aren't exposed to pull_request runs from
 # forks anyway, and we'd rather skip-with-warning than fail noisily.
 
-name: zrok security review
+name: quokka security review
 
 on:
   pull_request:
@@ -21,7 +21,7 @@ on:
 # dev — without this, every push piles a fresh run on top while the old
 # one keeps burning the budget.
 concurrency:
-  group: zrok-review-${{ github.event.pull_request.number || github.ref }}
+  group: quokka-review-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -66,7 +66,7 @@ jobs:
           }
           JSON
 
-      - uses: diffsec/zrok-review-action@main
+      - uses: diffsec/quokka-review-action@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # OpenRouter is a BUILT-IN provider in OpenCode (it uses the
@@ -79,11 +79,11 @@ jobs:
           opencode-env: |
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
           model: openrouter/qwen/qwen3.6-flash
-          # Dogfood: review with the PR's own zrok code. If a PR breaks
+          # Dogfood: review with the PR's own quokka code. If a PR breaks
           # the review pipeline, the review breaks visibly, which is the
           # signal we want.
-          zrok-ref: ${{ github.head_ref }}
-          # zrok is a Go codebase, so point opengrep at the go-specific
+          quokka-ref: ${{ github.head_ref }}
+          # quokka is a Go codebase, so point opengrep at the go-specific
           # rule pack rather than the default "security" tree (which is
           # mostly Python). The action's Scanner tolerates partial-config
           # exits and emits a warning rather than failing the run.

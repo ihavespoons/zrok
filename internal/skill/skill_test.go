@@ -30,7 +30,7 @@ func TestInstall(t *testing.T) {
 		t.Error("expected Installed to be true")
 	}
 
-	expectedPath := filepath.Join(tmpHome, ".claude", "skills", "zrok-code-review", "SKILL.md")
+	expectedPath := filepath.Join(tmpHome, ".claude", "skills", "quokka-code-review", "SKILL.md")
 	if result.Path != expectedPath {
 		t.Errorf("expected path %s, got %s", expectedPath, result.Path)
 	}
@@ -49,7 +49,7 @@ func TestInstallOverwrite(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	skillPath := filepath.Join(tmpHome, ".claude", "skills", "zrok-code-review", "SKILL.md")
+	skillPath := filepath.Join(tmpHome, ".claude", "skills", "quokka-code-review", "SKILL.md")
 	if err := os.MkdirAll(filepath.Dir(skillPath), 0o755); err != nil {
 		t.Fatal(err)
 	}

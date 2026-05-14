@@ -7,9 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/ihavespoons/zrok/internal/embedding"
-	"github.com/ihavespoons/zrok/internal/project"
-	"github.com/ihavespoons/zrok/internal/semantic"
+	"github.com/ihavespoons/quokka/internal/embedding"
+	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/ihavespoons/quokka/internal/semantic"
 	"github.com/spf13/cobra"
 )
 
@@ -107,7 +107,7 @@ Available providers:
 			fmt.Printf("Semantic indexing enabled\n")
 			fmt.Printf("  Provider: %s\n", provider)
 			fmt.Printf("  Model: %s\n", embConfig.Model)
-			fmt.Println("\nRun 'zrok index build' to build the index")
+			fmt.Println("\nRun 'quokka index build' to build the index")
 		}
 	},
 }
@@ -154,7 +154,7 @@ var indexBuildCmd = &cobra.Command{
 		}
 
 		if !p.Config.Index.Enabled {
-			exitError("semantic indexing is not enabled. Run 'zrok index enable' first")
+			exitError("semantic indexing is not enabled. Run 'quokka index enable' first")
 		}
 
 		force, _ := cmd.Flags().GetBool("force")
@@ -236,7 +236,7 @@ var indexUpdateCmd = &cobra.Command{
 		}
 
 		if !p.Config.Index.Enabled {
-			exitError("semantic indexing is not enabled. Run 'zrok index enable' first")
+			exitError("semantic indexing is not enabled. Run 'quokka index enable' first")
 		}
 
 		indexer, err := createIndexer(p)
@@ -300,7 +300,7 @@ var indexStatusCmd = &cobra.Command{
 				}
 			} else {
 				fmt.Println("Semantic indexing is not enabled")
-				fmt.Println("Run 'zrok index enable' to enable it")
+				fmt.Println("Run 'quokka index enable' to enable it")
 			}
 			return
 		}
@@ -367,7 +367,7 @@ var indexWatchCmd = &cobra.Command{
 		}
 
 		if !p.Config.Index.Enabled {
-			exitError("semantic indexing is not enabled. Run 'zrok index enable' first")
+			exitError("semantic indexing is not enabled. Run 'quokka index enable' first")
 		}
 
 		indexer, err := createIndexer(p)

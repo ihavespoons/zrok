@@ -55,4 +55,4 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: go build -o zrok-${{ matrix.goos }}-${{ matrix.goarch }} .
+        run: go build -o quokka-${{ matrix.goos }}-${{ matrix.goarch }} .

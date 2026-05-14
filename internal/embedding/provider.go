@@ -173,8 +173,8 @@ func ValidateConfig(config *Config) error {
 		}
 	}
 
-	// Allow env var override for batch size (ZROK_PROVIDER_BATCH_SIZE)
-	if envVal := os.Getenv("ZROK_PROVIDER_BATCH_SIZE"); envVal != "" {
+	// Allow env var override for batch size (QUOKKA_PROVIDER_BATCH_SIZE)
+	if envVal := os.Getenv("QUOKKA_PROVIDER_BATCH_SIZE"); envVal != "" {
 		if size, err := strconv.Atoi(envVal); err == nil && size > 0 {
 			config.BatchSize = size
 		}

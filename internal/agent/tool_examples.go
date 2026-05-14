@@ -6,7 +6,7 @@ import "strings"
 //
 // Why this file exists: weaker / cheaper LLM models reliably copy concrete
 // command examples but routinely hallucinate field names, mis-order flags, or
-// omit required arguments when given only prose like "call zrok finding create
+// omit required arguments when given only prose like "call quokka finding create
 // with all required fields". Centralising one canonical example per command
 // keeps the orchestrator prompt, subagent prompts, and SKILL.md aligned and
 // gives small models a copy-paste target.
@@ -29,7 +29,7 @@ func agentNameOrPlaceholder(agentName string) string {
 }
 
 // FindingCreateExample returns a complete shell invocation of
-// `zrok finding create` in flag mode with every required field populated.
+// `quokka finding create` in flag mode with every required field populated.
 // Pass agentName="" when rendering for prompts that aren't scoped to a
 // specific agent (orchestrator, SKILL.md).
 //
@@ -43,7 +43,7 @@ func agentNameOrPlaceholder(agentName string) string {
 func FindingCreateExample(agentName string) string {
 	name := agentNameOrPlaceholder(agentName)
 	return strings.TrimSpace(`
-zrok finding create \
+quokka finding create \
   --title "SQL injection in user lookup" \
   --severity high \
   --confidence high \
@@ -60,7 +60,7 @@ zrok finding create \
 }
 
 // FindingCreateYAMLExample returns a YAML body suitable for piping into
-// `zrok finding create -` (stdin mode) or writing to a file.
+// `quokka finding create -` (stdin mode) or writing to a file.
 //
 // The trailing `#` comment lines are YAML comments (same syntax as shell)
 // reinforcing the two field-format rules that the flag-mode example calls
@@ -81,30 +81,30 @@ tags:
 `)
 }
 
-// FindingListExample returns the common usage of `zrok finding list` agents
+// FindingListExample returns the common usage of `quokka finding list` agents
 // use to verify their own filings.
 func FindingListExample(agentName string) string {
 	name := agentNameOrPlaceholder(agentName)
-	return "zrok finding list --created-by " + name + " --json"
+	return "quokka finding list --created-by " + name + " --json"
 }
 
-// FindingUpdateNoteExample returns an invocation of `zrok finding update`
+// FindingUpdateNoteExample returns an invocation of `quokka finding update`
 // adding a cross-agent note to an existing finding.
 func FindingUpdateNoteExample(agentName string) string {
 	name := agentNameOrPlaceholder(agentName)
 	return strings.TrimSpace(`
-zrok finding update FIND-001 \
+quokka finding update FIND-001 \
   --note "Same file also has an auth bypass at line 87 — see FIND-002." \
   --note-author ` + name + `
 `)
 }
 
-// RuleAddExample returns an invocation of `zrok rule add` reading an
+// RuleAddExample returns an invocation of `quokka rule add` reading an
 // opengrep YAML rule from stdin.
 func RuleAddExample(agentName string) string {
 	name := agentNameOrPlaceholder(agentName)
 	return strings.TrimSpace(`
-cat <<'EOF' | zrok rule add no-shell-true \
+cat <<'EOF' | quokka rule add no-shell-true \
   --created-by agent:` + name + ` \
   --reasoning "subprocess.run with shell=True keeps causing CWE-78 findings; codify a pattern."
 rules:
@@ -117,12 +117,12 @@ EOF
 `)
 }
 
-// ExceptionAddFingerprintExample returns a `zrok exception add` invocation
+// ExceptionAddFingerprintExample returns a `quokka exception add` invocation
 // suppressing a single finding by its stable fingerprint.
 func ExceptionAddFingerprintExample(agentName string) string {
 	name := agentNameOrPlaceholder(agentName)
 	return strings.TrimSpace(`
-zrok exception add \
+quokka exception add \
   --fingerprint a1b2c3d4e5f6 \
   --reason "Test fixture intentionally vulnerable for the eval harness." \
   --expires 2026-12-31 \
@@ -130,12 +130,12 @@ zrok exception add \
 `)
 }
 
-// ExceptionAddPathGlobExample returns a `zrok exception add` invocation
+// ExceptionAddPathGlobExample returns a `quokka exception add` invocation
 // suppressing every finding of a CWE under a path glob.
 func ExceptionAddPathGlobExample(agentName string) string {
 	name := agentNameOrPlaceholder(agentName)
 	return strings.TrimSpace(`
-zrok exception add \
+quokka exception add \
   --path-glob "tests/**/*.py" \
   --cwe CWE-89 \
   --reason "Test fixtures contain intentional SQLi for repro; not shipped." \
@@ -154,7 +154,7 @@ func TaskToolExample() string {
 Task({
   "subagent_type": "injection-agent",
   "description": "Review user-input flow",
-  "prompt": "Audit src/api/users.py for SQL injection in the user-lookup path. Trace the request -> query construction -> cursor.execute call. File findings via zrok finding create."
+  "prompt": "Audit src/api/users.py for SQL injection in the user-lookup path. Trace the request -> query construction -> cursor.execute call. File findings via quokka finding create."
 })
 `)
 }

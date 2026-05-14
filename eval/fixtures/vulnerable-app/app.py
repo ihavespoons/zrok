@@ -1,5 +1,5 @@
 """
-Deliberately vulnerable Flask application for zrok evaluation.
+Deliberately vulnerable Flask application for quokka evaluation.
 DO NOT deploy this application - it contains intentional security vulnerabilities.
 """
 import os

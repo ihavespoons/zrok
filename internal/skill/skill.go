@@ -19,14 +19,14 @@ type InstallResult struct {
 	Message   string `json:"message"`
 }
 
-// Install writes the embedded code-review skill to ~/.claude/skills/zrok-code-review/SKILL.md.
+// Install writes the embedded code-review skill to ~/.claude/skills/quokka-code-review/SKILL.md.
 func Install() (*InstallResult, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	skillDir := filepath.Join(homeDir, ".claude", "skills", "zrok-code-review")
+	skillDir := filepath.Join(homeDir, ".claude", "skills", "quokka-code-review")
 	skillPath := filepath.Join(skillDir, "SKILL.md")
 
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {

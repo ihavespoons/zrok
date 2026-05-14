@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/navigate"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/ihavespoons/quokka/internal/navigate"
+	"github.com/ihavespoons/quokka/internal/project"
 )
 
 // DataflowOptions configures dataflow analysis.
