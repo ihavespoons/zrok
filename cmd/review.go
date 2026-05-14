@@ -682,11 +682,22 @@ func prModeReconScopingOverride(changedFiles []string) string {
 }
 
 // renderOpenCodeSubagent wraps a rendered zrok agent prompt as an OpenCode
-// subagent file. Subagents are invoked by the zrok-orchestrator primary agent,
-// either automatically based on their description or via @-mention. They can
-// use the zrok CLI and read-only navigation tools but are denied edits and
-// network fetches so adversarial content in the reviewed code can't trick
-// them into modifying it.
+// agent file. Despite the name, this is now materialized with
+// `mode: primary` because the deterministic dispatcher invokes each
+// agent directly via `opencode run --agent X` — and opencode 1.14.48
+// REFUSES to invoke `mode: subagent` agents that way, silently falling
+// back to the default "build" agent with a warning. Confirmed in v13
+// run logs: `agent "security-agent" is a subagent, not a primary
+// agent. Falling back to default agent`. The fallback loses all the
+// specialized agent context and the review becomes a generic chat.
+//
+// Caller-side note for the orchestrator-LLM mode (zrok-orchestrator
+// Task-dispatching these): opencode's Task tool conventionally
+// targets subagents, but primary agents are also dispatchable via
+// Task. So switching to primary doesn't break that path either.
+// The function name stays renderOpenCodeSubagent for compatibility
+// with the existing setup-command call site; the materialised file
+// shape is what changed.
 func renderOpenCodeSubagent(description, prompt string) string {
 	if description == "" {
 		description = "zrok review agent"
@@ -702,7 +713,7 @@ func renderOpenCodeSubagent(description, prompt string) string {
 	// behaviorally constrained.
 	return fmt.Sprintf(`---
 description: "%s"
-mode: subagent
+mode: primary
 permission:
   edit: deny
   write: deny
