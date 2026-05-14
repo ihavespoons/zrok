@@ -153,16 +153,20 @@ Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
 			applyFlagOverrides(cmd, &f)
 		}
 
-		// Reject obvious-bad --created-by values. Observed in OWASP eval:
-		// LLMs filed findings with `created_by: "opencode"` (the runtime),
-		// `"security-scanner"` (invented), or empty. Each pollutes the
-		// store, breaks per-agent dedup, and misleads the rule/exception
-		// audit paths. The CLI is the choke point — every agent
-		// invocation flows through it.
-		if rejectReason := rejectInvalidCreatedBy(f.CreatedBy); rejectReason != "" {
+		// Reject invalid --created-by values. The CLI flag-mode path is
+		// reserved for LLM agents (zrok sast uses store.Create directly,
+		// bypassing the CLI). So we can apply an ALLOW-LIST against the
+		// agent registry — every accepted value must be either:
+		//   - a registered agent name (built-in or .zrok/agents override), or
+		//   - a `human:<id>` / `bot:<id>` prefixed identity.
+		//
+		// History: started as a deny-list, but each OWASP eval iteration
+		// surfaced a new evasion (opencode → opencode-security-agent →
+		// opengrep). The allow-list is the only stable answer.
+		if rejectReason := rejectInvalidCreatedBy(p, f.CreatedBy); rejectReason != "" {
 			exitError("--created-by %q is invalid: %s. "+
-				"Use your agent's actual name (e.g. injection-agent), `opengrep`, "+
-				"or a prefixed form like `human:%s` / `agent:my-agent`.",
+				"Use the agent's name from its system prompt frontmatter "+
+				"(e.g. injection-agent), or a prefixed identity like `human:%s`.",
 				f.CreatedBy, rejectReason, os.Getenv("USER"))
 		}
 
@@ -263,98 +267,85 @@ func printSameFileHint(store *finding.Store, f *finding.Finding, w io.Writer) {
 	_, _ = fmt.Fprintf(w, "  zrok finding update %s --note \"<your perspective>\"\n", exampleID)
 }
 
-// invalidCreatedByValues is the set of strings that have been observed
-// being passed as --created-by but are NOT actual creator identities.
-// They're typically the agent runtime, the model, or generic nouns the
-// LLM invented. Rejecting them at the CLI is the cheapest enforcement
-// point and surfaces a clear actionable error to the agent (or human)
-// caller.
+// rejectInvalidCreatedBy returns "" if the value is an acceptable
+// --created-by, or a reason string if it should be rejected. The CLI
+// flag-mode path is for LLM agents (the `zrok sast` programmatic path
+// uses store.Create directly), so the bar is positive identification:
+// the value must be a registered agent name or a `human:`/`bot:`
+// prefixed identity. Tool names like `opengrep` are NOT acceptable here
+// — they're reserved for the SAST programmatic flow, and accepting
+// them via CLI lets LLM agents impersonate the SAST tool and trigger
+// dedup collisions that drop their findings silently.
 //
-// Values use lowercased lookup; the rejector normalises before checking.
-var invalidCreatedByValues = map[string]string{
-	"":                "value is empty",
-	"opencode":        "this is the agent runtime name, not your agent's name",
-	"claude":          "this is the runtime/model family, not your agent's name",
-	"claude-code":     "this is the runtime, not your agent's name",
-	"anthropic":       "this is the provider, not your agent's name",
-	"openai":          "this is the provider, not your agent's name",
-	"openrouter":      "this is the gateway, not your agent's name",
-	"qwen":            "this is the model family, not your agent's name",
-	"qwen3":           "this is the model family, not your agent's name",
-	"deepseek":        "this is the model family, not your agent's name",
-	"gpt":             "this is the model family, not your agent's name",
-	"gemma":           "this is the model family, not your agent's name",
-	"llm":             "use the specific agent's name (e.g. injection-agent)",
-	"agent":           "this is too generic — name the specific agent (e.g. injection-agent)",
-	"system":          "ambiguous — use the specific agent's name or `human:$USER`",
-	"unknown":         "use the agent's actual name from its system prompt frontmatter",
-	"none":            "use the agent's actual name; this is not a valid creator",
-	"null":            "use the agent's actual name; this is not a valid creator",
-	"security-scanner": "this is a generic role description — name the specific agent (e.g. security-agent)",
-	"scanner":         "this is a generic role — use the specific agent or `opengrep`",
-	"reviewer":        "this is a generic role — name the specific agent",
-	"analyzer":        "this is a generic role — name the specific agent",
-}
-
-// runtimeForbiddenPrefixes are leading components that, when followed by a
-// hyphen, indicate the model is constructing a compound name out of the
-// runtime/provider/family in an attempt to evade the exact-match
-// rejection. Observed in OWASP v6: `opencode-security-agent`,
-// `opencode-security-review` — qwen3-coder-plus prepending the runtime
-// when the exact name `opencode` was rejected. Reject the compound forms
-// too so the model has to use the real agent name.
-var runtimeForbiddenPrefixes = []string{
-	"opencode-", "claude-", "claude_code-",
-	"anthropic-", "openai-", "openrouter-",
-	"qwen-", "qwen3-", "deepseek-", "gpt-", "gemma-",
-}
-
-// rejectInvalidCreatedBy returns an empty string when value is acceptable,
-// or a human-readable reason string when it's rejected. The accepted
-// values are anything not in the invalid set; that includes specific
-// agent names (security-agent), tool names (opengrep), and prefixed
-// forms (human:alice, agent:foo). Prefixed forms are checked by their
-// content rather than the prefix.
-func rejectInvalidCreatedBy(value string) string {
-	normalised := strings.ToLower(strings.TrimSpace(value))
-	if reason, bad := invalidCreatedByValues[normalised]; bad {
-		return reason
+// History: this used to be a deny-list of known-bad values. Each OWASP
+// eval iteration found a new evasion (opencode → opencode-security-
+// agent → opengrep). Switched to allow-list to stop the arms race.
+func rejectInvalidCreatedBy(p *project.Project, value string) string {
+	normalised := strings.TrimSpace(value)
+	if normalised == "" {
+		return "value is empty"
 	}
-	// Prefixed forms (`agent:foo`, `human:bob`): inspect the suffix.
-	for _, prefix := range []string{"agent:", "human:", "bot:", "tool:"} {
-		if strings.HasPrefix(normalised, prefix) {
-			suffix := strings.TrimPrefix(normalised, prefix)
-			if reason, bad := invalidCreatedByValues[suffix]; bad {
-				return "after `" + prefix + "` prefix: " + reason
-			}
+
+	// Prefixed identities: `human:alice`, `bot:dependabot`. Suffix must
+	// be a non-empty plain identifier — no runtime names sneaking through
+	// via `human:opencode` etc.
+	for _, prefix := range []string{"human:", "bot:"} {
+		if strings.HasPrefix(strings.ToLower(normalised), prefix) {
+			suffix := strings.TrimSpace(strings.TrimPrefix(normalised, prefix))
 			if suffix == "" {
 				return "prefix `" + prefix + "` with no identity after it"
 			}
-			// Run the runtime-compound check on the suffix too.
-			if compoundReason := rejectRuntimeCompound(suffix); compoundReason != "" {
-				return "after `" + prefix + "` prefix: " + compoundReason
+			// Even prefixed forms reject runtime/provider names — a
+			// human user shouldn't be filing as `human:opencode`.
+			if isRuntimeOrProvider(strings.ToLower(suffix)) {
+				return "after `" + prefix + "` prefix: `" + suffix + "` is a runtime/provider/model name, not a person"
 			}
+			return ""
 		}
 	}
-	// Reject compound names that start with a runtime/provider/family
-	// followed by a hyphen (e.g. opencode-security-agent). These were
-	// observed in OWASP runs as evasions of the exact-match list.
-	if compoundReason := rejectRuntimeCompound(normalised); compoundReason != "" {
-		return compoundReason
+
+	// `agent:foo` prefix is allowed as a synonym for `foo` — strip and
+	// continue with the registry check.
+	registryName := normalised
+	if strings.HasPrefix(strings.ToLower(registryName), "agent:") {
+		registryName = strings.TrimSpace(strings.TrimPrefix(registryName, "agent:"))
+		if strings.HasPrefix(strings.ToLower(registryName), "agent:") {
+			registryName = strings.TrimSpace(strings.TrimPrefix(registryName, "agent:"))
+		}
+		if registryName == "" {
+			return "prefix `agent:` with no identity after it"
+		}
 	}
-	return ""
+
+	// Registry check: must be a known agent (built-in or project-local
+	// override in .zrok/agents/). The ConfigManager already walks both.
+	mgr := agent.NewConfigManager(p, "")
+	if _, err := mgr.Get(registryName); err == nil {
+		return "" // accepted: registered agent
+	}
+
+	// Not in registry: reject. Surface a hint about what would be
+	// accepted (registered name or human/bot prefix).
+	return "not a registered agent (no `" + registryName + "` in built-in registry or `.zrok/agents/`)"
 }
 
-// rejectRuntimeCompound returns a reason when value starts with one of the
-// forbidden runtime/provider/family prefixes followed by a hyphen.
-// Empty string means accepted.
-func rejectRuntimeCompound(value string) string {
-	for _, p := range runtimeForbiddenPrefixes {
-		if strings.HasPrefix(value, p) {
-			return "the `" + strings.TrimSuffix(p, "-") + "-` prefix is the runtime/provider/model family; use only your agent's actual name (e.g. injection-agent)"
+// isRuntimeOrProvider returns true when v matches a known LLM runtime,
+// provider, or model family. Used to keep these strings from sneaking
+// in via `human:` / `bot:` prefixes too.
+func isRuntimeOrProvider(v string) bool {
+	switch v {
+	case "opencode", "claude", "claude-code", "claude_code",
+		"anthropic", "openai", "openrouter",
+		"qwen", "qwen3", "deepseek", "gpt", "gemma",
+		"llm", "ai", "model":
+		return true
+	}
+	for _, p := range []string{"opencode-", "claude-", "qwen3-", "deepseek-", "gpt-", "gemma-"} {
+		if strings.HasPrefix(v, p) {
+			return true
 		}
 	}
-	return ""
+	return false
 }
 
 // validateOwnsCWEs checks that f.CWE is within the owning agent's owns_cwes list.

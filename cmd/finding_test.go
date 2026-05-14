@@ -473,43 +473,66 @@ func TestCreateCmdHintGatedByQuietAndJSON(t *testing.T) {
 // Each pollutes the store, breaks per-agent dedup, and misleads the
 // rule/exception audit paths.
 func TestRejectInvalidCreatedBy(t *testing.T) {
+	// Project with default config — gives access to the built-in
+	// agent registry so "injection-agent" etc. resolve.
+	tmpDir := t.TempDir()
+	p, err := project.Initialize(tmpDir)
+	if err != nil {
+		t.Fatalf("project init: %v", err)
+	}
+
 	cases := []struct {
 		name       string
 		value      string
 		wantReject bool
 	}{
+		// Empty / sentinel
 		{"empty rejected", "", true},
 		{"whitespace-only rejected", "   ", true},
+
+		// Runtime / provider / model — never accepted, even bare
 		{"runtime name `opencode` rejected", "opencode", true},
-		{"runtime name with prefix `agent:opencode` rejected", "agent:opencode", true},
 		{"runtime name `claude` rejected", "claude", true},
-		{"runtime name uppercase `Claude` rejected", "Claude", true},
+		{"runtime uppercase `Claude` rejected", "Claude", true},
 		{"provider `openai` rejected", "openai", true},
 		{"model family `qwen3` rejected", "qwen3", true},
+
+		// Generic role nouns — not registered agents, so rejected
 		{"generic `unknown` rejected", "unknown", true},
 		{"generic `system` rejected", "system", true},
 		{"invented `security-scanner` rejected", "security-scanner", true},
-		{"empty prefix rejected", "agent:", true},
-		{"valid agent name accepted", "injection-agent", false},
-		{"valid agent name with prefix accepted", "agent:injection-agent", false},
-		{"tool name `opengrep` accepted", "opengrep", false},
-		{"human prefix with username accepted", "human:alice", false},
-		{"bot prefix with name accepted", "bot:dependabot", false},
-		{"specific agent with 'scanner' substring accepted", "deps-vulnscanner-agent", false},
-		// OWASP v6 evasion patterns: model compounded runtime name with hyphen
-		// to bypass the exact-match list. Both must be rejected.
+
+		// OWASP v6 evasion patterns — compound names that prepend runtime
 		{"runtime compound `opencode-security-agent` rejected", "opencode-security-agent", true},
 		{"runtime compound `opencode-security-review` rejected", "opencode-security-review", true},
-		{"runtime compound `claude-injection-agent` rejected", "claude-injection-agent", true},
-		{"runtime compound `qwen3-security-agent` rejected", "qwen3-security-agent", true},
-		{"runtime compound with agent: prefix `agent:opencode-foo` rejected", "agent:opencode-foo", true},
-		// Confirm we don't over-match: legitimate names that contain
-		// "opencode" as a substring (not prefix) should still pass.
-		{"substring not prefix accepted", "my-opencode-helper-agent", false},
+
+		// OWASP v7 evasion — `opengrep` is reserved for SAST programmatic
+		// path; LLM agents must use their real name.
+		{"tool name `opengrep` rejected in CLI flag mode", "opengrep", true},
+
+		// Prefix edge cases
+		{"empty `agent:` prefix rejected", "agent:", true},
+		{"empty `human:` prefix rejected", "human:", true},
+		{"runtime name with `agent:` prefix rejected", "agent:opencode", true},
+		{"runtime name with `human:` prefix rejected", "human:opencode", true},
+
+		// Registered agent names
+		{"valid agent `injection-agent` accepted", "injection-agent", false},
+		{"valid agent with `agent:` prefix accepted", "agent:injection-agent", false},
+		{"valid agent `security-agent` accepted", "security-agent", false},
+		{"valid agent `validation-agent` accepted", "validation-agent", false},
+
+		// Human/bot identities with plain names
+		{"human prefix with plain name accepted", "human:alice", false},
+		{"bot prefix with plain name accepted", "bot:dependabot", false},
+
+		// Unregistered free-form names — rejected (no longer accepted
+		// just because they're not on the blacklist).
+		{"unregistered free-form name rejected", "my-custom-agent", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			reason := rejectInvalidCreatedBy(c.value)
+			reason := rejectInvalidCreatedBy(p, c.value)
 			rejected := reason != ""
 			if rejected != c.wantReject {
 				t.Errorf("rejectInvalidCreatedBy(%q): rejected=%v, want %v (reason: %q)",
