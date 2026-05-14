@@ -392,12 +392,23 @@ func validateOwnsCWEs(p *project.Project, f *finding.Finding, strict bool) error
 // (detected via cobra's Flags().Changed) — defaults do not silently overwrite
 // YAML-supplied values. Currently this handles --created-by; other flags
 // (--severity, --cwe, --confidence, --tag) are left to the YAML to keep the
-// override surface small and well-defined. Document this precedence in the
-// --created-by help text below.
+// override surface small and well-defined.
+//
+// When --created-by is NOT passed AND f.CreatedBy is empty (after YAML
+// parse), the ZROK_AGENT_NAME env var is consulted — the dispatcher sets
+// this per per-agent subprocess (see internal/runner/runner.go). This
+// makes attribution automatic for any CLI call from a dispatched agent
+// and eliminates the entire "LLM forgets/guesses its own name" failure
+// mode the OWASP eval surfaced (v5-v9 each found a new evasion).
 func applyFlagOverrides(cmd *cobra.Command, f *finding.Finding) {
 	if cmd.Flags().Changed("created-by") {
 		if v, err := cmd.Flags().GetString("created-by"); err == nil {
 			f.CreatedBy = v
+		}
+	}
+	if f.CreatedBy == "" {
+		if env := os.Getenv("ZROK_AGENT_NAME"); env != "" {
+			f.CreatedBy = env
 		}
 	}
 }
@@ -413,6 +424,13 @@ func buildFindingFromFlags(cmd *cobra.Command, title string) (finding.Finding, e
 	confidence, _ := cmd.Flags().GetString("confidence")
 	tags, _ := cmd.Flags().GetStringSlice("tag")
 	createdBy, _ := cmd.Flags().GetString("created-by")
+	// Fall back to ZROK_AGENT_NAME env when --created-by wasn't passed.
+	// Set by the dispatcher per per-agent subprocess so attribution is
+	// automatic for any agent CLI call without the LLM having to echo
+	// its own name correctly.
+	if createdBy == "" {
+		createdBy = os.Getenv("ZROK_AGENT_NAME")
+	}
 
 	f := finding.Finding{
 		Title:       title,

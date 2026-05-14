@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // Runner abstracts the per-agent subprocess invocation across opencode and
@@ -48,7 +49,7 @@ func (opencodeRunner) AgentInvocation(ctx context.Context, workDir, agentName, m
 	args = append(args, userTurn)
 	cmd := exec.CommandContext(ctx, "opencode", args...)
 	cmd.Dir = workDir
-	cmd.Env = os.Environ()
+	cmd.Env = agentEnv(agentName)
 	cmd.Stdout = logOut
 	cmd.Stderr = logOut
 	return cmd
@@ -78,10 +79,35 @@ func (claudeRunner) AgentInvocation(ctx context.Context, workDir, agentName, mod
 	args = append(args, userTurn)
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	cmd.Dir = workDir
-	cmd.Env = os.Environ()
+	cmd.Env = agentEnv(agentName)
 	cmd.Stdout = logOut
 	cmd.Stderr = logOut
 	return cmd
+}
+
+// agentEnv builds the env slice for a per-agent subprocess. It inherits
+// the parent's env (so OPENROUTER_API_KEY etc. propagate) and adds
+// ZROK_AGENT_NAME=<agentName>. The CLI's `zrok finding create` reads
+// this env to auto-default --created-by, which closes the entire class
+// of "LLM forgets / guesses / fabricates its own name" attribution
+// failures observed across OWASP v5-v9 (opencode, opencode-security-
+// agent, opengrep, security-scanner — each iteration a new evasion).
+// The dispatcher knows which agent is running; trusting the model to
+// echo its name back into a flag is the unreliable step we now skip.
+func agentEnv(agentName string) []string {
+	env := os.Environ()
+	if agentName != "" {
+		// Overwrite if already set so the dispatcher's value wins over
+		// anything that leaked through from the calling shell.
+		filtered := env[:0]
+		for _, kv := range env {
+			if !strings.HasPrefix(kv, "ZROK_AGENT_NAME=") {
+				filtered = append(filtered, kv)
+			}
+		}
+		env = append(filtered, "ZROK_AGENT_NAME="+agentName)
+	}
+	return env
 }
 
 // LookupRunner returns the Runner for the given name, or an error if
