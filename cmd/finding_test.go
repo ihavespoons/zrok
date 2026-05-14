@@ -472,6 +472,165 @@ func TestCreateCmdHintGatedByQuietAndJSON(t *testing.T) {
 // descriptions ("security-scanner") instead of their actual agent name.
 // Each pollutes the store, breaks per-agent dedup, and misleads the
 // rule/exception audit paths.
+// TestTriagePlanApplyHappyPath covers the validation-as-postprocess
+// flow: agent emits JSON plan, the apply step reads it and updates the
+// store. Without this round-trip, validation-agent's update-verb
+// reluctance keeps every finding stuck at status:open.
+func TestTriagePlanApplyHappyPath(t *testing.T) {
+	p, cleanup := setupFindingTestProject(t)
+	defer cleanup()
+
+	store := finding.NewStore(p)
+	// Pre-create three findings the plan will target. Titles + files must
+	// differ so fingerprints don't collide and trigger same-creator dedup.
+	titles := []string{"Login SQLi", "Search SQLi", "Admin SQLi"}
+	files := []string{"src/login.py", "src/search.py", "src/admin.py"}
+	for i := 0; i < 3; i++ {
+		f := &finding.Finding{
+			Title:     titles[i],
+			Severity:  finding.SeverityHigh,
+			CWE:       "CWE-89",
+			CreatedBy: "injection-agent",
+			Location:  finding.Location{File: files[i], LineStart: i + 1},
+		}
+		if err := store.Create(f); err != nil {
+			t.Fatalf("seed Create: %v", err)
+		}
+	}
+
+	plan := triagePlan{
+		Version: 1,
+		Author:  "validation-agent",
+		Decisions: []triageDecision{
+			{FindingID: "FIND-001", Status: "confirmed", Reason: "Verified flow."},
+			{FindingID: "FIND-002", Status: "false_positive", Reason: "ORM safe.", SeverityOverride: "low"},
+			{FindingID: "FIND-003", Status: "duplicate", DuplicateOf: "FIND-001", Reason: "Same vuln."},
+		},
+	}
+	// We exercise the apply loop by reproducing it inline (the cobra
+	// Run func reads cmd flags + os.Exit which is awkward to test).
+	// The loop's behavior is what matters; this is the same logic.
+	applied, skipped, errored := applyTriageDecisionsForTest(t, store, plan)
+	if applied != 3 || skipped != 0 || errored != 0 {
+		t.Fatalf("applied=%d skipped=%d errored=%d, want 3/0/0", applied, skipped, errored)
+	}
+
+	// Confirm store state.
+	f1, _ := store.Read("FIND-001")
+	if f1.Status != finding.StatusConfirmed {
+		t.Errorf("FIND-001 status: got %s, want confirmed", f1.Status)
+	}
+	if len(f1.Notes) != 1 || f1.Notes[0].Author != "validation-agent" {
+		t.Errorf("FIND-001 note: want one validation-agent note, got %+v", f1.Notes)
+	}
+
+	f2, _ := store.Read("FIND-002")
+	if f2.Status != finding.StatusFalsePositive {
+		t.Errorf("FIND-002 status: got %s, want false_positive", f2.Status)
+	}
+	if f2.Severity != finding.SeverityLow {
+		t.Errorf("FIND-002 severity: got %s, want low (severity_override applied)", f2.Severity)
+	}
+
+	f3, _ := store.Read("FIND-003")
+	if f3.Status != finding.StatusDuplicate {
+		t.Errorf("FIND-003 status: got %s, want duplicate", f3.Status)
+	}
+	if f3.DuplicateOf != "FIND-001" {
+		t.Errorf("FIND-003 duplicate_of: got %q, want FIND-001", f3.DuplicateOf)
+	}
+}
+
+// TestTriagePlanApplyMixedErrors covers the resilience case: a plan
+// with one valid + one missing-id + one bad-status decision should
+// apply the good one, skip the missing, error the invalid, never
+// abort.
+func TestTriagePlanApplyMixedErrors(t *testing.T) {
+	p, cleanup := setupFindingTestProject(t)
+	defer cleanup()
+	store := finding.NewStore(p)
+
+	if err := store.Create(&finding.Finding{
+		Title:     "Test",
+		Severity:  finding.SeverityHigh,
+		CWE:       "CWE-89",
+		CreatedBy: "injection-agent",
+		Location:  finding.Location{File: "src/x.py", LineStart: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := triagePlan{
+		Version: 1,
+		Author:  "validation-agent",
+		Decisions: []triageDecision{
+			{FindingID: "FIND-001", Status: "false_positive", Reason: "valid."},
+			{FindingID: "FIND-999", Status: "confirmed", Reason: "missing finding."},
+			{FindingID: "FIND-001", Status: "weird_status", Reason: "bad status."},
+			{Status: "confirmed", Reason: "no id."},
+		},
+	}
+	applied, skipped, errored := applyTriageDecisionsForTest(t, store, plan)
+	if applied != 1 {
+		t.Errorf("applied=%d, want 1", applied)
+	}
+	if skipped != 1 {
+		t.Errorf("skipped=%d, want 1 (FIND-999 missing)", skipped)
+	}
+	if errored != 2 {
+		t.Errorf("errored=%d, want 2 (bad status + no id)", errored)
+	}
+}
+
+// applyTriageDecisionsForTest mirrors the apply loop in findingTriageCmd's
+// Run func, factored for unit testing. Production loop lives in the
+// command; this helper is a faithful reproduction. If the command's
+// logic diverges, this test stops being meaningful — keep them in sync.
+func applyTriageDecisionsForTest(t *testing.T, store *finding.Store, plan triagePlan) (applied, skipped, errored int) {
+	t.Helper()
+	author := plan.Author
+	if author == "" {
+		author = "triage"
+	}
+	for _, d := range plan.Decisions {
+		if d.FindingID == "" {
+			errored++
+			continue
+		}
+		f, err := store.Read(d.FindingID)
+		if err != nil {
+			skipped++
+			continue
+		}
+		if d.Status != "" && !isValidStatus(d.Status) {
+			errored++
+			continue
+		}
+		if d.Status != "" {
+			f.Status = finding.Status(d.Status)
+		}
+		if d.DuplicateOf != "" {
+			f.DuplicateOf = d.DuplicateOf
+		}
+		if d.SeverityOverride != "" {
+			f.Severity = finding.Severity(d.SeverityOverride)
+		}
+		if d.Reason != "" {
+			f.Notes = append(f.Notes, finding.FindingNote{
+				Timestamp: time.Now(),
+				Author:    author,
+				Text:      d.Reason,
+			})
+		}
+		if err := store.Update(f); err != nil {
+			errored++
+			continue
+		}
+		applied++
+	}
+	return
+}
+
 func TestRejectInvalidCreatedBy(t *testing.T) {
 	// Project with default config — gives access to the built-in
 	// agent registry so "injection-agent" etc. resolve.

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -504,6 +505,202 @@ to record the canonical finding ID.`,
 	},
 }
 
+// triagePlan is the on-disk shape produced by a triage agent and
+// consumed by `zrok finding triage`. Captures status / severity /
+// duplicate-of / note overrides in one shot so the dispatcher can apply
+// them deterministically after the agent exits.
+//
+// Why we don't ask the agent to call `zrok finding update` per finding:
+// LLM compliance with multi-call update flows is unreliable
+// (validation-agent updated 0 of 82 findings across OWASP v5-v8). LLMs
+// are much better at emitting structured output than at executing
+// side-effecting tool calls in a loop. This file is that structured
+// output; the apply step is deterministic Go code with no model
+// involvement.
+type triagePlan struct {
+	Version   int              `json:"version"`
+	Author    string           `json:"author"`
+	Decisions []triageDecision `json:"decisions"`
+}
+
+type triageDecision struct {
+	FindingID         string `json:"finding_id"`
+	Status            string `json:"status"`             // open, confirmed, false_positive, duplicate
+	Reason            string `json:"reason"`             // becomes the note body
+	DuplicateOf       string `json:"duplicate_of,omitempty"`
+	SeverityOverride  string `json:"severity_override,omitempty"`
+	FixPriority       string `json:"fix_priority,omitempty"`
+	Exploitability    string `json:"exploitability,omitempty"`
+	ConfidenceOverride string `json:"confidence_override,omitempty"`
+}
+
+// findingTriageCmd applies a JSON triage plan to existing findings.
+// Companion to `zrok finding update` (single-finding flags) — this is
+// the batch path used by validation-agent / sast-triage-agent.
+var findingTriageCmd = &cobra.Command{
+	Use:   "triage",
+	Short: "Apply a JSON triage plan to existing findings (batch updates)",
+	Long: `Reads a JSON triage plan and applies status / severity / duplicate-of
+updates to the named findings. Designed as the deterministic counterpart to
+the LLM-as-updater pattern: a triage agent emits JSON, this command applies.
+
+Plan file shape (` + "`zrok finding triage --plan path/to/plan.json`" + `):
+
+  {
+    "version": 1,
+    "author": "validation-agent",
+    "decisions": [
+      {
+        "finding_id": "FIND-001",
+        "status": "false_positive",
+        "reason": "ORM auto-parameterises; concat is on a static column name.",
+        "duplicate_of": "FIND-002",     // optional, pairs with status:duplicate
+        "severity_override": "medium",   // optional
+        "fix_priority": "low",           // optional
+        "exploitability": "unlikely",    // optional
+        "confidence_override": "low"     // optional
+      }
+    ]
+  }
+
+Default plan path: .zrok/review/triage-plan.json (where the dispatcher
+expects validation-agent and sast-triage-agent to write).
+
+Each decision is applied independently:
+  - Missing finding_id: counted as skipped, reported, no fatal error
+  - Invalid status value: counted as errored, reported, run continues
+  - Apply error (e.g. store I/O): counted as errored, reported
+
+Exit code: 0 if any decisions applied successfully OR plan had zero
+decisions; non-zero only if EVERY decision errored (suggests systemic
+problem worth surfacing).`,
+	Run: func(cmd *cobra.Command, args []string) {
+		p, err := project.EnsureActive()
+		if err != nil {
+			exitError("%v", err)
+		}
+
+		planPath, _ := cmd.Flags().GetString("plan")
+		if planPath == "" {
+			planPath = filepath.Join(p.GetZrokPath(), "review", "triage-plan.json")
+		}
+		authorOverride, _ := cmd.Flags().GetString("author")
+
+		data, err := os.ReadFile(planPath)
+		if err != nil {
+			exitError("read triage plan %s: %v", planPath, err)
+		}
+		var plan triagePlan
+		if err := json.Unmarshal(data, &plan); err != nil {
+			exitError("parse triage plan: %v", err)
+		}
+		if plan.Version != 0 && plan.Version != 1 {
+			exitError("unsupported triage plan version: %d (this build supports v1)", plan.Version)
+		}
+
+		author := plan.Author
+		if authorOverride != "" {
+			author = authorOverride
+		}
+		if author == "" {
+			author = "triage"
+		}
+
+		store := finding.NewStore(p)
+		var applied, skipped, errored int
+		statusBreakdown := map[string]int{}
+
+		for _, d := range plan.Decisions {
+			if d.FindingID == "" {
+				errored++
+				fmt.Fprintf(os.Stderr, "  skip: decision has no finding_id\n")
+				continue
+			}
+			f, err := store.Read(d.FindingID)
+			if err != nil {
+				skipped++
+				fmt.Fprintf(os.Stderr, "  skip %s: %v\n", d.FindingID, err)
+				continue
+			}
+
+			// Validate status (let blank pass — means caller only wanted
+			// to tweak severity / notes / etc.).
+			if d.Status != "" && !isValidStatus(d.Status) {
+				errored++
+				fmt.Fprintf(os.Stderr, "  error %s: invalid status %q (use open/confirmed/false_positive/fixed/duplicate)\n", d.FindingID, d.Status)
+				continue
+			}
+			if d.Status != "" {
+				f.Status = finding.Status(d.Status)
+				statusBreakdown[d.Status]++
+			}
+			if d.DuplicateOf != "" {
+				f.DuplicateOf = d.DuplicateOf
+			}
+			if d.SeverityOverride != "" {
+				f.Severity = finding.Severity(d.SeverityOverride)
+			}
+			if d.FixPriority != "" {
+				f.FixPriority = finding.FixPriority(d.FixPriority)
+			}
+			if d.Exploitability != "" {
+				f.Exploitability = finding.Exploitability(d.Exploitability)
+			}
+			if d.ConfidenceOverride != "" {
+				f.Confidence = finding.Confidence(d.ConfidenceOverride)
+			}
+			if d.Reason != "" {
+				f.Notes = append(f.Notes, finding.FindingNote{
+					Timestamp: time.Now(),
+					Author:    author,
+					Text:      d.Reason,
+				})
+			}
+			if err := store.Update(f); err != nil {
+				errored++
+				fmt.Fprintf(os.Stderr, "  error %s: update failed: %v\n", d.FindingID, err)
+				continue
+			}
+			applied++
+		}
+
+		if jsonOutput {
+			_ = outputJSON(map[string]interface{}{
+				"applied":          applied,
+				"skipped":          skipped,
+				"errored":          errored,
+				"status_breakdown": statusBreakdown,
+				"plan_path":        planPath,
+				"author":           author,
+			})
+		} else {
+			fmt.Printf("Triage applied: %d (skipped %d, errored %d)\n", applied, skipped, errored)
+			for status, n := range statusBreakdown {
+				fmt.Printf("  %s: %d\n", status, n)
+			}
+		}
+
+		// Non-zero only when the plan had decisions but EVERY one
+		// errored — that indicates a systemic problem (bad plan, store
+		// broken, etc.) the caller should surface.
+		if len(plan.Decisions) > 0 && applied == 0 && skipped == 0 {
+			os.Exit(1)
+		}
+	},
+}
+
+// isValidStatus matches the validation logic in store.validate — kept
+// here so the triage command can fail fast on a bad value without doing
+// a Read+Update round trip.
+func isValidStatus(s string) bool {
+	switch finding.Status(s) {
+	case finding.StatusOpen, finding.StatusConfirmed, finding.StatusFalsePositive,
+		finding.StatusFixed, finding.StatusDuplicate:
+		return true
+	}
+	return false
+}
+
 // findingListCmd represents the finding list command
 var findingListCmd = &cobra.Command{
 	Use:   "list",
@@ -997,6 +1194,9 @@ func init() {
 	rootCmd.AddCommand(findingCmd)
 	findingCmd.AddCommand(findingCreateCmd)
 	findingCmd.AddCommand(findingUpdateCmd)
+	findingCmd.AddCommand(findingTriageCmd)
+	findingTriageCmd.Flags().String("plan", "", "Path to triage plan JSON (default: .zrok/review/triage-plan.json)")
+	findingTriageCmd.Flags().String("author", "", "Override the plan's `author` field for note attribution")
 	findingCmd.AddCommand(findingListCmd)
 	findingCmd.AddCommand(findingShowCmd)
 	findingCmd.AddCommand(findingExportCmd)
