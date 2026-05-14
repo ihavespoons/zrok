@@ -32,7 +32,14 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Skip on fork PRs (secrets aren't exposed) and on dependabot PRs
+    # (GitHub blocks secrets from dependabot-context workflows by default,
+    # so OPENROUTER_API_KEY arrives empty and the action fails noisily on
+    # every dep bump). Dependency updates don't change application code
+    # paths anyway — the review signal isn't useful here.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@v4
         with:
