@@ -155,6 +155,24 @@ func LoadGroundTruth(path string) (*GroundTruth, error) {
 
 // ScoreRun evaluates a single run's findings against ground truth
 func ScoreRun(gt *GroundTruth, findings []RunFinding, runID string) *RunScore {
+	// Filter out findings the validation phase classified as
+	// false_positive or duplicate. Open and confirmed findings remain in
+	// the scoring pool. This mirrors the dispatcher's path-C contract:
+	// validation-agent writes a triage plan, the dispatcher applies it
+	// to set status fields, and the scorer respects those decisions
+	// rather than penalising precision for findings the system already
+	// labelled as not-a-vuln. Pre-triage runs (status="open" everywhere)
+	// are unaffected because no finding gets filtered.
+	kept := make([]RunFinding, 0, len(findings))
+	for _, f := range findings {
+		switch f.Status {
+		case "false_positive", "duplicate":
+			continue
+		}
+		kept = append(kept, f)
+	}
+	findings = kept
+
 	score := &RunScore{
 		RunID:         runID,
 		TotalFindings: len(findings),
