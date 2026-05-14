@@ -38,6 +38,34 @@ jobs:
         with:
           fetch-depth: 0     # action needs the base ref for `git diff`
 
+      # Register qwen3.6-flash in opencode's user config. The model is
+      # valid on OpenRouter but not yet catalogued in models.dev (which
+      # opencode pulls its bundled registry from). Without this file,
+      # opencode rejects `openrouter/qwen/qwen3.6-flash` with `Model not
+      # found:` and exits 0 — every dispatched agent silently no-ops in
+      # ~1s. Discovered during local v16c eval; the dispatcher's
+      # silent-error detector now catches this case, but registering the
+      # model up-front is the proper fix. Drop this step once models.dev
+      # carries qwen3.6-flash.
+      - name: Register qwen3.6-flash with opencode
+        run: |
+          mkdir -p "$HOME/.config/opencode"
+          cat > "$HOME/.config/opencode/opencode.json" <<'JSON'
+          {
+            "$schema": "https://opencode.ai/config.json",
+            "provider": {
+              "openrouter": {
+                "models": {
+                  "qwen/qwen3.6-flash": {
+                    "name": "Qwen 3.6 Flash",
+                    "limit": { "context": 1000000, "output": 65536 }
+                  }
+                }
+              }
+            }
+          }
+          JSON
+
       - uses: diffsec/zrok-review-action@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -50,7 +78,7 @@ jobs:
           # streaming handshake (silent opencode runs with zero output).
           opencode-env: |
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
-          model: openrouter/deepseek/deepseek-v4-flash
+          model: openrouter/qwen/qwen3.6-flash
           # Dogfood: review with the PR's own zrok code. If a PR breaks
           # the review pipeline, the review breaks visibly, which is the
           # signal we want.
