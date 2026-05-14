@@ -6,6 +6,7 @@ applicability:
 tools_allowed:
   - read
   - search
+  - symbols
   - finding
   - memory
 context_memories:

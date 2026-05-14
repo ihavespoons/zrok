@@ -40,6 +40,7 @@ cwe_checklist:
 tools_allowed:
   - read
   - search
+  - symbols
   - list
   - memory
   - finding
