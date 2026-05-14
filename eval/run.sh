@@ -160,10 +160,13 @@ run_single_eval() {
     # via the same setup path the dogfood action uses. This keeps eval and
     # production aligned — improvements to the orchestrator prompt land in
     # both places automatically.
-    echo "  Setting up OpenCode agents (profile: $EVAL_PROFILE)..."
+    # Materialize agent files for the same runner the dispatcher will
+    # invoke; EVAL_RUNNER (opencode|claude) selects both.
+    local eval_runner="${EVAL_RUNNER:-opencode}"
+    echo "  Setting up $eval_runner agents (profile: $EVAL_PROFILE)..."
     if ! (cd "$run_dir" && "$ZROK_BIN" review pr setup \
             --base "$eval_base_ref" \
-            --runner opencode \
+            --runner "$eval_runner" \
             --profile "$EVAL_PROFILE" \
             --json > "${run_dir}/setup.json" 2>"${run_dir}/setup-err.log"); then
         echo "  ERROR: zrok review pr setup failed:"
@@ -239,9 +242,13 @@ run_single_eval() {
                 # the dispatcher waits forever. 10m is well past the
                 # typical 2-4min per-agent runtime so legitimate slow
                 # responses still complete.
+                # eval_runner (opencode|claude) is already populated above
+                # from EVAL_RUNNER and passed to `pr setup`; reuse it here
+                # so the dispatcher backend matches the materialized
+                # agent files.
                 run_log="${run_dir}/pr-run-output.log"
                 if (cd "$run_dir" && PATH="${zrok_bin_dir}:${PATH}" "$ZROK_BIN" review pr run \
-                        --runner opencode \
+                        --runner "$eval_runner" \
                         --model "$OPENCODE_MODEL" \
                         --max-parallel 6 \
                         --per-agent-timeout 10m \

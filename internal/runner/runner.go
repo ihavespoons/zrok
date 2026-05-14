@@ -72,7 +72,19 @@ func NewClaudeRunner() Runner { return claudeRunner{} }
 func (claudeRunner) Name() string { return "claude" }
 
 func (claudeRunner) AgentInvocation(ctx context.Context, workDir, agentName, model, userTurn string, logOut io.Writer) *exec.Cmd {
-	args := []string{"-p", "--agent", agentName}
+	// --permission-mode bypassPermissions is required because there is
+	// structurally no human in the loop here — the dispatcher invokes
+	// `claude -p` as a subprocess and pipes a user-turn in. Without it,
+	// claude's default prompt-for-each-tool flow makes each subagent
+	// respond with "May I proceed?" and exit, doing zero real work.
+	// Observed empirically in the v16 claude regression probe: 15s
+	// "successful" runs that produced only a permission-request reply.
+	// opencode handles this by running tools silently in non-interactive
+	// mode; claude requires the explicit opt-out. Security model: the
+	// trust boundary is zrok's `review pr run`, not the per-agent
+	// subprocess — the dispatcher's caller (CI, human, eval script) is
+	// responsible for vetting the agent set.
+	args := []string{"-p", "--agent", agentName, "--permission-mode", "bypassPermissions"}
 	if model != "" {
 		args = append(args, "--model", model)
 	}
