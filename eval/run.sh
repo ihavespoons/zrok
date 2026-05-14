@@ -496,8 +496,12 @@ except:
     "$EVAL_BIN" score --run "$result_file" --ground-truth "$GROUND_TRUTH" || true
     echo ""
 
-    # Cleanup
-    rm -rf "$run_dir"
+    # Cleanup (skip when caller wants to inspect dispatcher / per-agent logs).
+    if [[ "${EVAL_KEEP_RUN_DIR:-0}" == "1" ]]; then
+        echo "  Preserved run dir (EVAL_KEEP_RUN_DIR=1): $run_dir"
+    else
+        rm -rf "$run_dir"
+    fi
 }
 
 if $DRY_RUN; then

@@ -66,6 +66,13 @@ var hardLogPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)credit`),
 	regexp.MustCompile(`(?i)401\b.*(unauth|invalid.?key)`),
 	regexp.MustCompile(`(?i)403\b.*(forbidden|denied)`),
+	// opencode prints this to stdout and exits 0 when an unknown model
+	// id is passed via --model. Observed in v16 when qwen/qwen3.6-flash
+	// (valid on OpenRouter but absent from opencode's bundled model
+	// registry) produced 6 successful 1-second agent runs with zero work
+	// done. Matching the literal opencode error string keeps the
+	// detector targeted.
+	regexp.MustCompile(`(?i)Model not found:`),
 }
 
 // DispatchConfig controls a single `Dispatch` invocation.
