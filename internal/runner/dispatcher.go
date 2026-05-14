@@ -614,8 +614,55 @@ func runAgent(ctx context.Context, agentName, userTurn string, cfg DispatchConfi
 			res.ExitCode = -1
 		}
 		fmt.Fprintf(cfg.Stdout, "    ✗ %s exit=%d after %s\n", agentName, res.ExitCode, res.Duration.Round(time.Second))
-	} else {
-		fmt.Fprintf(cfg.Stdout, "    ✓ %s in %s\n", agentName, res.Duration.Round(time.Second))
+		return res
 	}
+
+	// Subprocess exited 0 — but opencode (and likely others) exit 0
+	// even on provider-side errors like "Insufficient credits" or
+	// "rate limit exceeded". The error text is in the log; the exit
+	// code is a lie. Sweep the log for known hard-error patterns and
+	// synthesise a failure when one matches, so the caller sees the
+	// real issue instead of "succeeded in 4 seconds with no findings".
+	if reason := scanLogForSilentError(logPath); reason != "" {
+		res.Err = fmt.Errorf("provider error (silent: exit code 0): %s", reason)
+		res.ExitCode = -2 // sentinel distinct from -1 (non-ExitError) and any real opencode code
+		fmt.Fprintf(cfg.Stdout, "    ✗ %s silent provider error after %s — %s\n", agentName, res.Duration.Round(time.Second), reason)
+		return res
+	}
+
+	fmt.Fprintf(cfg.Stdout, "    ✓ %s in %s\n", agentName, res.Duration.Round(time.Second))
 	return res
+}
+
+// scanLogForSilentError reads an agent log file and returns a short
+// reason string when the log contains a known provider-side error
+// pattern despite the subprocess exiting 0. Empty return = clean.
+//
+// Observed silent failures (subprocess exit 0, no real work done):
+//   - "Insufficient credits" — OpenRouter, when the account is exhausted
+//   - "rate limit" / "429" — provider throttling on the first call
+//
+// Reads at most the first 16KiB of the log; opencode prints the error
+// near the start of its output for these cases, so we don't need the
+// whole file. Keeps the scan O(1) per agent.
+func scanLogForSilentError(logPath string) string {
+	f, err := os.Open(logPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	buf := make([]byte, 16*1024)
+	n, _ := f.Read(buf)
+	if n == 0 {
+		return ""
+	}
+	content := string(buf[:n])
+	// Reuse hardLogPatterns from the retry classifier — same set of
+	// "provider broke" signals, just applied to a successful-exit log.
+	for _, re := range hardLogPatterns {
+		if m := re.FindString(content); m != "" {
+			return strings.TrimSpace(m)
+		}
+	}
+	return ""
 }
