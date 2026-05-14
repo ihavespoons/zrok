@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ihavespoons/quokka/eval/scorer"
+	"github.com/diffsec/quokka/eval/scorer"
 )
 
 func main() {

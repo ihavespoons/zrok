@@ -3,8 +3,8 @@ package think
 import (
 	"testing"
 
-	"github.com/ihavespoons/quokka/internal/memory"
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/memory"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 func TestAnalyzeHypothesis_TechHintsProduceRankedCWEs(t *testing.T) {

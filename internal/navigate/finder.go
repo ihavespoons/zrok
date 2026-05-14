@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // Finder handles file and content search operations

@@ -3,7 +3,7 @@ package think
 import (
 	"testing"
 
-	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/finding"
 )
 
 func TestAnalyzeDone_RequiresAgent(t *testing.T) {

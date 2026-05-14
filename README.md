@@ -13,7 +13,7 @@ brew install ihavespoons/homebrew-tap/quokka
 ### From Source
 
 ```bash
-git clone https://github.com/ihavespoons/quokka.git
+git clone https://github.com/diffsec/quokka.git
 cd quokka
 go build -o quokka .
 ```
@@ -21,7 +21,7 @@ go build -o quokka .
 ### Go Install
 
 ```bash
-go install github.com/ihavespoons/quokka@latest
+go install github.com/diffsec/quokka@latest
 ```
 
 ## Adding the Skill to Claude Code

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/ihavespoons/quokka/cmd"
+import "github.com/diffsec/quokka/cmd"
 
 func main() {
 	cmd.Execute()

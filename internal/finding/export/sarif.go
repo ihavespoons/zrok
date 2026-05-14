@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/finding"
 )
 
 // SARIF format structures (SARIF 2.1.0)

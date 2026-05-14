@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/agent"
-	"github.com/ihavespoons/quokka/internal/memory"
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/agent"
+	"github.com/diffsec/quokka/internal/memory"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // HypothesisOptions configures hypothesis generation.

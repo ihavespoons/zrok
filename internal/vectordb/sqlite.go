@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/chunk"
+	"github.com/diffsec/quokka/internal/chunk"
 	_ "modernc.org/sqlite"
 )
 

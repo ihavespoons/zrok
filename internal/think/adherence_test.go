@@ -3,7 +3,7 @@ package think
 import (
 	"testing"
 
-	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/finding"
 )
 
 func TestAnalyzeAdherence_InAndOutOfScope(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/navigate/lsp"
+	"github.com/diffsec/quokka/internal/navigate/lsp"
 	"github.com/spf13/cobra"
 )
 

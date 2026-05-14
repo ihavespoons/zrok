@@ -5,8 +5,8 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/ihavespoons/quokka/internal/dashboard"
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/dashboard"
+	"github.com/diffsec/quokka/internal/project"
 	"github.com/spf13/cobra"
 )
 

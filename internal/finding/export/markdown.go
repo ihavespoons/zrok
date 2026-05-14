@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/finding"
 )
 
 // MarkdownExporter exports findings to Markdown format

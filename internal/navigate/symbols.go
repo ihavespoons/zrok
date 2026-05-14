@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // ExtractionMethod specifies how to extract symbols

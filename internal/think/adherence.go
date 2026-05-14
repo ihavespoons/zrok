@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/agent"
-	"github.com/ihavespoons/quokka/internal/finding"
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/agent"
+	"github.com/diffsec/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // AdherenceOptions configures the adherence check.

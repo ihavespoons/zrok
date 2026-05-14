@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 func contains(list []string, want string) bool {

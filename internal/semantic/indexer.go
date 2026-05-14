@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/ihavespoons/quokka/internal/chunk"
-	"github.com/ihavespoons/quokka/internal/embedding"
-	"github.com/ihavespoons/quokka/internal/project"
-	"github.com/ihavespoons/quokka/internal/vectordb"
+	"github.com/diffsec/quokka/internal/chunk"
+	"github.com/diffsec/quokka/internal/embedding"
+	"github.com/diffsec/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/vectordb"
 )
 
 // IndexStats contains statistics about the index

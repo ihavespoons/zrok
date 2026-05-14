@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/finding"
 )
 
 func createTestFindings() []finding.Finding {

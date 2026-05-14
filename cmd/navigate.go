@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/navigate"
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/navigate"
+	"github.com/diffsec/quokka/internal/project"
 	"github.com/spf13/cobra"
 )
 

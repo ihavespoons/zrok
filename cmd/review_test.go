@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/finding"
 )
 
 func sampleFinding(id string, sev finding.Severity, title string) finding.Finding {

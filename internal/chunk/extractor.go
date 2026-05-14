@@ -10,9 +10,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/navigate/lsp"
-	"github.com/ihavespoons/quokka/internal/project"
-	"github.com/ihavespoons/quokka/internal/treesitter"
+	"github.com/diffsec/quokka/internal/navigate/lsp"
+	"github.com/diffsec/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/treesitter"
 )
 
 // ExtractionMethod specifies how to extract chunks

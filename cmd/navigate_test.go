@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/quokka/internal/navigate"
+	"github.com/diffsec/quokka/internal/navigate"
 )
 
 // TestNormalizeListPathsRelativeInput verifies that when the user passes a

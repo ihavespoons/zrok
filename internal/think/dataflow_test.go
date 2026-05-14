@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/quokka/internal/finding"
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // regexpCompileCaseInsensitive compiles a regex with the (?i) flag, mirroring

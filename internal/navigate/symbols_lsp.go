@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/navigate/lsp"
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/navigate/lsp"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // LSPExtractor extracts symbols using language servers

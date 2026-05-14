@@ -5,10 +5,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/agent"
-	"github.com/ihavespoons/quokka/internal/finding"
-	"github.com/ihavespoons/quokka/internal/memory"
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/agent"
+	"github.com/diffsec/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/memory"
+	"github.com/diffsec/quokka/internal/project"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

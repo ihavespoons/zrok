@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/quokka/internal/chunk"
-	"github.com/ihavespoons/quokka/internal/project"
-	"github.com/ihavespoons/quokka/internal/semantic"
-	"github.com/ihavespoons/quokka/internal/vectordb"
+	"github.com/diffsec/quokka/internal/chunk"
+	"github.com/diffsec/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/semantic"
+	"github.com/diffsec/quokka/internal/vectordb"
 	"github.com/spf13/cobra"
 )
 

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // Reader handles file reading operations

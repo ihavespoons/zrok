@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/quokka/internal/finding"
-	"github.com/ihavespoons/quokka/internal/project"
-	"github.com/ihavespoons/quokka/internal/rule"
-	"github.com/ihavespoons/quokka/internal/sast"
+	"github.com/diffsec/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/rule"
+	"github.com/diffsec/quokka/internal/sast"
 	"github.com/spf13/cobra"
 )
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/project"
 	"gopkg.in/yaml.v3"
 )
 

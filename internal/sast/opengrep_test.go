@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/finding"
 )
 
 // sampleSARIF mirrors what opengrep actually emits in production: the rule's

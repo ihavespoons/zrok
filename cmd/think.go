@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/project"
-	"github.com/ihavespoons/quokka/internal/think"
+	"github.com/diffsec/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/think"
 	"github.com/spf13/cobra"
 )
 

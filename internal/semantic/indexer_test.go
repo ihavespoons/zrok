@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ihavespoons/quokka/internal/chunk"
-	"github.com/ihavespoons/quokka/internal/project"
-	"github.com/ihavespoons/quokka/internal/vectordb"
+	"github.com/diffsec/quokka/internal/chunk"
+	"github.com/diffsec/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/vectordb"
 )
 
 // newTestIndexer builds an Indexer without an embedding provider. The

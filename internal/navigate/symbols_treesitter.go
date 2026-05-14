@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/project"
-	"github.com/ihavespoons/quokka/internal/treesitter"
+	"github.com/diffsec/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/treesitter"
 )
 
 // TreeSitterExtractor extracts symbols using tree-sitter.

@@ -1,7 +1,7 @@
 package vectordb
 
 import (
-	"github.com/ihavespoons/quokka/internal/chunk"
+	"github.com/diffsec/quokka/internal/chunk"
 )
 
 // Filter represents filtering options for vector search

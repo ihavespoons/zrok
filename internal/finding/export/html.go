@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/finding"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )

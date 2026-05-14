@@ -20,9 +20,9 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/ihavespoons/quokka/cmd.version={{.Version}}
-      - -X github.com/ihavespoons/quokka/cmd.commit={{.Commit}}
-      - -X github.com/ihavespoons/quokka/cmd.date={{.Date}}
+      - -X github.com/diffsec/quokka/cmd.version={{.Version}}
+      - -X github.com/diffsec/quokka/cmd.commit={{.Commit}}
+      - -X github.com/diffsec/quokka/cmd.date={{.Date}}
 
 archives:
   - format: tar.gz
@@ -58,7 +58,7 @@ release:
 
     **Go install:**
     ```bash
-    go install github.com/ihavespoons/quokka@latest
+    go install github.com/diffsec/quokka@latest
     ```
 
 brews:
@@ -68,7 +68,7 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/ihavespoons/quokka"
+    homepage: "https://github.com/diffsec/quokka"
     description: "LLM-assisted code review tool with agent orchestration"
     license: "Apache-2.0"
     test: |

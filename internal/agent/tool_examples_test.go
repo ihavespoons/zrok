@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/quokka/internal/memory"
+	"github.com/diffsec/quokka/internal/memory"
 )
 
 // TestToolExamplesContainRequiredFlags asserts that every centralized

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // Lister handles directory listing operations

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 func setupTestProject(t *testing.T) (*project.Project, func()) {

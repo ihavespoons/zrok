@@ -9,7 +9,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/ihavespoons/quokka/internal/chunk"
+	"github.com/diffsec/quokka/internal/chunk"
 	"github.com/viterin/vek/vek32"
 )
 

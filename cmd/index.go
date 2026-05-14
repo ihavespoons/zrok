@@ -7,9 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/ihavespoons/quokka/internal/embedding"
-	"github.com/ihavespoons/quokka/internal/project"
-	"github.com/ihavespoons/quokka/internal/semantic"
+	"github.com/diffsec/quokka/internal/embedding"
+	"github.com/diffsec/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/semantic"
 	"github.com/spf13/cobra"
 )
 

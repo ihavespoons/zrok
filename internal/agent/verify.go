@@ -3,7 +3,7 @@ package agent
 import (
 	"time"
 
-	"github.com/ihavespoons/quokka/internal/memory"
+	"github.com/diffsec/quokka/internal/memory"
 )
 
 // MemoryStoreReader is the subset of memory.Store needed for verification.
