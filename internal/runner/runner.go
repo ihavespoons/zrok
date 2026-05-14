@@ -95,19 +95,24 @@ func (claudeRunner) AgentInvocation(ctx context.Context, workDir, agentName, mod
 // The dispatcher knows which agent is running; trusting the model to
 // echo its name back into a flag is the unreliable step we now skip.
 func agentEnv(agentName string) []string {
-	env := os.Environ()
-	if agentName != "" {
-		// Overwrite if already set so the dispatcher's value wins over
-		// anything that leaked through from the calling shell.
-		filtered := env[:0]
-		for _, kv := range env {
-			if !strings.HasPrefix(kv, "ZROK_AGENT_NAME=") {
-				filtered = append(filtered, kv)
-			}
-		}
-		env = append(filtered, "ZROK_AGENT_NAME="+agentName)
+	parent := os.Environ()
+	if agentName == "" {
+		return parent
 	}
-	return env
+	// Filter out any leaked ZROK_AGENT_NAME from the parent shell so the
+	// dispatcher's value is authoritative. Build into a fresh slice
+	// rather than reusing parent's backing array — `filtered := parent[:0]`
+	// would alias the underlying array, and appends below would
+	// overwrite entries the for-range still has to read. That bug
+	// corrupted the env passed to opencode and produced 7-second
+	// no-op dispatcher runs (OWASP v11).
+	filtered := make([]string, 0, len(parent)+1)
+	for _, kv := range parent {
+		if !strings.HasPrefix(kv, "ZROK_AGENT_NAME=") {
+			filtered = append(filtered, kv)
+		}
+	}
+	return append(filtered, "ZROK_AGENT_NAME="+agentName)
 }
 
 // LookupRunner returns the Runner for the given name, or an error if

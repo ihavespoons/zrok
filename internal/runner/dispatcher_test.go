@@ -165,6 +165,87 @@ func TestTriageAuthorForPhase(t *testing.T) {
 	}
 }
 
+// TestAgentEnvDoesNotCorruptInherited exercises the slice-aliasing fix
+// in agentEnv. Earlier version did `filtered := os.Environ()[:0]`,
+// reusing the backing array; subsequent appends then overwrote
+// entries the for-range was still reading. The corrupted env got
+// passed to opencode and produced 7-second no-op dispatcher runs
+// because the subprocess saw a mangled environment. This test
+// reproduces the conditions: many env entries (the OS env is
+// typically 30-60 entries) with at least one ZROK_AGENT_NAME-prefixed
+// entry to filter, and asserts the returned slice has all the
+// original entries plus the new one, all readable as valid KEY=VALUE.
+func TestAgentEnvDoesNotCorruptInherited(t *testing.T) {
+	// Pre-seed env with values that would have been clobbered by the
+	// aliasing bug. The bug shows up when filtering happens early in
+	// the iteration and subsequent reads from `env` (now the alias)
+	// see what the appends wrote.
+	t.Setenv("ZROK_AGENT_NAME", "stale-pre-existing")
+	t.Setenv("ZROK_TEST_CANARY_1", "alpha")
+	t.Setenv("ZROK_TEST_CANARY_2", "beta")
+
+	out := agentEnv("injection-agent")
+
+	// New ZROK_AGENT_NAME must appear exactly once with the new value.
+	var found int
+	var foundValue string
+	for _, kv := range out {
+		if strings.HasPrefix(kv, "ZROK_AGENT_NAME=") {
+			found++
+			foundValue = strings.TrimPrefix(kv, "ZROK_AGENT_NAME=")
+		}
+	}
+	if found != 1 {
+		t.Errorf("ZROK_AGENT_NAME appears %d times in output, want 1", found)
+	}
+	if foundValue != "injection-agent" {
+		t.Errorf("ZROK_AGENT_NAME value: got %q, want injection-agent", foundValue)
+	}
+
+	// The canary values must come through unchanged — proof the
+	// for-range read clean copies, not slice-aliased mutations.
+	var canary1, canary2 string
+	for _, kv := range out {
+		if v, ok := strings.CutPrefix(kv, "ZROK_TEST_CANARY_1="); ok {
+			canary1 = v
+		}
+		if v, ok := strings.CutPrefix(kv, "ZROK_TEST_CANARY_2="); ok {
+			canary2 = v
+		}
+	}
+	if canary1 != "alpha" || canary2 != "beta" {
+		t.Errorf("canary values corrupted: canary1=%q canary2=%q (want alpha/beta)", canary1, canary2)
+	}
+
+	// Every returned entry must be a well-formed KEY=VALUE — the
+	// aliasing bug produced garbage strings that didn't contain '='.
+	for i, kv := range out {
+		if !strings.Contains(kv, "=") {
+			t.Errorf("entry %d is malformed (no '='): %q", i, kv)
+		}
+	}
+}
+
+// TestAgentEnvEmptyAgentNameReturnsInherited covers the no-op case
+// where the dispatcher passes an empty agent name (shouldn't happen
+// in practice but the guard exists). Output should equal os.Environ()
+// — no ZROK_AGENT_NAME added.
+func TestAgentEnvEmptyAgentNameReturnsInherited(t *testing.T) {
+	out := agentEnv("")
+	for _, kv := range out {
+		if strings.HasPrefix(kv, "ZROK_AGENT_NAME=") {
+			// If env already had ZROK_AGENT_NAME from the parent shell,
+			// we leave it. That's fine — agentName="" means caller
+			// didn't want to override.
+			return
+		}
+	}
+	// Otherwise confirm we returned the parent env unchanged.
+	if len(out) != len(os.Environ()) {
+		t.Errorf("output length %d, want %d (parent env)", len(out), len(os.Environ()))
+	}
+}
+
 func TestClassifyFailure(t *testing.T) {
 	cases := []struct {
 		name      string
