@@ -465,3 +465,46 @@ func TestCreateCmdHintGatedByQuietAndJSON(t *testing.T) {
 		})
 	}
 }
+
+// TestRejectInvalidCreatedBy covers the OWASP-eval failure mode where
+// LLM agents filed findings with --created-by values pulled from the
+// runtime ("opencode"), the model family ("qwen"), or invented role
+// descriptions ("security-scanner") instead of their actual agent name.
+// Each pollutes the store, breaks per-agent dedup, and misleads the
+// rule/exception audit paths.
+func TestRejectInvalidCreatedBy(t *testing.T) {
+	cases := []struct {
+		name       string
+		value      string
+		wantReject bool
+	}{
+		{"empty rejected", "", true},
+		{"whitespace-only rejected", "   ", true},
+		{"runtime name `opencode` rejected", "opencode", true},
+		{"runtime name with prefix `agent:opencode` rejected", "agent:opencode", true},
+		{"runtime name `claude` rejected", "claude", true},
+		{"runtime name uppercase `Claude` rejected", "Claude", true},
+		{"provider `openai` rejected", "openai", true},
+		{"model family `qwen3` rejected", "qwen3", true},
+		{"generic `unknown` rejected", "unknown", true},
+		{"generic `system` rejected", "system", true},
+		{"invented `security-scanner` rejected", "security-scanner", true},
+		{"empty prefix rejected", "agent:", true},
+		{"valid agent name accepted", "injection-agent", false},
+		{"valid agent name with prefix accepted", "agent:injection-agent", false},
+		{"tool name `opengrep` accepted", "opengrep", false},
+		{"human prefix with username accepted", "human:alice", false},
+		{"bot prefix with name accepted", "bot:dependabot", false},
+		{"specific agent with 'scanner' substring accepted", "deps-vulnscanner-agent", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			reason := rejectInvalidCreatedBy(c.value)
+			rejected := reason != ""
+			if rejected != c.wantReject {
+				t.Errorf("rejectInvalidCreatedBy(%q): rejected=%v, want %v (reason: %q)",
+					c.value, rejected, c.wantReject, reason)
+			}
+		})
+	}
+}

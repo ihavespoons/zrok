@@ -153,6 +153,19 @@ Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
 			applyFlagOverrides(cmd, &f)
 		}
 
+		// Reject obvious-bad --created-by values. Observed in OWASP eval:
+		// LLMs filed findings with `created_by: "opencode"` (the runtime),
+		// `"security-scanner"` (invented), or empty. Each pollutes the
+		// store, breaks per-agent dedup, and misleads the rule/exception
+		// audit paths. The CLI is the choke point — every agent
+		// invocation flows through it.
+		if rejectReason := rejectInvalidCreatedBy(f.CreatedBy); rejectReason != "" {
+			exitError("--created-by %q is invalid: %s. "+
+				"Use your agent's actual name (e.g. injection-agent), `opengrep`, "+
+				"or a prefixed form like `human:%s` / `agent:my-agent`.",
+				f.CreatedBy, rejectReason, os.Getenv("USER"))
+		}
+
 		// Validate ownership: if --created-by names a known agent with a
 		// non-empty owns_cwes list, warn (or reject under --strict) when the
 		// finding's CWE is outside that agent's scope.
@@ -248,6 +261,65 @@ func printSameFileHint(store *finding.Store, f *finding.Finding, w io.Writer) {
 	_, _ = fmt.Fprintf(w, "Consider whether the new finding adds new information or should be a\n")
 	_, _ = fmt.Fprintf(w, "--note on the existing finding via:\n")
 	_, _ = fmt.Fprintf(w, "  zrok finding update %s --note \"<your perspective>\"\n", exampleID)
+}
+
+// invalidCreatedByValues is the set of strings that have been observed
+// being passed as --created-by but are NOT actual creator identities.
+// They're typically the agent runtime, the model, or generic nouns the
+// LLM invented. Rejecting them at the CLI is the cheapest enforcement
+// point and surfaces a clear actionable error to the agent (or human)
+// caller.
+//
+// Values use lowercased lookup; the rejector normalises before checking.
+var invalidCreatedByValues = map[string]string{
+	"":                "value is empty",
+	"opencode":        "this is the agent runtime name, not your agent's name",
+	"claude":          "this is the runtime/model family, not your agent's name",
+	"claude-code":     "this is the runtime, not your agent's name",
+	"anthropic":       "this is the provider, not your agent's name",
+	"openai":          "this is the provider, not your agent's name",
+	"openrouter":      "this is the gateway, not your agent's name",
+	"qwen":            "this is the model family, not your agent's name",
+	"qwen3":           "this is the model family, not your agent's name",
+	"deepseek":        "this is the model family, not your agent's name",
+	"gpt":             "this is the model family, not your agent's name",
+	"gemma":           "this is the model family, not your agent's name",
+	"llm":             "use the specific agent's name (e.g. injection-agent)",
+	"agent":           "this is too generic — name the specific agent (e.g. injection-agent)",
+	"system":          "ambiguous — use the specific agent's name or `human:$USER`",
+	"unknown":         "use the agent's actual name from its system prompt frontmatter",
+	"none":            "use the agent's actual name; this is not a valid creator",
+	"null":            "use the agent's actual name; this is not a valid creator",
+	"security-scanner": "this is a generic role description — name the specific agent (e.g. security-agent)",
+	"scanner":         "this is a generic role — use the specific agent or `opengrep`",
+	"reviewer":        "this is a generic role — name the specific agent",
+	"analyzer":        "this is a generic role — name the specific agent",
+}
+
+// rejectInvalidCreatedBy returns an empty string when value is acceptable,
+// or a human-readable reason string when it's rejected. The accepted
+// values are anything not in the invalid set; that includes specific
+// agent names (security-agent), tool names (opengrep), and prefixed
+// forms (human:alice, agent:foo). Prefixed forms are checked by their
+// content rather than the prefix.
+func rejectInvalidCreatedBy(value string) string {
+	normalised := strings.ToLower(strings.TrimSpace(value))
+	if reason, bad := invalidCreatedByValues[normalised]; bad {
+		return reason
+	}
+	// Prefixed forms (`agent:foo`, `human:bob`): inspect the suffix.
+	for _, prefix := range []string{"agent:", "human:", "bot:", "tool:"} {
+		if strings.HasPrefix(normalised, prefix) {
+			suffix := strings.TrimPrefix(normalised, prefix)
+			if reason, bad := invalidCreatedByValues[suffix]; bad {
+				return "after `" + prefix + "` prefix: " + reason
+			}
+			if suffix == "" {
+				return "prefix `" + prefix + "` with no identity after it"
+			}
+		}
+	}
+	return ""
 }
 
 // validateOwnsCWEs checks that f.CWE is within the owning agent's owns_cwes list.
