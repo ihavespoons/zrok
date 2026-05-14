@@ -1,51 +1,51 @@
-# zrok
+# quokka
 
-A CLI tool for LLM-assisted security code review. zrok provides structured tooling for multi-agent workflows — project onboarding, code navigation, memory sharing, finding management, and report export.
+A CLI tool for LLM-assisted security code review. quokka provides structured tooling for multi-agent workflows — project onboarding, code navigation, memory sharing, finding management, and report export.
 
 ## Installation
 
 ### Homebrew
 
 ```bash
-brew install ihavespoons/homebrew-tap/zrok
+brew install ihavespoons/homebrew-tap/quokka
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/ihavespoons/zrok.git
-cd zrok
-go build -o zrok .
+git clone https://github.com/diffsec/quokka.git
+cd quokka
+go build -o quokka .
 ```
 
 ### Go Install
 
 ```bash
-go install github.com/ihavespoons/zrok@latest
+go install github.com/diffsec/quokka@latest
 ```
 
 ## Adding the Skill to Claude Code
 
-zrok ships with a Claude Code skill that orchestrates the full review workflow.
+quokka ships with a Claude Code skill that orchestrates the full review workflow.
 
 ### Automatic (recommended)
 
 ```bash
-zrok init --install-skill
+quokka init --install-skill
 ```
 
-This installs the skill to `~/.claude/skills/zrok-code-review/SKILL.md`, making it globally available across all projects.
+This installs the skill to `~/.claude/skills/quokka-code-review/SKILL.md`, making it globally available across all projects.
 
 ### Manual
 
 ```bash
 mkdir -p /path/to/your/project/.claude/skills
-cp -r /path/to/zrok/skills/code-review /path/to/your/project/.claude/skills/code-review
+cp -r /path/to/quokka/skills/code-review /path/to/your/project/.claude/skills/code-review
 ```
 
 Then open Claude Code in the target project and invoke it naturally:
 
-> "Run a security code review using zrok"
+> "Run a security code review using quokka"
 
 The skill handles agent delegation, memory sharing, finding creation, and export automatically. See [`skills/code-review/SKILL.md`](skills/code-review/SKILL.md) for the full orchestration reference.
 
@@ -54,8 +54,8 @@ The skill handles agent delegation, memory sharing, finding creation, and export
 ```bash
 # ── Setup ────────────────────────────────────────────────────────
 cd /path/to/your/project
-zrok init                        # Creates .zrok/ directory
-zrok onboard                     # Detects tech stack, outputs recon-agent prompt
+quokka init                        # Creates .quokka/ directory
+quokka onboard                     # Detects tech stack, outputs recon-agent prompt
 
 # ── Phase 1: Recon ───────────────────────────────────────────────
 # The skill spawns recon-agent as a subagent with the onboard prompt.
@@ -63,23 +63,23 @@ zrok onboard                     # Detects tech stack, outputs recon-agent promp
 #   project_overview, tech_stack, coding_standards,
 #   api_endpoints, auth_patterns, review_targets
 
-zrok memory list                 # Verify memories were created
+quokka memory list                 # Verify memories were created
 
 # ── Phase 2: Analysis (parallel) ────────────────────────────────
 # The skill spawns analysis agents in parallel. Each reads the
-# shared memories, navigates code with zrok, and creates findings.
+# shared memories, navigates code with quokka, and creates findings.
 #   security-agent   → auth, authz, crypto, secrets
 #   guards-agent     → input validation, CSRF, error handling
 #   architecture-agent → code patterns, technical debt
 #   + optional: content-agent, logging-agent, dependencies-agent, references-agent
 
-zrok finding list                # See what they found
+quokka finding list                # See what they found
 
 # ── Phase 3: Validation ─────────────────────────────────────────
 # validation-agent triages all findings — deduplicates, marks
 # false positives, and confirms real issues.
 
-zrok finding list --status confirmed
+quokka finding list --status confirmed
 
 # ── Phase 4: Review (parallel) ──────────────────────────────────
 # A dedicated review-agent is spawned per high/critical finding.
@@ -87,10 +87,10 @@ zrok finding list --status confirmed
 # exploitability and fix priority.
 
 # ── Phase 5: Export ──────────────────────────────────────────────
-zrok finding stats
-zrok finding export --format md -o report.md       # Human-readable
-zrok finding export --format sarif -o report.sarif  # CI/CD integration
-zrok finding export --format html -o report.html    # Stakeholder report
+quokka finding stats
+quokka finding export --format md -o report.md       # Human-readable
+quokka finding export --format sarif -o report.sarif  # CI/CD integration
+quokka finding export --format html -o report.html    # Stakeholder report
 ```
 
 ## Built-in Agents
@@ -109,9 +109,9 @@ zrok finding export --format html -o report.html    # Stakeholder report
 | `review-agent` | Review | Deep per-finding investigation |
 
 ```bash
-zrok agent list              # List all agents
-zrok agent show <name>       # Show agent details
-zrok agent prompt <name>     # Generate agent prompt with project context
+quokka agent list              # List all agents
+quokka agent show <name>       # Show agent details
+quokka agent prompt <name>     # Generate agent prompt with project context
 ```
 
 ## Semantic Search
@@ -120,18 +120,18 @@ Optional natural language search over the codebase using vector embeddings.
 
 ```bash
 # Enable with a provider (one-time)
-zrok index enable --provider ollama       # Local, free (requires Ollama)
-zrok index enable --provider openai       # Cloud, paid (requires OPENAI_API_KEY)
-zrok index enable --provider huggingface  # Cloud, free tier (requires HF_API_KEY)
+quokka index enable --provider ollama       # Local, free (requires Ollama)
+quokka index enable --provider openai       # Cloud, paid (requires OPENAI_API_KEY)
+quokka index enable --provider huggingface  # Cloud, free tier (requires HF_API_KEY)
 
 # Build the index
-zrok index build
+quokka index build
 
 # Search
-zrok semantic "authentication bypass"              # Natural language query
-zrok semantic "SQL injection" --multi-hop          # Explore related code paths
-zrok semantic "error handling" --type function     # Filter by chunk type
-zrok semantic related cmd/agent.go                 # Find related code
+quokka semantic "authentication bypass"              # Natural language query
+quokka semantic "SQL injection" --multi-hop          # Explore related code paths
+quokka semantic "error handling" --type function     # Filter by chunk type
+quokka semantic related cmd/agent.go                 # Find related code
 ```
 
 ## Export Formats
@@ -147,7 +147,7 @@ zrok semantic related cmd/agent.go                 # Find related code
 ## Development
 
 ```bash
-go build -o zrok .    # Build
+go build -o quokka .    # Build
 go test ./...         # Test
 ```
 

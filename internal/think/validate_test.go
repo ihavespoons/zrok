@@ -3,7 +3,7 @@ package think
 import (
 	"testing"
 
-	"github.com/ihavespoons/zrok/internal/finding"
+	"github.com/diffsec/quokka/internal/finding"
 )
 
 func TestAnalyzeValidate_TruePositive(t *testing.T) {

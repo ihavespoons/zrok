@@ -9,7 +9,7 @@ import (
 
 func TestInitialize(t *testing.T) {
 	// Create temp directory
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -40,13 +40,13 @@ func TestInitialize(t *testing.T) {
 
 	// Verify directories were created
 	dirs := []string{
-		filepath.Join(tmpDir, ZrokDir),
-		filepath.Join(tmpDir, ZrokDir, MemoriesDir, ContextDir),
-		filepath.Join(tmpDir, ZrokDir, MemoriesDir, PatternsDir),
-		filepath.Join(tmpDir, ZrokDir, MemoriesDir, StackDir),
-		filepath.Join(tmpDir, ZrokDir, FindingsDir, RawDir),
-		filepath.Join(tmpDir, ZrokDir, FindingsDir, ExportsDir),
-		filepath.Join(tmpDir, ZrokDir, AgentsDir),
+		filepath.Join(tmpDir, QuokkaDir),
+		filepath.Join(tmpDir, QuokkaDir, MemoriesDir, ContextDir),
+		filepath.Join(tmpDir, QuokkaDir, MemoriesDir, PatternsDir),
+		filepath.Join(tmpDir, QuokkaDir, MemoriesDir, StackDir),
+		filepath.Join(tmpDir, QuokkaDir, FindingsDir, RawDir),
+		filepath.Join(tmpDir, QuokkaDir, FindingsDir, ExportsDir),
+		filepath.Join(tmpDir, QuokkaDir, AgentsDir),
 	}
 
 	for _, dir := range dirs {
@@ -56,14 +56,14 @@ func TestInitialize(t *testing.T) {
 	}
 
 	// Verify project.yaml was created
-	configPath := filepath.Join(tmpDir, ZrokDir, ProjectFile)
+	configPath := filepath.Join(tmpDir, QuokkaDir, ProjectFile)
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Error("project.yaml not created")
 	}
 }
 
 func TestInitializeAlreadyExists(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestInitializeAlreadyExists(t *testing.T) {
 }
 
 func TestProjectLoadSave(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestProjectLoadSave(t *testing.T) {
 }
 
 func TestFindProjectRoot(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestFindProjectRoot(t *testing.T) {
 }
 
 func TestFindProjectRootNotFound(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -176,12 +176,12 @@ func TestFindProjectRootNotFound(t *testing.T) {
 	// Don't initialize - should fail to find
 	_, err = FindProjectRoot(tmpDir)
 	if err == nil {
-		t.Error("expected error when no .zrok directory exists")
+		t.Error("expected error when no .quokka directory exists")
 	}
 }
 
 func TestActivate(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -217,23 +217,23 @@ func TestProjectPaths(t *testing.T) {
 		Config:   &ProjectConfig{},
 	}
 
-	if p.GetZrokPath() != "/test/project/.zrok" {
-		t.Errorf("unexpected zrok path: %s", p.GetZrokPath())
+	if p.GetQuokkaPath() != "/test/project/.quokka" {
+		t.Errorf("unexpected quokka path: %s", p.GetQuokkaPath())
 	}
 
-	if p.GetConfigPath() != "/test/project/.zrok/project.yaml" {
+	if p.GetConfigPath() != "/test/project/.quokka/project.yaml" {
 		t.Errorf("unexpected config path: %s", p.GetConfigPath())
 	}
 
-	if p.GetMemoriesPath() != "/test/project/.zrok/memories" {
+	if p.GetMemoriesPath() != "/test/project/.quokka/memories" {
 		t.Errorf("unexpected memories path: %s", p.GetMemoriesPath())
 	}
 
-	if p.GetFindingsPath() != "/test/project/.zrok/findings" {
+	if p.GetFindingsPath() != "/test/project/.quokka/findings" {
 		t.Errorf("unexpected findings path: %s", p.GetFindingsPath())
 	}
 
-	if p.GetAgentsPath() != "/test/project/.zrok/agents" {
+	if p.GetAgentsPath() != "/test/project/.quokka/agents" {
 		t.Errorf("unexpected agents path: %s", p.GetAgentsPath())
 	}
 }

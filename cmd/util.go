@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/agent"
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/memory"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/agent"
+	"github.com/diffsec/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/memory"
+	"github.com/diffsec/quokka/internal/project"
 	"github.com/spf13/cobra"
 )
 
@@ -15,99 +15,99 @@ import (
 var instructionsCmd = &cobra.Command{
 	Use:   "instructions",
 	Short: "Print onboarding instructions for LLM",
-	Long:  `Print comprehensive instructions for using zrok with an LLM agent.`,
+	Long:  `Print comprehensive instructions for using quokka with an LLM agent.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		instructions := `# zrok - Security Code Review CLI
+		instructions := `# quokka - Security Code Review CLI
 
-zrok is a read-only CLI tool designed for LLM-assisted security code review.
+quokka is a read-only CLI tool designed for LLM-assisted security code review.
 All commands output JSON when --json flag is provided.
 
 ## Quick Start
 
 1. Initialize a project:
-   zrok init
+   quokka init
 
 2. Auto-detect tech stack:
-   zrok onboard --auto
+   quokka onboard --auto
 
 3. Start analyzing:
-   zrok read <file>
-   zrok search <pattern>
-   zrok symbols <file>
+   quokka read <file>
+   quokka search <pattern>
+   quokka symbols <file>
 
 4. Document findings:
-   zrok finding create --file finding.yaml
+   quokka finding create --file finding.yaml
 
 5. Export results:
-   zrok finding export --format sarif
+   quokka finding export --format sarif
 
 ## Command Reference
 
 ### Project Management
-- zrok init                  Initialize .zrok in current directory
-- zrok activate [path]       Activate a project
-- zrok config [get|set]      View/modify project config
-- zrok onboard --auto        Auto-detect tech stack
-- zrok onboard --wizard      Interactive setup
-- zrok status                Show project status
+- quokka init                  Initialize .quokka in current directory
+- quokka activate [path]       Activate a project
+- quokka config [get|set]      View/modify project config
+- quokka onboard --auto        Auto-detect tech stack
+- quokka onboard --wizard      Interactive setup
+- quokka status                Show project status
 
 ### Code Navigation (Read-Only)
-- zrok read <file>           Read file contents
+- quokka read <file>           Read file contents
   --lines N:M                Read specific line range
-- zrok list <dir>            List directory contents
+- quokka list <dir>            List directory contents
   --recursive, -r            List recursively
   --tree, -t                 Display as tree
-- zrok find <pattern>        Find files by pattern
+- quokka find <pattern>        Find files by pattern
   --type file|dir            Filter by type
-- zrok search <pattern>      Search file contents
+- quokka search <pattern>      Search file contents
   --regex, -r                Use regex patterns
   --context N, -C            Show N lines of context
-- zrok symbols <file>        Extract code symbols
-- zrok symbols find <name>   Find symbol globally
-- zrok symbols refs <name>   Find references to symbol
+- quokka symbols <file>        Extract code symbols
+- quokka symbols find <name>   Find symbol globally
+- quokka symbols refs <name>   Find references to symbol
 
 ### Memory Management
-- zrok memory list           List all memories
+- quokka memory list           List all memories
   --type context|pattern|stack
-- zrok memory read <name>    Read a memory
-- zrok memory write <name>   Create/update memory
+- quokka memory read <name>    Read a memory
+- quokka memory write <name>   Create/update memory
   --content "..."            Memory content
   --file <path>              Read content from file
   --type context             Memory type
-- zrok memory delete <name>  Delete a memory
-- zrok memory search <query> Search memories
+- quokka memory delete <name>  Delete a memory
+- quokka memory search <query> Search memories
 
 ### Finding Management
-- zrok finding create        Create a finding
+- quokka finding create        Create a finding
   --file finding.yaml        From YAML file
-- zrok finding list          List findings
+- quokka finding list          List findings
   --severity high            Filter by severity
   --status open              Filter by status
-- zrok finding show <id>     Show finding details
-- zrok finding update <id>   Update a finding
+- quokka finding show <id>     Show finding details
+- quokka finding update <id>   Update a finding
   --status confirmed         Update status
-- zrok finding export        Export findings
+- quokka finding export        Export findings
   --format sarif|json|md|html|csv
   --output <file>            Output file
-- zrok finding stats         Show statistics
-- zrok finding delete <id>   Delete a finding
+- quokka finding stats         Show statistics
+- quokka finding delete <id>   Delete a finding
 
 ### Thinking Tools
-- zrok think collected       Evaluate collected info
-- zrok think adherence       Check task adherence
-- zrok think done            Assess task completion
-- zrok think next            Suggest next steps
-- zrok think hypothesis      Generate hypotheses
-- zrok think validate <id>   Validate a finding
+- quokka think collected       Evaluate collected info
+- quokka think adherence       Check task adherence
+- quokka think done            Assess task completion
+- quokka think next            Suggest next steps
+- quokka think hypothesis      Generate hypotheses
+- quokka think validate <id>   Validate a finding
 
 ### Agent Management
-- zrok agent list            List available agents
-- zrok agent show <name>     Show agent config
-- zrok agent prompt <name>   Generate agent prompt
-- zrok agent generate        Generate recommended agents
+- quokka agent list            List available agents
+- quokka agent show <name>     Show agent config
+- quokka agent prompt <name>   Generate agent prompt
+- quokka agent generate        Generate recommended agents
 
 ### Dashboard
-- zrok dashboard             Start web dashboard
+- quokka dashboard             Start web dashboard
   --port 8080                Dashboard port
 
 ## Finding YAML Format
@@ -145,30 +145,30 @@ created_by: "injection-agent"
 ## Workflow Example
 
 1. Initialize and onboard:
-   zrok init && zrok onboard --auto
+   quokka init && quokka onboard --auto
 
 2. Get agent prompt:
-   zrok agent prompt injection-agent
+   quokka agent prompt injection-agent
 
 3. Explore codebase:
-   zrok list --tree
-   zrok find "*.go"
-   zrok search "sql" --context 3
+   quokka list --tree
+   quokka find "*.go"
+   quokka search "sql" --context 3
 
 4. Analyze files:
-   zrok read src/db/queries.go
-   zrok symbols src/db/queries.go
+   quokka read src/db/queries.go
+   quokka symbols src/db/queries.go
 
 5. Document findings:
    echo "..." > finding.yaml
-   zrok finding create --file finding.yaml
+   quokka finding create --file finding.yaml
 
 6. Self-check:
-   zrok think adherence "Find SQL injection"
-   zrok think done "SQL injection analysis"
+   quokka think adherence "Find SQL injection"
+   quokka think done "SQL injection analysis"
 
 7. Export:
-   zrok finding export --format sarif --output report.sarif
+   quokka finding export --format sarif --output report.sarif
 `
 
 		if jsonOutput {

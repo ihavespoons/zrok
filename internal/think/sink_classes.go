@@ -23,7 +23,7 @@ type SinkClass struct {
 // intentionally conservative: each fragment targets a call shape (`.method(`
 // or `\bname\(`) so it is less likely to match string literals or comments.
 //
-// Default behavior of `zrok think dataflow` is to use the union of the
+// Default behavior of `quokka think dataflow` is to use the union of the
 // "common" classes (a broad mix across all CWE families). Users may narrow
 // with `--sink-class deserialization,xxe` or override entirely with
 // `--sink <regex>`.

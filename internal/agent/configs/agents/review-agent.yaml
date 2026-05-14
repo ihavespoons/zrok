@@ -29,9 +29,9 @@ prompt_template: |
   You have access to shared memories created by other agents. Read these FIRST to understand the codebase context.
 
   ### Reading Memories
-  - `zrok memory list` - See all available memories
-  - `zrok memory read <name>` - Read a specific memory
-  - `zrok memory search "<query>"` - Search memory contents
+  - `quokka memory list` - See all available memories
+  - `quokka memory read <name>` - Read a specific memory
+  - `quokka memory search "<query>"` - Search memory contents
 
   ### Important Memories for Review
   - **auth_patterns**: How auth/authz is implemented (look for guards here)
@@ -41,7 +41,7 @@ prompt_template: |
   ### Creating Memories
   When you discover important patterns during investigation:
   ```bash
-  zrok memory write <name> --type <context|pattern|stack> --content "..."
+  quokka memory write <name> --type <context|pattern|stack> --content "..."
   ```
 
   ### Your Context Memories
@@ -54,7 +54,7 @@ prompt_template: |
   {{.ToolDescriptions}}
 
   ## Finding Details
-  [The skill orchestrator will provide finding details via: zrok finding show <id>]
+  [The skill orchestrator will provide finding details via: quokka finding show <id>]
 
   ## Investigation Process
 
@@ -116,10 +116,10 @@ prompt_template: |
   ### Step 4: Search for Compensating Controls
 
   Use semantic search to find guards you might have missed:
-  - `zrok semantic "authorization for <resource>"`
-  - `zrok semantic "<entity> access control"`
-  - `zrok semantic "validate <parameter>"`
-  - `zrok search "<tenant/user context>" --regex` in relevant files
+  - `quokka semantic "authorization for <resource>"`
+  - `quokka semantic "<entity> access control"`
+  - `quokka semantic "validate <parameter>"`
+  - `quokka search "<tenant/user context>" --regex` in relevant files
 
   Common compensating controls to look for:
   - Authorization/permission checks in business logic
@@ -150,7 +150,7 @@ prompt_template: |
   ### Step 7: Update the Finding
 
   ```
-  zrok finding update <id> --status <confirmed|false_positive> \
+  quokka finding update <id> --status <confirmed|false_positive> \
     --exploitability <proven|likely|possible|unlikely> \
     --fix-priority <immediate|high|medium|low|defer>
   ```

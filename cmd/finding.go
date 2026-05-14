@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -9,10 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/agent"
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/finding/export"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/agent"
+	"github.com/diffsec/quokka/internal/exception"
+	"github.com/diffsec/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/finding/export"
+	"github.com/diffsec/quokka/internal/project"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -35,11 +37,23 @@ var findingCreateCmd = &cobra.Command{
 
 Three input modes are supported:
 
-  1. YAML file:    zrok finding create -f finding.yaml
-  2. Stdin:        zrok finding create -          (also: -f -)
-  3. Flags:        zrok finding create --title ... --severity high \
-                       --cwe CWE-89 --file app.py --line 42 \
-                       --description "..." [--remediation "..."]
+  1. YAML file:    quokka finding create -f finding.yaml
+  2. Stdin:        quokka finding create -          (also: -f -)
+  3. Flags (complete example — copy and edit values):
+
+       quokka finding create \
+         --title "SQL injection in user lookup" \
+         --severity high \
+         --confidence high \
+         --cwe CWE-89 \
+         --file src/api/users.py \
+         --line 42 \
+         --description "User-supplied id is concatenated into the SQL query without parameterisation." \
+         --remediation "Use parameterised queries: cursor.execute('SELECT * FROM users WHERE id=%s', (uid,))" \
+         --created-by injection-agent \
+         --tag injection:sql
+       # NOTE: --cwe MUST include the "CWE-" prefix (e.g. CWE-89). Bare numbers like "89" are rejected.
+       # NOTE: --file MUST be relative to the project root (e.g. src/api/users.py), NOT an absolute filesystem path.
 
 Flag mode is triggered when --title is provided. Stdin mode reads YAML from
 standard input. The three modes are mutually exclusive.
@@ -140,6 +154,37 @@ Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
 			applyFlagOverrides(cmd, &f)
 		}
 
+		// Validate --created-by against the agent registry. The CLI
+		// flag-mode path is reserved for LLM agents (quokka sast uses
+		// store.Create directly, bypassing the CLI), so the bar is
+		// positive identification — accepted values must be either:
+		//   - a registered agent name (built-in or .quokka/agents override), or
+		//   - a `human:<id>` / `bot:<id>` prefixed identity.
+		//
+		// When the explicit value is rejected BUT QUOKKA_AGENT_NAME env is
+		// set to a valid agent (dispatcher injects this per-subprocess),
+		// we forgivingly fall back to env + warn rather than fail. This
+		// closes the OWASP-eval failure mode where qwen3-coder-plus
+		// reliably fabricates wrong creator strings (opencode,
+		// opencode-security-agent, opengrep, security-scanner) instead
+		// of echoing its actual agent name; the dispatcher always knows
+		// the right value, so the harness becomes self-correcting.
+		eff, rejectReason, fellBack, envHint := enforceCreatedBy(p, f.CreatedBy)
+		if fellBack {
+			fmt.Fprintf(os.Stderr,
+				"warning: --created-by %q rejected (%s); using QUOKKA_AGENT_NAME=%q from dispatcher instead.\n",
+				f.CreatedBy, rejectReason, envHint)
+			f.CreatedBy = eff
+		} else if rejectReason != "" {
+			var hint string
+			if envHint != "" {
+				hint = fmt.Sprintf(" (QUOKKA_AGENT_NAME=%q is set but is also not a registered agent.)", envHint)
+			} else {
+				hint = fmt.Sprintf(" Use the agent's name from its system prompt frontmatter (e.g. injection-agent), or `human:%s`.", os.Getenv("USER"))
+			}
+			exitError("--created-by %q is invalid: %s.%s", f.CreatedBy, rejectReason, hint)
+		}
+
 		// Validate ownership: if --created-by names a known agent with a
 		// non-empty owns_cwes list, warn (or reject under --strict) when the
 		// finding's CWE is outside that agent's scope.
@@ -234,7 +279,119 @@ func printSameFileHint(store *finding.Store, f *finding.Finding, w io.Writer) {
 	exampleID := others[0].ID
 	_, _ = fmt.Fprintf(w, "Consider whether the new finding adds new information or should be a\n")
 	_, _ = fmt.Fprintf(w, "--note on the existing finding via:\n")
-	_, _ = fmt.Fprintf(w, "  zrok finding update %s --note \"<your perspective>\"\n", exampleID)
+	_, _ = fmt.Fprintf(w, "  quokka finding update %s --note \"<your perspective>\"\n", exampleID)
+}
+
+// enforceCreatedBy validates an explicit --created-by value and decides
+// whether to:
+//   - accept it (rejectReason="")
+//   - swap it for the env-default QUOKKA_AGENT_NAME when the explicit value
+//     is invalid but env names a valid agent (fellBack=true; caller
+//     should warn but proceed)
+//   - reject outright (rejectReason set, fellBack=false)
+//
+// envHint is the env value the caller may surface in error messages so
+// the model sees what its real agent name is.
+//
+// The fall-back behavior is the structural fix for the OWASP-eval
+// failure mode: LLM agents reliably fabricate wrong creator strings
+// (opencode, opencode-security-agent, opengrep, security-scanner) and
+// each iteration finds a new evasion. The dispatcher always knows the
+// right value via QUOKKA_AGENT_NAME; preferring it over the model's
+// guess makes the harness self-correcting.
+func enforceCreatedBy(p *project.Project, value string) (effective, rejectReason string, fellBack bool, envHint string) {
+	envHint = os.Getenv("QUOKKA_AGENT_NAME")
+	reason := rejectInvalidCreatedBy(p, value)
+	if reason == "" {
+		return value, "", false, envHint
+	}
+	// Explicit value is invalid. If env names a valid agent, swap.
+	if envHint != "" && rejectInvalidCreatedBy(p, envHint) == "" {
+		return envHint, reason, true, envHint
+	}
+	// No usable fallback — surface the rejection.
+	return "", reason, false, envHint
+}
+
+// rejectInvalidCreatedBy returns "" if the value is an acceptable
+// --created-by, or a reason string if it should be rejected. The CLI
+// flag-mode path is for LLM agents (the `quokka sast` programmatic path
+// uses store.Create directly), so the bar is positive identification:
+// the value must be a registered agent name or a `human:`/`bot:`
+// prefixed identity. Tool names like `opengrep` are NOT acceptable here
+// — they're reserved for the SAST programmatic flow, and accepting
+// them via CLI lets LLM agents impersonate the SAST tool and trigger
+// dedup collisions that drop their findings silently.
+//
+// History: this used to be a deny-list of known-bad values. Each OWASP
+// eval iteration found a new evasion (opencode → opencode-security-
+// agent → opengrep). Switched to allow-list to stop the arms race.
+func rejectInvalidCreatedBy(p *project.Project, value string) string {
+	normalised := strings.TrimSpace(value)
+	if normalised == "" {
+		return "value is empty"
+	}
+
+	// Prefixed identities: `human:alice`, `bot:dependabot`. Suffix must
+	// be a non-empty plain identifier — no runtime names sneaking through
+	// via `human:opencode` etc.
+	for _, prefix := range []string{"human:", "bot:"} {
+		if strings.HasPrefix(strings.ToLower(normalised), prefix) {
+			suffix := strings.TrimSpace(strings.TrimPrefix(normalised, prefix))
+			if suffix == "" {
+				return "prefix `" + prefix + "` with no identity after it"
+			}
+			// Even prefixed forms reject runtime/provider names — a
+			// human user shouldn't be filing as `human:opencode`.
+			if isRuntimeOrProvider(strings.ToLower(suffix)) {
+				return "after `" + prefix + "` prefix: `" + suffix + "` is a runtime/provider/model name, not a person"
+			}
+			return ""
+		}
+	}
+
+	// `agent:foo` prefix is allowed as a synonym for `foo` — strip and
+	// continue with the registry check.
+	registryName := normalised
+	if strings.HasPrefix(strings.ToLower(registryName), "agent:") {
+		registryName = strings.TrimSpace(strings.TrimPrefix(registryName, "agent:"))
+		if strings.HasPrefix(strings.ToLower(registryName), "agent:") {
+			registryName = strings.TrimSpace(strings.TrimPrefix(registryName, "agent:"))
+		}
+		if registryName == "" {
+			return "prefix `agent:` with no identity after it"
+		}
+	}
+
+	// Registry check: must be a known agent (built-in or project-local
+	// override in .quokka/agents/). The ConfigManager already walks both.
+	mgr := agent.NewConfigManager(p, "")
+	if _, err := mgr.Get(registryName); err == nil {
+		return "" // accepted: registered agent
+	}
+
+	// Not in registry: reject. Surface a hint about what would be
+	// accepted (registered name or human/bot prefix).
+	return "not a registered agent (no `" + registryName + "` in built-in registry or `.quokka/agents/`)"
+}
+
+// isRuntimeOrProvider returns true when v matches a known LLM runtime,
+// provider, or model family. Used to keep these strings from sneaking
+// in via `human:` / `bot:` prefixes too.
+func isRuntimeOrProvider(v string) bool {
+	switch v {
+	case "opencode", "claude", "claude-code", "claude_code",
+		"anthropic", "openai", "openrouter",
+		"qwen", "qwen3", "deepseek", "gpt", "gemma",
+		"llm", "ai", "model":
+		return true
+	}
+	for _, p := range []string{"opencode-", "claude-", "qwen3-", "deepseek-", "gpt-", "gemma-"} {
+		if strings.HasPrefix(v, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // validateOwnsCWEs checks that f.CWE is within the owning agent's owns_cwes list.
@@ -280,12 +437,23 @@ func validateOwnsCWEs(p *project.Project, f *finding.Finding, strict bool) error
 // (detected via cobra's Flags().Changed) — defaults do not silently overwrite
 // YAML-supplied values. Currently this handles --created-by; other flags
 // (--severity, --cwe, --confidence, --tag) are left to the YAML to keep the
-// override surface small and well-defined. Document this precedence in the
-// --created-by help text below.
+// override surface small and well-defined.
+//
+// When --created-by is NOT passed AND f.CreatedBy is empty (after YAML
+// parse), the QUOKKA_AGENT_NAME env var is consulted — the dispatcher sets
+// this per per-agent subprocess (see internal/runner/runner.go). This
+// makes attribution automatic for any CLI call from a dispatched agent
+// and eliminates the entire "LLM forgets/guesses its own name" failure
+// mode the OWASP eval surfaced (v5-v9 each found a new evasion).
 func applyFlagOverrides(cmd *cobra.Command, f *finding.Finding) {
 	if cmd.Flags().Changed("created-by") {
 		if v, err := cmd.Flags().GetString("created-by"); err == nil {
 			f.CreatedBy = v
+		}
+	}
+	if f.CreatedBy == "" {
+		if env := os.Getenv("QUOKKA_AGENT_NAME"); env != "" {
+			f.CreatedBy = env
 		}
 	}
 }
@@ -301,6 +469,13 @@ func buildFindingFromFlags(cmd *cobra.Command, title string) (finding.Finding, e
 	confidence, _ := cmd.Flags().GetString("confidence")
 	tags, _ := cmd.Flags().GetStringSlice("tag")
 	createdBy, _ := cmd.Flags().GetString("created-by")
+	// Fall back to QUOKKA_AGENT_NAME env when --created-by wasn't passed.
+	// Set by the dispatcher per per-agent subprocess so attribution is
+	// automatic for any agent CLI call without the LLM having to echo
+	// its own name correctly.
+	if createdBy == "" {
+		createdBy = os.Getenv("QUOKKA_AGENT_NAME")
+	}
 
 	f := finding.Finding{
 		Title:       title,
@@ -393,6 +568,202 @@ to record the canonical finding ID.`,
 	},
 }
 
+// triagePlan is the on-disk shape produced by a triage agent and
+// consumed by `quokka finding triage`. Captures status / severity /
+// duplicate-of / note overrides in one shot so the dispatcher can apply
+// them deterministically after the agent exits.
+//
+// Why we don't ask the agent to call `quokka finding update` per finding:
+// LLM compliance with multi-call update flows is unreliable
+// (validation-agent updated 0 of 82 findings across OWASP v5-v8). LLMs
+// are much better at emitting structured output than at executing
+// side-effecting tool calls in a loop. This file is that structured
+// output; the apply step is deterministic Go code with no model
+// involvement.
+type triagePlan struct {
+	Version   int              `json:"version"`
+	Author    string           `json:"author"`
+	Decisions []triageDecision `json:"decisions"`
+}
+
+type triageDecision struct {
+	FindingID         string `json:"finding_id"`
+	Status            string `json:"status"`             // open, confirmed, false_positive, duplicate
+	Reason            string `json:"reason"`             // becomes the note body
+	DuplicateOf       string `json:"duplicate_of,omitempty"`
+	SeverityOverride  string `json:"severity_override,omitempty"`
+	FixPriority       string `json:"fix_priority,omitempty"`
+	Exploitability    string `json:"exploitability,omitempty"`
+	ConfidenceOverride string `json:"confidence_override,omitempty"`
+}
+
+// findingTriageCmd applies a JSON triage plan to existing findings.
+// Companion to `quokka finding update` (single-finding flags) — this is
+// the batch path used by validation-agent / sast-triage-agent.
+var findingTriageCmd = &cobra.Command{
+	Use:   "triage",
+	Short: "Apply a JSON triage plan to existing findings (batch updates)",
+	Long: `Reads a JSON triage plan and applies status / severity / duplicate-of
+updates to the named findings. Designed as the deterministic counterpart to
+the LLM-as-updater pattern: a triage agent emits JSON, this command applies.
+
+Plan file shape (` + "`quokka finding triage --plan path/to/plan.json`" + `):
+
+  {
+    "version": 1,
+    "author": "validation-agent",
+    "decisions": [
+      {
+        "finding_id": "FIND-001",
+        "status": "false_positive",
+        "reason": "ORM auto-parameterises; concat is on a static column name.",
+        "duplicate_of": "FIND-002",     // optional, pairs with status:duplicate
+        "severity_override": "medium",   // optional
+        "fix_priority": "low",           // optional
+        "exploitability": "unlikely",    // optional
+        "confidence_override": "low"     // optional
+      }
+    ]
+  }
+
+Default plan path: .quokka/review/triage-plan.json (where the dispatcher
+expects validation-agent and sast-triage-agent to write).
+
+Each decision is applied independently:
+  - Missing finding_id: counted as skipped, reported, no fatal error
+  - Invalid status value: counted as errored, reported, run continues
+  - Apply error (e.g. store I/O): counted as errored, reported
+
+Exit code: 0 if any decisions applied successfully OR plan had zero
+decisions; non-zero only if EVERY decision errored (suggests systemic
+problem worth surfacing).`,
+	Run: func(cmd *cobra.Command, args []string) {
+		p, err := project.EnsureActive()
+		if err != nil {
+			exitError("%v", err)
+		}
+
+		planPath, _ := cmd.Flags().GetString("plan")
+		if planPath == "" {
+			planPath = filepath.Join(p.GetQuokkaPath(), "review", "triage-plan.json")
+		}
+		authorOverride, _ := cmd.Flags().GetString("author")
+
+		data, err := os.ReadFile(planPath)
+		if err != nil {
+			exitError("read triage plan %s: %v", planPath, err)
+		}
+		var plan triagePlan
+		if err := json.Unmarshal(data, &plan); err != nil {
+			exitError("parse triage plan: %v", err)
+		}
+		if plan.Version != 0 && plan.Version != 1 {
+			exitError("unsupported triage plan version: %d (this build supports v1)", plan.Version)
+		}
+
+		author := plan.Author
+		if authorOverride != "" {
+			author = authorOverride
+		}
+		if author == "" {
+			author = "triage"
+		}
+
+		store := finding.NewStore(p)
+		var applied, skipped, errored int
+		statusBreakdown := map[string]int{}
+
+		for _, d := range plan.Decisions {
+			if d.FindingID == "" {
+				errored++
+				fmt.Fprintf(os.Stderr, "  skip: decision has no finding_id\n")
+				continue
+			}
+			f, err := store.Read(d.FindingID)
+			if err != nil {
+				skipped++
+				fmt.Fprintf(os.Stderr, "  skip %s: %v\n", d.FindingID, err)
+				continue
+			}
+
+			// Validate status (let blank pass — means caller only wanted
+			// to tweak severity / notes / etc.).
+			if d.Status != "" && !isValidStatus(d.Status) {
+				errored++
+				fmt.Fprintf(os.Stderr, "  error %s: invalid status %q (use open/confirmed/false_positive/fixed/duplicate)\n", d.FindingID, d.Status)
+				continue
+			}
+			if d.Status != "" {
+				f.Status = finding.Status(d.Status)
+				statusBreakdown[d.Status]++
+			}
+			if d.DuplicateOf != "" {
+				f.DuplicateOf = d.DuplicateOf
+			}
+			if d.SeverityOverride != "" {
+				f.Severity = finding.Severity(d.SeverityOverride)
+			}
+			if d.FixPriority != "" {
+				f.FixPriority = finding.FixPriority(d.FixPriority)
+			}
+			if d.Exploitability != "" {
+				f.Exploitability = finding.Exploitability(d.Exploitability)
+			}
+			if d.ConfidenceOverride != "" {
+				f.Confidence = finding.Confidence(d.ConfidenceOverride)
+			}
+			if d.Reason != "" {
+				f.Notes = append(f.Notes, finding.FindingNote{
+					Timestamp: time.Now(),
+					Author:    author,
+					Text:      d.Reason,
+				})
+			}
+			if err := store.Update(f); err != nil {
+				errored++
+				fmt.Fprintf(os.Stderr, "  error %s: update failed: %v\n", d.FindingID, err)
+				continue
+			}
+			applied++
+		}
+
+		if jsonOutput {
+			_ = outputJSON(map[string]interface{}{
+				"applied":          applied,
+				"skipped":          skipped,
+				"errored":          errored,
+				"status_breakdown": statusBreakdown,
+				"plan_path":        planPath,
+				"author":           author,
+			})
+		} else {
+			fmt.Printf("Triage applied: %d (skipped %d, errored %d)\n", applied, skipped, errored)
+			for status, n := range statusBreakdown {
+				fmt.Printf("  %s: %d\n", status, n)
+			}
+		}
+
+		// Non-zero only when the plan had decisions but EVERY one
+		// errored — that indicates a systemic problem (bad plan, store
+		// broken, etc.) the caller should surface.
+		if len(plan.Decisions) > 0 && applied == 0 && skipped == 0 {
+			os.Exit(1)
+		}
+	},
+}
+
+// isValidStatus matches the validation logic in store.validate — kept
+// here so the triage command can fail fast on a bad value without doing
+// a Read+Update round trip.
+func isValidStatus(s string) bool {
+	switch finding.Status(s) {
+	case finding.StatusOpen, finding.StatusConfirmed, finding.StatusFalsePositive,
+		finding.StatusFixed, finding.StatusDuplicate:
+		return true
+	}
+	return false
+}
+
 // findingListCmd represents the finding list command
 var findingListCmd = &cobra.Command{
 	Use:   "list",
@@ -425,6 +796,9 @@ var findingListCmd = &cobra.Command{
 		if file, _ := cmd.Flags().GetString("file"); file != "" {
 			opts.File = file
 		}
+		if createdBy, _ := cmd.Flags().GetString("created-by"); createdBy != "" {
+			opts.CreatedBy = createdBy
+		}
 
 		result, err := store.List(opts)
 		if err != nil {
@@ -441,22 +815,64 @@ var findingListCmd = &cobra.Command{
 			result.Total = len(result.Findings)
 		}
 
+		// Apply suppression filter from .quokka/exceptions.yaml. By default
+		// suppressed findings are hidden; --include-suppressed surfaces them
+		// with a SUPPRESSED tag so reviewers can see what was filtered.
+		includeSuppressed, _ := cmd.Flags().GetBool("include-suppressed")
+		excStore := exception.NewStore(p)
+		suppressedFor := map[string]string{} // ID → reason
+		filtered := result.Findings[:0]
+		var suppressedCount int
+		for _, f := range result.Findings {
+			match, _ := excStore.Match(f)
+			if match != nil {
+				suppressedCount++
+				suppressedFor[f.ID] = match.Reason
+				if !includeSuppressed {
+					continue
+				}
+			}
+			filtered = append(filtered, f)
+		}
+		result.Findings = filtered
+		result.Total = len(result.Findings)
+
 		if jsonOutput {
-			if err := outputJSON(result); err != nil {
+			payload := map[string]any{
+				"findings":          result.Findings,
+				"total":             result.Total,
+				"suppressed_count":  suppressedCount,
+			}
+			if includeSuppressed {
+				payload["suppressed_by"] = suppressedFor
+			}
+			if err := outputJSON(payload); err != nil {
 				exitError("failed to encode JSON: %v", err)
 			}
 		} else {
 			if result.Total == 0 {
-				fmt.Println("No findings")
+				if suppressedCount > 0 {
+					fmt.Printf("No findings (%d suppressed by exception; pass --include-suppressed to see)\n", suppressedCount)
+				} else {
+					fmt.Println("No findings")
+				}
 				return
 			}
 
 			for _, f := range result.Findings {
 				badge := getSeverityBadge(f.Severity)
-				fmt.Printf("%s [%s] %s - %s\n", badge, f.ID, f.Title, f.Status)
+				suppressTag := ""
+				if reason, ok := suppressedFor[f.ID]; ok {
+					suppressTag = " [SUPPRESSED: " + reason + "]"
+				}
+				fmt.Printf("%s [%s] %s - %s%s\n", badge, f.ID, f.Title, f.Status, suppressTag)
 				fmt.Printf("   Location: %s:%d\n", f.Location.File, f.Location.LineStart)
 			}
-			fmt.Printf("\nTotal: %d findings\n", result.Total)
+			fmt.Printf("\nTotal: %d findings", result.Total)
+			if suppressedCount > 0 {
+				fmt.Printf(" (%d suppressed)", suppressedCount)
+			}
+			fmt.Println()
 		}
 	},
 }
@@ -479,12 +895,30 @@ var findingShowCmd = &cobra.Command{
 			exitError("%v", err)
 		}
 
+		// Surface active suppression so reviewers see immediately when a
+		// finding has been dismissed by an exception.
+		excStore := exception.NewStore(p)
+		suppression, _ := excStore.Match(*f)
+
 		if jsonOutput {
-			if err := outputJSON(f); err != nil {
+			payload := map[string]any{"finding": f}
+			if suppression != nil {
+				payload["suppressed_by"] = map[string]any{
+					"exception_id": suppression.ID,
+					"reason":       suppression.Reason,
+					"expires":      suppression.Expires,
+					"approved_by":  suppression.ApprovedBy,
+				}
+			}
+			if err := outputJSON(payload); err != nil {
 				exitError("failed to encode JSON: %v", err)
 			}
 		} else {
 			fmt.Printf("%s %s\n", getSeverityBadge(f.Severity), f.Title)
+			if suppression != nil {
+				fmt.Printf("SUPPRESSED by %s — %s (expires %s)\n",
+					suppression.ID, suppression.Reason, suppression.Expires.Format("2006-01-02"))
+			}
 			fmt.Printf("ID: %s\n", f.ID)
 			fmt.Printf("Status: %s\n", f.Status)
 			fmt.Printf("Confidence: %s\n", f.Confidence)
@@ -823,6 +1257,9 @@ func init() {
 	rootCmd.AddCommand(findingCmd)
 	findingCmd.AddCommand(findingCreateCmd)
 	findingCmd.AddCommand(findingUpdateCmd)
+	findingCmd.AddCommand(findingTriageCmd)
+	findingTriageCmd.Flags().String("plan", "", "Path to triage plan JSON (default: .quokka/review/triage-plan.json)")
+	findingTriageCmd.Flags().String("author", "", "Override the plan's `author` field for note attribution")
 	findingCmd.AddCommand(findingListCmd)
 	findingCmd.AddCommand(findingShowCmd)
 	findingCmd.AddCommand(findingExportCmd)
@@ -859,6 +1296,8 @@ func init() {
 	findingListCmd.Flags().String("cwe", "", "Filter by CWE")
 	findingListCmd.Flags().String("file", "", "Filter by location file (exact match against finding's location.file)")
 	findingListCmd.Flags().String("diff", "", "Filter to findings in files changed since base ref (e.g., main)")
+	findingListCmd.Flags().String("created-by", "", "Filter by creator (e.g., opengrep, security-agent). Matches finding.created_by exactly.")
+	findingListCmd.Flags().Bool("include-suppressed", false, "Show findings that would be filtered by .quokka/exceptions.yaml")
 
 	findingExportCmd.Flags().StringP("format", "f", "json", "Export format (sarif, json, md, html, csv)")
 	findingExportCmd.Flags().StringP("output", "o", "", "Output file (default: stdout)")

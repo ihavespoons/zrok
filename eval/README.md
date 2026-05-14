@@ -1,6 +1,6 @@
-# zrok Evaluation Framework
+# quokka Evaluation Framework
 
-Measures the consistency and accuracy of zrok code reviews by running evaluations against test applications with known vulnerabilities, then comparing findings to ground truth.
+Measures the consistency and accuracy of quokka code reviews by running evaluations against test applications with known vulnerabilities, then comparing findings to ground truth.
 
 ## Test Fixtures
 
@@ -20,10 +20,16 @@ A smaller app (`fixtures/vulnerable-app/`) with 18 intentional vulnerabilities f
 
 ## Quick Start
 
+Evaluation runs locally only. Single-run variance against the current
+multi-agent pipeline is too high for CI to gate on without flapping; run it
+on demand instead.
+
 ```bash
 # Prerequisites
-go build -o zrok .
+go build -o quokka .
 git submodule update --init  # Pulls OWASP Benchmark
+npm install -g opencode-ai@latest
+export OPENROUTER_API_KEY=...   # opencode reads this directly
 
 # Prepare OWASP subset (extracts 70 test cases from full benchmark)
 eval/fixtures/owasp-subset/create-subset.sh
@@ -37,6 +43,14 @@ eval/generate-owasp-ground-truth.sh
 
 # Compare a new run against baseline
 ./eval/run.sh --fixture owasp --compare
+```
+
+Override the model or profile via env:
+
+```bash
+OPENCODE_MODEL=openrouter/deepseek/deepseek-v4-flash \
+EVAL_PROFILE=fast \
+  ./eval/run.sh --fixture owasp --compare
 ```
 
 ## Metrics
@@ -78,31 +92,6 @@ eval/eval-scorer compare --run eval/results/owasp/run-new.json \
     --baseline eval/baseline-owasp.json \
     --ground-truth eval/ground-truth-owasp.yaml
 ```
-
-## CI/CD Integration
-
-The `eval.yaml` workflow supports two authentication methods:
-
-### Claude Max subscription (recommended for personal use)
-
-Uses your Max subscription instead of API billing:
-
-1. Run `claude setup-token` locally to generate an OAuth token
-2. Add it as a GitHub secret: `CLAUDE_CODE_OAUTH_TOKEN`
-3. The workflow uses this automatically
-
-### API key
-
-1. Add `ANTHROPIC_API_KEY` as a GitHub secret
-2. Billed per token through the Anthropic API
-
-### Workflow modes
-
-**On pull requests** (automatic): Runs a single evaluation against the OWASP fixture and compares to baseline. Fails if metrics drop below thresholds.
-
-**Manual dispatch**: Go to Actions > Evaluation > Run workflow:
-- `compare` mode: Single run against baseline
-- `baseline` mode: N runs to generate/update baseline (commits `baseline-{fixture}.json`)
 
 ## Baseline Thresholds
 

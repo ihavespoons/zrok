@@ -8,8 +8,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/ihavespoons/zrok/internal/memory"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/memory"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 const (
@@ -21,7 +21,7 @@ const (
 )
 
 // memoryTruncationMarker is appended when a memory is truncated.
-const memoryTruncationMarker = "\n\n[... truncated — full content: zrok memory read %s]"
+const memoryTruncationMarker = "\n\n[... truncated — full content: quokka memory read %s]"
 
 // truncateMemory truncates memory content to maxBytes, appending a truncation marker if needed.
 func truncateMemory(content string, maxBytes int, name string) string {
@@ -49,6 +49,18 @@ type PromptData struct {
 	CWEChecklist     string
 	FlowGuidance     string
 	FewShotExamples  string
+
+	// Tool exemplars (see internal/agent/tool_examples.go). Each is a
+	// copy-pasteable shell command with all required fields populated.
+	// Weak models follow examples reliably even when prose instructions
+	// fail; strong models still benefit from disambiguation.
+	FindingCreateExample        string
+	FindingCreateYAMLExample    string
+	FindingListExample          string
+	FindingUpdateNoteExample    string
+	RuleAddExample              string
+	ExceptionAddFingerprintExample string
+	ExceptionAddPathGlobExample string
 }
 
 // PromptGenerator generates prompts for agents
@@ -136,6 +148,14 @@ func (g *PromptGenerator) buildPromptData(config *AgentConfig) *PromptData {
 	data.FlowGuidance = buildFlowGuidance(config)
 	data.FewShotExamples = buildFewShotExamples(config)
 
+	data.FindingCreateExample = FindingCreateExample(config.Name)
+	data.FindingCreateYAMLExample = FindingCreateYAMLExample()
+	data.FindingListExample = FindingListExample(config.Name)
+	data.FindingUpdateNoteExample = FindingUpdateNoteExample(config.Name)
+	data.RuleAddExample = RuleAddExample(config.Name)
+	data.ExceptionAddFingerprintExample = ExceptionAddFingerprintExample(config.Name)
+	data.ExceptionAddPathGlobExample = ExceptionAddPathGlobExample(config.Name)
+
 	return data
 }
 
@@ -221,59 +241,59 @@ func (g *PromptGenerator) buildToolDescriptions(tools []string) string {
 
 	toolDocs := map[string]string{
 		"read": `**read** - Read file contents
-  Usage: zrok read <file> [--lines N:M]
+  Usage: quokka read <file> [--lines N:M]
   Read source files to analyze code. Use --lines to read specific line ranges.`,
 
 		"list": `**list** - List directory contents
-  Usage: zrok list <dir> [--recursive] [--depth N]
+  Usage: quokka list <dir> [--recursive] [--depth N]
   Explore project structure and find relevant files.`,
 
 		"find": `**find** - Find files by pattern
-  Usage: zrok find <pattern> [--type file|dir]
+  Usage: quokka find <pattern> [--type file|dir]
   Search for files matching a pattern (supports wildcards).`,
 
 		"search": `**search** - Search file contents
-  Usage: zrok search <pattern> [--regex]
+  Usage: quokka search <pattern> [--regex]
   Search for patterns in file contents (grep-like functionality).`,
 
 		"symbols": `**symbols** - Extract code symbols
-  Usage: zrok symbols <file>
-  Usage: zrok symbols find <name>
+  Usage: quokka symbols <file>
+  Usage: quokka symbols find <name>
   Extract functions, classes, and other symbols from source files.`,
 
 		"memory": `**memory** - Manage analysis memories
-  Usage: zrok memory list [--type context|pattern|stack]
-  Usage: zrok memory read <name>
-  Usage: zrok memory write <name> --content "..."
+  Usage: quokka memory list [--type context|pattern|stack]
+  Usage: quokka memory read <name>
+  Usage: quokka memory write <name> --content "..."
   Store and retrieve information during analysis.`,
 
 		"finding": `**finding** - Manage security findings
-  Usage: zrok finding create --file <finding.yaml>
-  Usage: zrok finding list [--severity high]
-  Usage: zrok finding show <id>
+  Usage: quokka finding create --file <finding.yaml>
+  Usage: quokka finding list [--severity high]
+  Usage: quokka finding show <id>
   Create and manage security vulnerability findings.`,
 
 		"think": `**think** - Structured thinking tools
-  Usage: zrok think collected
-  Usage: zrok think adherence
-  Usage: zrok think done
-  Usage: zrok think next
-  Usage: zrok think hypothesis <context>
+  Usage: quokka think collected
+  Usage: quokka think adherence
+  Usage: quokka think done
+  Usage: quokka think next
+  Usage: quokka think hypothesis <context>
   Self-reflection tools for maintaining analysis quality.`,
 	}
 
 	// Add semantic search tool if enabled
 	if semanticEnabled {
 		toolDocs["semantic"] = `**semantic** - Natural language code search
-  Usage: zrok semantic "<query>"
-  Usage: zrok semantic "<query>" --multi-hop
-  Usage: zrok semantic "<query>" --type <function|method|class>
-  Usage: zrok semantic related <file>
+  Usage: quokka semantic "<query>"
+  Usage: quokka semantic "<query>" --multi-hop
+  Usage: quokka semantic "<query>" --type <function|method|class>
+  Usage: quokka semantic related <file>
   Search code using natural language queries. Finds semantically similar code.
   Examples:
-    zrok semantic "authentication bypass"
-    zrok semantic "SQL query construction" --multi-hop
-    zrok semantic "input validation" --type function`
+    quokka semantic "authentication bypass"
+    quokka semantic "SQL query construction" --multi-hop
+    quokka semantic "input validation" --type function`
 	}
 
 	var b strings.Builder
@@ -294,8 +314,8 @@ func (g *PromptGenerator) buildToolDescriptions(tools []string) string {
 	if semanticRequested && !semanticEnabled {
 		b.WriteString(`**semantic** - Natural language code search (NOT AVAILABLE)
   Semantic search is not enabled for this project.
-  To enable: zrok index enable --provider <ollama|openai|huggingface>
-  Then build: zrok index build
+  To enable: quokka index enable --provider <ollama|openai|huggingface>
+  Then build: quokka index build
 
 `)
 	}

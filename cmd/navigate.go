@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/navigate"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/navigate"
+	"github.com/diffsec/quokka/internal/project"
 	"github.com/spf13/cobra"
 )
 
@@ -356,7 +356,7 @@ Use --method to specify extraction method:
 		// Check for subcommand
 		if args[0] == "find" {
 			if len(args) < 2 {
-				exitError("usage: zrok symbols find <name>")
+				exitError("usage: quokka symbols find <name>")
 			}
 			result, err := extractor.Find(args[1])
 			if err != nil {
@@ -377,7 +377,7 @@ Use --method to specify extraction method:
 
 		if args[0] == "refs" {
 			if len(args) < 2 {
-				exitError("usage: zrok symbols refs <symbol>")
+				exitError("usage: quokka symbols refs <symbol>")
 			}
 			result, err := extractor.FindReferences(args[1])
 			if err != nil {

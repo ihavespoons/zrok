@@ -6,13 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 func setupTestProject(t *testing.T) (*project.Project, func()) {
 	t.Helper()
 
-	tmpDir, err := os.MkdirTemp("", "zrok-test-*")
+	tmpDir, err := os.MkdirTemp("", "quokka-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestListerList(t *testing.T) {
 		t.Fatalf("List failed: %v", err)
 	}
 
-	// Should have dirs + files (minus .zrok which is ignored)
+	// Should have dirs + files (minus .quokka which is ignored)
 	if result.Total < 5 {
 		t.Errorf("expected at least 5 entries, got %d", result.Total)
 	}

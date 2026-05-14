@@ -3,7 +3,7 @@ package export
 import (
 	"fmt"
 
-	"github.com/ihavespoons/zrok/internal/finding"
+	"github.com/diffsec/quokka/internal/finding"
 )
 
 // Exporter is the interface for all export formats

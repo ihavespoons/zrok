@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // Lister handles directory listing operations
@@ -162,7 +162,7 @@ func (l *Lister) shouldIgnore(name string) bool {
 		"node_modules",
 		"vendor",
 		".git",
-		".zrok",
+		".quokka",
 		"__pycache__",
 		".pytest_cache",
 		".mypy_cache",

@@ -2,11 +2,12 @@ package agent
 
 import (
 	"embed"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/project"
 	"gopkg.in/yaml.v3"
 )
 
@@ -100,17 +101,61 @@ func GetAgentsByVulnClass(vulnClass string) []AgentConfig {
 	return agents
 }
 
-// SuggestAgents returns agent names that are applicable to the given project classification.
-func SuggestAgents(classification project.ProjectClassification) []string {
+// SuggestAgents returns agent names that are applicable to the given project
+// classification. When p is non-nil, project-local agent YAMLs in
+// .quokka/agents/ shadow built-ins of the same name — so an override's
+// applicability rules (and any other field) win over the built-in. This is
+// what makes the override pattern coherent end-to-end: editing a local
+// security-agent.yaml to change applicability changes which PRs it runs on.
+func SuggestAgents(p *project.Project, classification project.ProjectClassification) []string {
 	loadBuiltinAgents()
 
+	merged := make(map[string]*AgentConfig, len(builtinAgents))
+	for name, cfg := range builtinAgents {
+		merged[name] = cfg
+	}
+	if p != nil {
+		for name, cfg := range loadProjectAgents(p.GetAgentsPath()) {
+			merged[name] = cfg
+		}
+	}
+
 	var names []string
-	for _, agent := range builtinAgents {
+	for _, agent := range merged {
 		if project.ApplicabilityMatches(agent.Applicability, classification) {
 			names = append(names, agent.Name)
 		}
 	}
 	return names
+}
+
+// loadProjectAgents reads .yaml agent definitions from a project's agents
+// directory. Returns an empty map (not an error) when the directory is
+// missing, since most projects won't have any local overrides.
+func loadProjectAgents(dir string) map[string]*AgentConfig {
+	out := map[string]*AgentConfig{}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return out
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		var cfg AgentConfig
+		if err := yaml.Unmarshal(data, &cfg); err != nil {
+			continue
+		}
+		if cfg.Name == "" {
+			continue
+		}
+		out[cfg.Name] = &cfg
+	}
+	return out
 }
 
 // GetAgentsByReviewCategory returns agents that cover a specific review category

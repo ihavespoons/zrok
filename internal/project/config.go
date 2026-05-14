@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	ZrokDir       = ".zrok"
+	QuokkaDir       = ".quokka"
 	ProjectFile   = "project.yaml"
 	MemoriesDir   = "memories"
 	FindingsDir   = "findings"
@@ -158,19 +158,32 @@ func DefaultIndexConfig() IndexConfig {
 	}
 }
 
-// ProjectConfig represents the .zrok/project.yaml configuration
+// ProjectConfig represents the .quokka/project.yaml configuration
 type ProjectConfig struct {
-	Name           string                 `yaml:"name" json:"name"`
-	Version        string                 `yaml:"version" json:"version"`
-	Description    string                 `yaml:"description,omitempty" json:"description,omitempty"`
-	DetectedAt     time.Time              `yaml:"detected_at" json:"detected_at"`
-	TechStack      TechStack              `yaml:"tech_stack" json:"tech_stack"`
-	Classification ProjectClassification  `yaml:"classification,omitempty" json:"classification,omitempty"`
-	SecurityScope  SecurityScope          `yaml:"security_scope,omitempty" json:"security_scope,omitempty"`
-	Index          IndexConfig            `yaml:"index,omitempty" json:"index,omitempty"`
+	Name              string                 `yaml:"name" json:"name"`
+	Version           string                 `yaml:"version" json:"version"`
+	Description       string                 `yaml:"description,omitempty" json:"description,omitempty"`
+	DetectedAt        time.Time              `yaml:"detected_at" json:"detected_at"`
+	TechStack         TechStack              `yaml:"tech_stack" json:"tech_stack"`
+	Classification    ProjectClassification  `yaml:"classification,omitempty" json:"classification,omitempty"`
+	SecurityScope     SecurityScope          `yaml:"security_scope,omitempty" json:"security_scope,omitempty"`
+	Index             IndexConfig            `yaml:"index,omitempty" json:"index,omitempty"`
+	AllowAgentWrites  AllowAgentWrites       `yaml:"allow_agent_writes,omitempty" json:"allow_agent_writes,omitempty"`
 }
 
-// Project represents an active zrok project
+// AllowAgentWrites toggles whether the orchestrator may grant subagents
+// access to the project-mutating CLI commands (quokka rule add,
+// quokka exception add). Both default to false; when off, the runner's bash
+// allowlist excludes the commands AND the orchestrator prompt omits the
+// rule/exception sections entirely. This is the v1.1 security boundary —
+// agents have no native edit/write permission, and even the route through
+// the CLI is opt-in per project.
+type AllowAgentWrites struct {
+	Rules      bool `yaml:"rules" json:"rules"`
+	Exceptions bool `yaml:"exceptions" json:"exceptions"`
+}
+
+// Project represents an active quokka project
 type Project struct {
 	RootPath string
 	Config   *ProjectConfig
@@ -179,50 +192,50 @@ type Project struct {
 // Active holds the currently active project
 var Active *Project
 
-// FindProjectRoot looks for .zrok directory starting from path and going up
+// FindProjectRoot looks for .quokka directory starting from path and going up
 func FindProjectRoot(startPath string) (string, error) {
 	path := startPath
 	for {
-		zrokPath := filepath.Join(path, ZrokDir)
-		if info, err := os.Stat(zrokPath); err == nil && info.IsDir() {
+		quokkaPath := filepath.Join(path, QuokkaDir)
+		if info, err := os.Stat(quokkaPath); err == nil && info.IsDir() {
 			return path, nil
 		}
 		parent := filepath.Dir(path)
 		if parent == path {
-			return "", fmt.Errorf("no .zrok directory found (searched from %s to root)", startPath)
+			return "", fmt.Errorf("no .quokka directory found (searched from %s to root)", startPath)
 		}
 		path = parent
 	}
 }
 
-// GetZrokPath returns the path to the .zrok directory
-func (p *Project) GetZrokPath() string {
-	return filepath.Join(p.RootPath, ZrokDir)
+// GetQuokkaPath returns the path to the .quokka directory
+func (p *Project) GetQuokkaPath() string {
+	return filepath.Join(p.RootPath, QuokkaDir)
 }
 
 // GetConfigPath returns the path to project.yaml
 func (p *Project) GetConfigPath() string {
-	return filepath.Join(p.GetZrokPath(), ProjectFile)
+	return filepath.Join(p.GetQuokkaPath(), ProjectFile)
 }
 
 // GetMemoriesPath returns the path to the memories directory
 func (p *Project) GetMemoriesPath() string {
-	return filepath.Join(p.GetZrokPath(), MemoriesDir)
+	return filepath.Join(p.GetQuokkaPath(), MemoriesDir)
 }
 
 // GetFindingsPath returns the path to the findings directory
 func (p *Project) GetFindingsPath() string {
-	return filepath.Join(p.GetZrokPath(), FindingsDir)
+	return filepath.Join(p.GetQuokkaPath(), FindingsDir)
 }
 
 // GetAgentsPath returns the path to the agents directory
 func (p *Project) GetAgentsPath() string {
-	return filepath.Join(p.GetZrokPath(), AgentsDir)
+	return filepath.Join(p.GetQuokkaPath(), AgentsDir)
 }
 
 // GetIndexPath returns the path to the index directory
 func (p *Project) GetIndexPath() string {
-	return filepath.Join(p.GetZrokPath(), IndexDir)
+	return filepath.Join(p.GetQuokkaPath(), IndexDir)
 }
 
 // Load loads the project configuration from disk
@@ -255,25 +268,25 @@ func (p *Project) Save() error {
 	return nil
 }
 
-// Initialize creates a new .zrok project structure
+// Initialize creates a new .quokka project structure
 func Initialize(rootPath string) (*Project, error) {
-	zrokPath := filepath.Join(rootPath, ZrokDir)
+	quokkaPath := filepath.Join(rootPath, QuokkaDir)
 
 	// Check if already initialized
-	if _, err := os.Stat(zrokPath); err == nil {
-		return nil, fmt.Errorf("project already initialized at %s", zrokPath)
+	if _, err := os.Stat(quokkaPath); err == nil {
+		return nil, fmt.Errorf("project already initialized at %s", quokkaPath)
 	}
 
 	// Create directory structure
 	dirs := []string{
-		zrokPath,
-		filepath.Join(zrokPath, MemoriesDir, ContextDir),
-		filepath.Join(zrokPath, MemoriesDir, PatternsDir),
-		filepath.Join(zrokPath, MemoriesDir, StackDir),
-		filepath.Join(zrokPath, FindingsDir, RawDir),
-		filepath.Join(zrokPath, FindingsDir, ExportsDir),
-		filepath.Join(zrokPath, AgentsDir),
-		filepath.Join(zrokPath, IndexDir),
+		quokkaPath,
+		filepath.Join(quokkaPath, MemoriesDir, ContextDir),
+		filepath.Join(quokkaPath, MemoriesDir, PatternsDir),
+		filepath.Join(quokkaPath, MemoriesDir, StackDir),
+		filepath.Join(quokkaPath, FindingsDir, RawDir),
+		filepath.Join(quokkaPath, FindingsDir, ExportsDir),
+		filepath.Join(quokkaPath, AgentsDir),
+		filepath.Join(quokkaPath, IndexDir),
 	}
 
 	for _, dir := range dirs {

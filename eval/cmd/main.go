@@ -1,4 +1,4 @@
-// eval is the CLI tool for zrok evaluation scoring.
+// eval is the CLI tool for quokka evaluation scoring.
 //
 // Usage:
 //
@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ihavespoons/zrok/eval/scorer"
+	"github.com/diffsec/quokka/eval/scorer"
 )
 
 func main() {

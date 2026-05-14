@@ -151,6 +151,7 @@ type FindingNote struct {
 // Finding represents a security vulnerability finding
 type Finding struct {
 	ID             string         `yaml:"id" json:"id"`
+	Fingerprint    string         `yaml:"fingerprint,omitempty" json:"fingerprint,omitempty"`
 	Title          string         `yaml:"title" json:"title"`
 	Severity       Severity       `yaml:"severity" json:"severity"`
 	Confidence     Confidence     `yaml:"confidence" json:"confidence"`
@@ -210,6 +211,7 @@ type FilterOptions struct {
 	CWE            string
 	Tag            string
 	File           string
+	CreatedBy      string
 	Limit          int
 	Offset         int
 }

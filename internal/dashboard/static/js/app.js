@@ -1,4 +1,4 @@
-// zrok Dashboard JavaScript
+// quokka Dashboard JavaScript
 
 // Initialize project info
 async function loadProjectInfo() {

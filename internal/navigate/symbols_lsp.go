@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/navigate/lsp"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/navigate/lsp"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // LSPExtractor extracts symbols using language servers
@@ -215,7 +215,7 @@ func (e *LSPExtractor) resolvePath(path string) string {
 
 func (e *LSPExtractor) shouldIgnore(name string) bool {
 	ignorePatterns := []string{
-		"node_modules", "vendor", ".git", ".zrok",
+		"node_modules", "vendor", ".git", ".quokka",
 		"__pycache__", "target", "dist", "build",
 	}
 	for _, pattern := range ignorePatterns {

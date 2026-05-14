@@ -1,11 +1,11 @@
-# zrok Development Guide
+# quokka Development Guide
 
-zrok is a CLI tool for LLM-assisted code review. It provides agent configurations, memory management, finding tracking, and code navigation tools.
+quokka is a CLI tool for LLM-assisted code review. It provides agent configurations, memory management, finding tracking, and code navigation tools.
 
 ## Project Structure
 
 ```
-zrok/
+quokka/
 ├── cmd/                    # CLI commands (cobra)
 │   ├── root.go            # Root command, global flags
 │   ├── project.go         # init, onboard commands
@@ -40,7 +40,7 @@ zrok/
 │   ├── embedding/         # Embedding providers (Ollama, OpenAI, Hugging Face)
 │   ├── vectordb/          # Vector storage (HNSW + SQLite)
 │   └── semantic/          # Semantic search engine
-├── skills/                # Claude Code skills for using zrok
+├── skills/                # Claude Code skills for using quokka
 │   └── code-review/       # Code review orchestration skill
 └── configs/               # External configuration files (planned)
     ├── agents/            # Agent YAML configs
@@ -50,7 +50,7 @@ zrok/
 ## Building
 
 ```bash
-go build -o zrok .
+go build -o quokka .
 go test ./...
 ```
 
@@ -63,12 +63,12 @@ go test ./...
 - `configs/agents/*.yaml` - Agent definitions with `applicability:` (always_include, project_types, project_traits)
 
 ### Memory Store (`internal/memory/`)
-- `store.go` - YAML-based memory persistence in `.zrok/memories/`
+- `store.go` - YAML-based memory persistence in `.quokka/memories/`
 - `index.go` - Bleve full-text search index
 - Types: `context`, `pattern`, `stack`
 
 ### Finding Store (`internal/finding/`)
-- `store.go` - YAML-based finding persistence in `.zrok/findings/`
+- `store.go` - YAML-based finding persistence in `.quokka/findings/`
 - `export/` - Multiple export formats (markdown, SARIF, HTML, CSV, JSON)
 - Severity levels: `critical`, `high`, `medium`, `low`, `info`
 
@@ -131,34 +131,34 @@ Run manifests (`run-NN-manifest.json`) capture agent usage and execution metadat
 
 ## Semantic Search
 
-zrok includes semantic code search using vector embeddings. This enables natural language queries against the codebase.
+quokka includes semantic code search using vector embeddings. This enables natural language queries against the codebase.
 
 ### Setup
 ```bash
 # Enable with Ollama (local, free)
-zrok index enable --provider ollama
+quokka index enable --provider ollama
 ollama pull nomic-embed-text  # If not already installed
 
 # Or use Hugging Face (cloud, free tier)
 export HF_API_KEY=your_key
-zrok index enable --provider huggingface
+quokka index enable --provider huggingface
 
 # Or use OpenAI (cloud, paid)
 export OPENAI_API_KEY=your_key
-zrok index enable --provider openai
+quokka index enable --provider openai
 
 # Build the index
-zrok index build
+quokka index build
 ```
 
 ### Usage
 ```bash
-zrok semantic "authentication middleware"     # Natural language search
-zrok semantic "SQL injection" --multi-hop     # Explore related code
-zrok semantic "error handling" --type function
-zrok semantic related cmd/index.go            # Find related code
+quokka semantic "authentication middleware"     # Natural language search
+quokka semantic "SQL injection" --multi-hop     # Explore related code
+quokka semantic "error handling" --type function
+quokka semantic related cmd/index.go            # Find related code
 ```
 
 ## Skills
 
-The `skills/` directory contains Claude Code skills for using zrok. See `skills/code-review/SKILL.md` for the code review orchestration skill that spawns specialized subagents.
+The `skills/` directory contains Claude Code skills for using quokka. See `skills/code-review/SKILL.md` for the code review orchestration skill that spawns specialized subagents.

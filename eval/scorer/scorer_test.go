@@ -60,6 +60,32 @@ func TestScoreRun_PartialDetection(t *testing.T) {
 	}
 }
 
+func TestScoreRun_FiltersTriagedFindings(t *testing.T) {
+	gt := testGroundTruth()
+	// 5 findings: one open TP, one confirmed TP, one open FP,
+	// one false_positive FP (should be filtered), one duplicate TP
+	// (should be filtered — won't count toward TPs OR total).
+	findings := []RunFinding{
+		{ID: "FIND-001", Title: "Hardcoded secret key", Severity: "high", CWE: "CWE-798", Location: Location{File: "app.py", LineStart: 12}, Status: "open"},
+		{ID: "FIND-002", Title: "SQL injection in login form", Severity: "critical", CWE: "CWE-89", Location: Location{File: "app.py", LineStart: 62}, Status: "confirmed"},
+		{ID: "FIND-003", Title: "Unrelated finding", Severity: "low", CWE: "CWE-000", Location: Location{File: "other.py", LineStart: 1}, Status: "open"},
+		{ID: "FIND-004", Title: "Speculative reading-frame issue", Severity: "low", CWE: "CWE-999", Location: Location{File: "other.py", LineStart: 5}, Status: "false_positive"},
+		{ID: "FIND-005", Title: "Duplicate SQL injection", Severity: "critical", CWE: "CWE-89", Location: Location{File: "app.py", LineStart: 62}, Status: "duplicate"},
+	}
+
+	score := ScoreRun(gt, findings, "test-triage")
+
+	if score.TotalFindings != 3 {
+		t.Errorf("expected 3 kept findings (open + confirmed), got %d", score.TotalFindings)
+	}
+	if score.TruePositives != 2 {
+		t.Errorf("expected 2 true positives, got %d", score.TruePositives)
+	}
+	if score.FalsePositives != 1 {
+		t.Errorf("expected 1 false positive, got %d", score.FalsePositives)
+	}
+}
+
 func TestScoreRun_SeverityMismatch(t *testing.T) {
 	gt := testGroundTruth()
 	findings := []RunFinding{

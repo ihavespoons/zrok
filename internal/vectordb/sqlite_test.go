@@ -115,7 +115,7 @@ func TestDeleteFileHash(t *testing.T) {
 }
 
 // TestClearAlsoWipesFileHashes: Clear() must drop file_hashes rows along
-// with chunks. Otherwise a `zrok index build --force` (which calls Clear)
+// with chunks. Otherwise a `quokka index build --force` (which calls Clear)
 // leaves stale fingerprints that suppress re-indexing on the next
 // Update.
 func TestClearAlsoWipesFileHashes(t *testing.T) {

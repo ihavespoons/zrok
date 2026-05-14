@@ -74,27 +74,45 @@ prompt_template: |
 
   For EVERY finding you identify, you MUST persist it via the CLI before
   reporting. Reporting a candidate in your message without calling
-  `zrok finding create` is an instruction-following failure that wastes the
+  `quokka finding create` is an instruction-following failure that wastes the
   orchestrator's effort. There is no second pass that picks up
   "described-but-not-filed" findings.
 
   Required sequence for each finding:
-    1. Call `zrok finding create --title ... --severity ... --cwe ... --file ...
-       --line ... --description "..." --confidence ... --created-by <your-agent-name>
-       --tag <category>:<subtype>` (or use stdin/`-f` form)
+    1. Run `quokka finding create`. Copy the exact shape of this example,
+       changing only the values to match your finding:
+
+  Two field-format requirements that small LLM models routinely get wrong
+  (these break downstream tooling, so they're enforced silently or noisily
+  depending on the field):
+    - Always pass `--cwe CWE-XXX` with the `CWE-` prefix; bare numbers like
+      `--cwe 89` are silently rejected and the finding lands with an empty
+      CWE field.
+    - The `--file` value must be the path relative to the project root
+      (e.g. `src/api/users.py`), NOT an absolute filesystem path like
+      `/private/var/folders/.../app.py`. Absolute paths break ground-truth
+      matching and SARIF location URIs.
+
+  ```
+  {{.FindingCreateExample}}
+  ```
+
     2. Capture the returned `FIND-XXX` ID
     3. Reference the ID in your final report message
 
   At the end of your run, you MUST verify by running:
-    zrok finding list --created-by <your-agent-name>
+
+  ```
+  {{.FindingListExample}}
+  ```
 
   The count of findings shown there is what was persisted. If your report message
   mentions N findings but the list shows fewer, you have failed the filing
   protocol and the orchestrator cannot consume your output.
 
   Findings that you decline to file (because the principle says NOT-A-FINDING)
-  should be summarized in a `<your-agent-name>_skipped` memory via
-  `zrok memory write`, NOT in your report message alone.
+  should be summarized in a `{{.AgentName}}_skipped` memory via
+  `quokka memory write`, NOT in your report message alone.
 
   ## Your Focus Areas
 
@@ -131,10 +149,10 @@ prompt_template: |
 
   ## Memory System
 
-  Read shared memories with `zrok memory list` / `zrok memory read <name>`.
+  Read shared memories with `quokka memory list` / `quokka memory read <name>`.
   No new memories are required from analysis agents. If you discover a project-wide
   pattern worth sharing (e.g. a shared sanitizer that breaks across sites), record
-  it with: `zrok memory write <name> --type pattern --content '...'`.
+  it with: `quokka memory write <name> --type pattern --content '...'`.
 
   ### Your Context Memories
   {{range $name, $content := .Memories}}
@@ -148,7 +166,7 @@ prompt_template: |
   ## Finding Ownership
 
   Stay strictly within your declared `owns_cwes` (shown in the Authoritative CWEs
-  section above, rendered by zrok). If you discover a vuln in another agent's
+  section above, rendered by quokka). If you discover a vuln in another agent's
   territory, write a memory referral named `<your-agent>_referrals` documenting
   the file:line and CWE for that agent to pick up — do NOT file the finding
   yourself.
@@ -156,12 +174,16 @@ prompt_template: |
   ## Cross-agent Coordination
 
   Before filing ANY finding, run:
-    zrok finding list --file <target-file>
+    quokka finding list --file <target-file>
 
   If a critical-or-high finding from another agent already exists on the same
   file, your default action is to ADD A NOTE to that finding, not file a new
   one. Use:
-    zrok finding update <FIND-XXX> --note "Your perspective..."
+    Example invocation:
+
+  ```
+  {{.FindingUpdateNoteExample}}
+  ```
 
   File a separate new finding only when:
     - The existing finding's CWE family is genuinely orthogonal to yours
@@ -178,11 +200,11 @@ prompt_template: |
 
   Before exploring the codebase yourself, read the targets memory recon wrote
   for you:
-    zrok memory read architecture_targets
+    quokka memory read architecture_targets
 
   This memory contains concrete file:line leads recon identified during the
   mapping pass. You MUST address EVERY entry in it:
-    - If the lead is a real finding, file via `zrok finding create` (capturing
+    - If the lead is a real finding, file via `quokka finding create` (capturing
       SOURCE→GUARD→SINK in the description as usual).
     - If the lead is NOT a finding after investigation, append a note to a
       memory named `architecture_skipped` explaining why (constant taint,

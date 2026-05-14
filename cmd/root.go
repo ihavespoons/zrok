@@ -21,9 +21,9 @@ var (
 
 // rootCmd represents the base command
 var rootCmd = &cobra.Command{
-	Use:   "zrok",
+	Use:   "quokka",
 	Short: "Security code review CLI tool for LLM-assisted analysis",
-	Long: `zrok is a read-only CLI tool designed for LLM-assisted security code review.
+	Long: `quokka is a read-only CLI tool designed for LLM-assisted security code review.
 
 It provides structured tooling for:
 - Code navigation and analysis
@@ -32,7 +32,7 @@ It provides structured tooling for:
 - Agent-based workflows
 - Export to standard formats (SARIF, JSON, Markdown, HTML, CSV)
 
-Use 'zrok init' to initialize a project, then 'zrok onboard --auto' to detect
+Use 'quokka init' to initialize a project, then 'quokka onboard --auto' to detect
 the tech stack and set up for analysis.`,
 }
 
@@ -51,7 +51,7 @@ func init() {
 
 	// Set version info
 	rootCmd.Version = version
-	rootCmd.SetVersionTemplate(fmt.Sprintf("zrok version %s\ncommit: %s\nbuilt: %s\n", version, commit, date))
+	rootCmd.SetVersionTemplate(fmt.Sprintf("quokka version %s\ncommit: %s\nbuilt: %s\n", version, commit, date))
 }
 
 // outputJSON outputs data as JSON
@@ -59,6 +59,12 @@ func outputJSON(data interface{}) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(data)
+}
+
+// jsonMarshalIndent is the byte-returning counterpart used when callers
+// need to write JSON to a file rather than stdout.
+func jsonMarshalIndent(data interface{}) ([]byte, error) {
+	return json.MarshalIndent(data, "", "  ")
 }
 
 // exitError prints an error message and exits

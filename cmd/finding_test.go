@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/project"
 	"github.com/spf13/cobra"
 )
 
 func setupFindingTestProject(t *testing.T) (*project.Project, func()) {
 	t.Helper()
-	tmp, err := os.MkdirTemp("", "zrok-cmd-finding-*")
+	tmp, err := os.MkdirTemp("", "quokka-cmd-finding-*")
 	if err != nil {
 		t.Fatalf("temp dir: %v", err)
 	}
@@ -461,6 +461,316 @@ func TestCreateCmdHintGatedByQuietAndJSON(t *testing.T) {
 			gotHint := buf.Len() > 0
 			if gotHint != tc.wantHint {
 				t.Errorf("hint emitted=%v, want %v; output:\n%s", gotHint, tc.wantHint, buf.String())
+			}
+		})
+	}
+}
+
+// TestRejectInvalidCreatedBy covers the OWASP-eval failure mode where
+// LLM agents filed findings with --created-by values pulled from the
+// runtime ("opencode"), the model family ("qwen"), or invented role
+// descriptions ("security-scanner") instead of their actual agent name.
+// Each pollutes the store, breaks per-agent dedup, and misleads the
+// rule/exception audit paths.
+// TestTriagePlanApplyHappyPath covers the validation-as-postprocess
+// flow: agent emits JSON plan, the apply step reads it and updates the
+// store. Without this round-trip, validation-agent's update-verb
+// reluctance keeps every finding stuck at status:open.
+func TestTriagePlanApplyHappyPath(t *testing.T) {
+	p, cleanup := setupFindingTestProject(t)
+	defer cleanup()
+
+	store := finding.NewStore(p)
+	// Pre-create three findings the plan will target. Titles + files must
+	// differ so fingerprints don't collide and trigger same-creator dedup.
+	titles := []string{"Login SQLi", "Search SQLi", "Admin SQLi"}
+	files := []string{"src/login.py", "src/search.py", "src/admin.py"}
+	for i := 0; i < 3; i++ {
+		f := &finding.Finding{
+			Title:     titles[i],
+			Severity:  finding.SeverityHigh,
+			CWE:       "CWE-89",
+			CreatedBy: "injection-agent",
+			Location:  finding.Location{File: files[i], LineStart: i + 1},
+		}
+		if err := store.Create(f); err != nil {
+			t.Fatalf("seed Create: %v", err)
+		}
+	}
+
+	plan := triagePlan{
+		Version: 1,
+		Author:  "validation-agent",
+		Decisions: []triageDecision{
+			{FindingID: "FIND-001", Status: "confirmed", Reason: "Verified flow."},
+			{FindingID: "FIND-002", Status: "false_positive", Reason: "ORM safe.", SeverityOverride: "low"},
+			{FindingID: "FIND-003", Status: "duplicate", DuplicateOf: "FIND-001", Reason: "Same vuln."},
+		},
+	}
+	// We exercise the apply loop by reproducing it inline (the cobra
+	// Run func reads cmd flags + os.Exit which is awkward to test).
+	// The loop's behavior is what matters; this is the same logic.
+	applied, skipped, errored := applyTriageDecisionsForTest(t, store, plan)
+	if applied != 3 || skipped != 0 || errored != 0 {
+		t.Fatalf("applied=%d skipped=%d errored=%d, want 3/0/0", applied, skipped, errored)
+	}
+
+	// Confirm store state.
+	f1, _ := store.Read("FIND-001")
+	if f1.Status != finding.StatusConfirmed {
+		t.Errorf("FIND-001 status: got %s, want confirmed", f1.Status)
+	}
+	if len(f1.Notes) != 1 || f1.Notes[0].Author != "validation-agent" {
+		t.Errorf("FIND-001 note: want one validation-agent note, got %+v", f1.Notes)
+	}
+
+	f2, _ := store.Read("FIND-002")
+	if f2.Status != finding.StatusFalsePositive {
+		t.Errorf("FIND-002 status: got %s, want false_positive", f2.Status)
+	}
+	if f2.Severity != finding.SeverityLow {
+		t.Errorf("FIND-002 severity: got %s, want low (severity_override applied)", f2.Severity)
+	}
+
+	f3, _ := store.Read("FIND-003")
+	if f3.Status != finding.StatusDuplicate {
+		t.Errorf("FIND-003 status: got %s, want duplicate", f3.Status)
+	}
+	if f3.DuplicateOf != "FIND-001" {
+		t.Errorf("FIND-003 duplicate_of: got %q, want FIND-001", f3.DuplicateOf)
+	}
+}
+
+// TestTriagePlanApplyMixedErrors covers the resilience case: a plan
+// with one valid + one missing-id + one bad-status decision should
+// apply the good one, skip the missing, error the invalid, never
+// abort.
+func TestTriagePlanApplyMixedErrors(t *testing.T) {
+	p, cleanup := setupFindingTestProject(t)
+	defer cleanup()
+	store := finding.NewStore(p)
+
+	if err := store.Create(&finding.Finding{
+		Title:     "Test",
+		Severity:  finding.SeverityHigh,
+		CWE:       "CWE-89",
+		CreatedBy: "injection-agent",
+		Location:  finding.Location{File: "src/x.py", LineStart: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := triagePlan{
+		Version: 1,
+		Author:  "validation-agent",
+		Decisions: []triageDecision{
+			{FindingID: "FIND-001", Status: "false_positive", Reason: "valid."},
+			{FindingID: "FIND-999", Status: "confirmed", Reason: "missing finding."},
+			{FindingID: "FIND-001", Status: "weird_status", Reason: "bad status."},
+			{Status: "confirmed", Reason: "no id."},
+		},
+	}
+	applied, skipped, errored := applyTriageDecisionsForTest(t, store, plan)
+	if applied != 1 {
+		t.Errorf("applied=%d, want 1", applied)
+	}
+	if skipped != 1 {
+		t.Errorf("skipped=%d, want 1 (FIND-999 missing)", skipped)
+	}
+	if errored != 2 {
+		t.Errorf("errored=%d, want 2 (bad status + no id)", errored)
+	}
+}
+
+// applyTriageDecisionsForTest mirrors the apply loop in findingTriageCmd's
+// Run func, factored for unit testing. Production loop lives in the
+// command; this helper is a faithful reproduction. If the command's
+// logic diverges, this test stops being meaningful — keep them in sync.
+func applyTriageDecisionsForTest(t *testing.T, store *finding.Store, plan triagePlan) (applied, skipped, errored int) {
+	t.Helper()
+	author := plan.Author
+	if author == "" {
+		author = "triage"
+	}
+	for _, d := range plan.Decisions {
+		if d.FindingID == "" {
+			errored++
+			continue
+		}
+		f, err := store.Read(d.FindingID)
+		if err != nil {
+			skipped++
+			continue
+		}
+		if d.Status != "" && !isValidStatus(d.Status) {
+			errored++
+			continue
+		}
+		if d.Status != "" {
+			f.Status = finding.Status(d.Status)
+		}
+		if d.DuplicateOf != "" {
+			f.DuplicateOf = d.DuplicateOf
+		}
+		if d.SeverityOverride != "" {
+			f.Severity = finding.Severity(d.SeverityOverride)
+		}
+		if d.Reason != "" {
+			f.Notes = append(f.Notes, finding.FindingNote{
+				Timestamp: time.Now(),
+				Author:    author,
+				Text:      d.Reason,
+			})
+		}
+		if err := store.Update(f); err != nil {
+			errored++
+			continue
+		}
+		applied++
+	}
+	return
+}
+
+// TestEnforceCreatedByFallback covers the forgiving fallback that
+// closes the LLM-misattribution failure mode: when an agent fabricates
+// a wrong --created-by but the dispatcher set QUOKKA_AGENT_NAME to the
+// right value, we use env + warn rather than fail.
+func TestEnforceCreatedByFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	p, err := project.Initialize(tmpDir)
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	cases := []struct {
+		name              string
+		envValue          string
+		explicitValue     string
+		wantEffective     string
+		wantRejectReason  bool // non-empty
+		wantFellBack      bool
+	}{
+		{
+			name:          "explicit valid + no env → accept",
+			envValue:      "",
+			explicitValue: "injection-agent",
+			wantEffective: "injection-agent",
+		},
+		{
+			name:          "explicit valid + env different → accept explicit",
+			envValue:      "security-agent",
+			explicitValue: "injection-agent",
+			wantEffective: "injection-agent",
+		},
+		{
+			name:          "explicit invalid + env valid → fall back to env",
+			envValue:      "injection-agent",
+			explicitValue: "opencode",
+			wantEffective: "injection-agent",
+			wantRejectReason: true,
+			wantFellBack:    true,
+		},
+		{
+			name:             "explicit invalid + env empty → reject",
+			envValue:         "",
+			explicitValue:    "opencode",
+			wantEffective:    "",
+			wantRejectReason: true,
+		},
+		{
+			name:             "explicit invalid + env also invalid → reject",
+			envValue:         "qwen3",
+			explicitValue:    "opencode",
+			wantEffective:    "",
+			wantRejectReason: true,
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("QUOKKA_AGENT_NAME", c.envValue)
+			eff, reason, fellBack, envHint := enforceCreatedBy(p, c.explicitValue)
+			if eff != c.wantEffective {
+				t.Errorf("effective: got %q, want %q", eff, c.wantEffective)
+			}
+			if (reason != "") != c.wantRejectReason {
+				t.Errorf("rejectReason: got %q, wantNonEmpty=%v", reason, c.wantRejectReason)
+			}
+			if fellBack != c.wantFellBack {
+				t.Errorf("fellBack: got %v, want %v", fellBack, c.wantFellBack)
+			}
+			if envHint != c.envValue {
+				t.Errorf("envHint: got %q, want %q", envHint, c.envValue)
+			}
+		})
+	}
+}
+
+func TestRejectInvalidCreatedBy(t *testing.T) {
+	// Project with default config — gives access to the built-in
+	// agent registry so "injection-agent" etc. resolve.
+	tmpDir := t.TempDir()
+	p, err := project.Initialize(tmpDir)
+	if err != nil {
+		t.Fatalf("project init: %v", err)
+	}
+
+	cases := []struct {
+		name       string
+		value      string
+		wantReject bool
+	}{
+		// Empty / sentinel
+		{"empty rejected", "", true},
+		{"whitespace-only rejected", "   ", true},
+
+		// Runtime / provider / model — never accepted, even bare
+		{"runtime name `opencode` rejected", "opencode", true},
+		{"runtime name `claude` rejected", "claude", true},
+		{"runtime uppercase `Claude` rejected", "Claude", true},
+		{"provider `openai` rejected", "openai", true},
+		{"model family `qwen3` rejected", "qwen3", true},
+
+		// Generic role nouns — not registered agents, so rejected
+		{"generic `unknown` rejected", "unknown", true},
+		{"generic `system` rejected", "system", true},
+		{"invented `security-scanner` rejected", "security-scanner", true},
+
+		// OWASP v6 evasion patterns — compound names that prepend runtime
+		{"runtime compound `opencode-security-agent` rejected", "opencode-security-agent", true},
+		{"runtime compound `opencode-security-review` rejected", "opencode-security-review", true},
+
+		// OWASP v7 evasion — `opengrep` is reserved for SAST programmatic
+		// path; LLM agents must use their real name.
+		{"tool name `opengrep` rejected in CLI flag mode", "opengrep", true},
+
+		// Prefix edge cases
+		{"empty `agent:` prefix rejected", "agent:", true},
+		{"empty `human:` prefix rejected", "human:", true},
+		{"runtime name with `agent:` prefix rejected", "agent:opencode", true},
+		{"runtime name with `human:` prefix rejected", "human:opencode", true},
+
+		// Registered agent names
+		{"valid agent `injection-agent` accepted", "injection-agent", false},
+		{"valid agent with `agent:` prefix accepted", "agent:injection-agent", false},
+		{"valid agent `security-agent` accepted", "security-agent", false},
+		{"valid agent `validation-agent` accepted", "validation-agent", false},
+
+		// Human/bot identities with plain names
+		{"human prefix with plain name accepted", "human:alice", false},
+		{"bot prefix with plain name accepted", "bot:dependabot", false},
+
+		// Unregistered free-form names — rejected (no longer accepted
+		// just because they're not on the blacklist).
+		{"unregistered free-form name rejected", "my-custom-agent", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			reason := rejectInvalidCreatedBy(p, c.value)
+			rejected := reason != ""
+			if rejected != c.wantReject {
+				t.Errorf("rejectInvalidCreatedBy(%q): rejected=%v, want %v (reason: %q)",
+					c.value, rejected, c.wantReject, reason)
 			}
 		})
 	}

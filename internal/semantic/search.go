@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/chunk"
-	"github.com/ihavespoons/zrok/internal/embedding"
-	"github.com/ihavespoons/zrok/internal/vectordb"
+	"github.com/diffsec/quokka/internal/chunk"
+	"github.com/diffsec/quokka/internal/embedding"
+	"github.com/diffsec/quokka/internal/vectordb"
 )
 
 // SearchOptions configures semantic search behavior

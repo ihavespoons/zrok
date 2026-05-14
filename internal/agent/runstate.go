@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // RunStateFile is the JSON file where per-agent timing data is persisted.
@@ -31,7 +31,7 @@ type RunState struct {
 
 // runStatePath returns the path to the run-state file for the given project.
 func runStatePath(p *project.Project) string {
-	return filepath.Join(p.GetZrokPath(), RunStateFile)
+	return filepath.Join(p.GetQuokkaPath(), RunStateFile)
 }
 
 // LoadRunState reads the run-state file. Missing file is not an error;

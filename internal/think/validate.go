@@ -5,9 +5,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/navigate"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/navigate"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // ValidateOptions configures a finding-validation analysis.

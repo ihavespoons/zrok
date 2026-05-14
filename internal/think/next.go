@@ -5,10 +5,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/agent"
-	"github.com/ihavespoons/zrok/internal/finding"
-	"github.com/ihavespoons/zrok/internal/memory"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/agent"
+	"github.com/diffsec/quokka/internal/finding"
+	"github.com/diffsec/quokka/internal/memory"
+	"github.com/diffsec/quokka/internal/project"
 )
 
 // NextOptions configures the next-step recommender.
@@ -125,7 +125,7 @@ func AnalyzeNext(p *project.Project, opts NextOptions) (*NextReport, error) {
 			Priority: "high",
 			Action:   fmt.Sprintf("Validate %d open high/critical findings", r.OpenHighSev),
 			Reason:   "high-severity findings still in open state",
-			Command:  `zrok finding list --severity high --status open`,
+			Command:  `quokka finding list --severity high --status open`,
 		})
 	}
 	if len(r.MissingMemories) > 0 {
@@ -133,7 +133,7 @@ func AnalyzeNext(p *project.Project, opts NextOptions) (*NextReport, error) {
 			Priority: "high",
 			Action:   fmt.Sprintf("Create %d missing context memories", len(r.MissingMemories)),
 			Reason:   "agents declare these as required context: " + strings.Join(r.MissingMemories, ", "),
-			Command:  `zrok memory write <name> --type context --content "..."`,
+			Command:  `quokka memory write <name> --type context --content "..."`,
 		})
 	}
 	if len(r.UncoveredCWEs) > 0 {
@@ -141,7 +141,7 @@ func AnalyzeNext(p *project.Project, opts NextOptions) (*NextReport, error) {
 			Priority: "medium",
 			Action:   fmt.Sprintf("Investigate %d uncovered CWEs", len(r.UncoveredCWEs)),
 			Reason:   "applicable agents own these but no findings exist yet: " + strings.Join(r.UncoveredCWEs, ", "),
-			Command:  `zrok think hypothesis`,
+			Command:  `quokka think hypothesis`,
 		})
 	}
 	if len(r.OpenWithoutCWE) > 0 {
@@ -149,7 +149,7 @@ func AnalyzeNext(p *project.Project, opts NextOptions) (*NextReport, error) {
 			Priority: "medium",
 			Action:   "Triage open findings missing CWE tags",
 			Reason:   "without CWE these can't be evaluated for adherence/coverage: " + strings.Join(r.OpenWithoutCWE, ", "),
-			Command:  `zrok finding update <id> --cwe CWE-XXX`,
+			Command:  `quokka finding update <id> --cwe CWE-XXX`,
 		})
 	}
 	if fList.Total == 0 {
@@ -157,7 +157,7 @@ func AnalyzeNext(p *project.Project, opts NextOptions) (*NextReport, error) {
 			Priority: "high",
 			Action:   "Run recon then primary analysis agents",
 			Reason:   "no findings recorded yet",
-			Command:  `zrok agent list`,
+			Command:  `quokka agent list`,
 		})
 	}
 	if len(r.Steps) == 0 {
@@ -165,7 +165,7 @@ func AnalyzeNext(p *project.Project, opts NextOptions) (*NextReport, error) {
 			Priority: "low",
 			Action:   "Export findings and finalize report",
 			Reason:   "no outstanding gaps detected",
-			Command:  `zrok finding export --format markdown`,
+			Command:  `quokka finding export --format markdown`,
 		})
 	}
 

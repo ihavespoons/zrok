@@ -10,9 +10,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/navigate/lsp"
-	"github.com/ihavespoons/zrok/internal/project"
-	"github.com/ihavespoons/zrok/internal/treesitter"
+	"github.com/diffsec/quokka/internal/navigate/lsp"
+	"github.com/diffsec/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/treesitter"
 )
 
 // ExtractionMethod specifies how to extract chunks
@@ -162,7 +162,7 @@ func (e *Extractor) ExtractAll(ctx context.Context) (*ChunkList, error) {
 // If the parser skips the file (e.g. for size reasons via SkippedFileError),
 // this returns an empty ChunkList with no error so the indexer can continue.
 func (e *Extractor) extractTreeSitter(relPath, fullPath string) (*ChunkList, error) {
-	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
+	debugVerbose := os.Getenv("QUOKKA_DEBUG_VERBOSE") != ""
 
 	if debugVerbose {
 		fmt.Printf("[TREESITTER] Extracting from: %s\n", relPath)
@@ -218,7 +218,7 @@ func (e *Extractor) extractTreeSitter(relPath, fullPath string) (*ChunkList, err
 
 // extractLSP extracts chunks using LSP document symbols
 func (e *Extractor) extractLSP(ctx context.Context, relPath, fullPath string) (*ChunkList, error) {
-	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
+	debugVerbose := os.Getenv("QUOKKA_DEBUG_VERBOSE") != ""
 
 	if debugVerbose {
 		fmt.Printf("[LSP] Getting client for: %s\n", relPath)
@@ -286,7 +286,7 @@ func (e *Extractor) extractLSP(ctx context.Context, relPath, fullPath string) (*
 
 // convertSymbolsToChunks converts LSP DocumentSymbols to Chunks
 func (e *Extractor) convertSymbolsToChunks(symbols []lsp.DocumentSymbol, file, language string, lines []string, parentName string) []*Chunk {
-	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
+	debugVerbose := os.Getenv("QUOKKA_DEBUG_VERBOSE") != ""
 	var chunks []*Chunk
 
 	if debugVerbose && len(symbols) > 0 {
@@ -831,7 +831,7 @@ func (e *Extractor) isSupportedExtension(ext string) bool {
 
 func (e *Extractor) shouldIgnoreDir(name string) bool {
 	ignorePatterns := []string{
-		"node_modules", "vendor", ".git", ".zrok",
+		"node_modules", "vendor", ".git", ".quokka",
 		"__pycache__", "target", "dist", "build",
 	}
 	if strings.HasPrefix(name, ".") {
@@ -913,7 +913,7 @@ func (e *Extractor) findRubyBlockEnd(lines []string, startIdx int) int {
 
 // splitLargeChunks splits chunks that exceed maxChunkLines into smaller pieces
 func (e *Extractor) splitLargeChunks(chunks []*Chunk, lines []string, language string) []*Chunk {
-	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
+	debugVerbose := os.Getenv("QUOKKA_DEBUG_VERBOSE") != ""
 	var result []*Chunk
 
 	for _, chunk := range chunks {

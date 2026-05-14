@@ -1,5 +1,5 @@
 # Ground truth for the vulnerable Flask application.
-# Each entry defines a known vulnerability that zrok should detect.
+# Each entry defines a known vulnerability that quokka should detect.
 # Used by the eval scorer to calculate detection rate and accuracy.
 
 vulnerabilities:

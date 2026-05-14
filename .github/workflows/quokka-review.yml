@@ -1,0 +1,92 @@
+# Dogfood: review every PR to quokka using quokka itself, via the
+# diffsec/quokka-review-action composite action. The action builds quokka from
+# the PR's own branch (head_ref) — so if the PR breaks the review
+# pipeline, it breaks its own review and that signal surfaces immediately.
+#
+# Advisory-only at first (block-on empty). Promote to block-on: critical
+# once we trust the LLM agents enough not to false-positive a stop-the-PR
+# verdict.
+#
+# Fork PRs are skipped — secrets aren't exposed to pull_request runs from
+# forks anyway, and we'd rather skip-with-warning than fail noisily.
+
+name: quokka security review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# A new push to the same PR cancels the in-flight review. Reviews are
+# expensive (multi-agent + API spend) and re-pushes happen during normal
+# dev — without this, every push piles a fresh run on top while the old
+# one keeps burning the budget.
+concurrency:
+  group: quokka-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write       # post the review comment
+  security-events: write     # upload SARIF to code-scanning
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # action needs the base ref for `git diff`
+
+      # Register qwen3.6-flash in opencode's user config. The model is
+      # valid on OpenRouter but not yet catalogued in models.dev (which
+      # opencode pulls its bundled registry from). Without this file,
+      # opencode rejects `openrouter/qwen/qwen3.6-flash` with `Model not
+      # found:` and exits 0 — every dispatched agent silently no-ops in
+      # ~1s. Discovered during local v16c eval; the dispatcher's
+      # silent-error detector now catches this case, but registering the
+      # model up-front is the proper fix. Drop this step once models.dev
+      # carries qwen3.6-flash.
+      - name: Register qwen3.6-flash with opencode
+        run: |
+          mkdir -p "$HOME/.config/opencode"
+          cat > "$HOME/.config/opencode/opencode.json" <<'JSON'
+          {
+            "$schema": "https://opencode.ai/config.json",
+            "provider": {
+              "openrouter": {
+                "models": {
+                  "qwen/qwen3.6-flash": {
+                    "name": "Qwen 3.6 Flash",
+                    "limit": { "context": 1000000, "output": 65536 }
+                  }
+                }
+              }
+            }
+          }
+          JSON
+
+      - uses: diffsec/quokka-review-action@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # OpenRouter is a BUILT-IN provider in OpenCode (it uses the
+          # dedicated @openrouter/ai-sdk-provider package internally). So
+          # no opencode-config needed — just set the env var and reference
+          # the model by `openrouter/<openrouter-slug>`. Previous attempts
+          # forced `npm: @ai-sdk/openai-compatible` for this provider id,
+          # which overrode the built-in implementation and broke the
+          # streaming handshake (silent opencode runs with zero output).
+          opencode-env: |
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+          model: openrouter/qwen/qwen3.6-flash
+          # Dogfood: review with the PR's own quokka code. If a PR breaks
+          # the review pipeline, the review breaks visibly, which is the
+          # signal we want.
+          quokka-ref: ${{ github.head_ref }}
+          # quokka is a Go codebase, so point opengrep at the go-specific
+          # rule pack rather than the default "security" tree (which is
+          # mostly Python). The action's Scanner tolerates partial-config
+          # exits and emits a warning rather than failing the run.
+          opengrep-config: go
+          severity-threshold: high
+          block-on: ''       # advisory only — promote later

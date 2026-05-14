@@ -127,7 +127,7 @@ func (m *Manager) CloseAll(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
+	debugVerbose := os.Getenv("QUOKKA_DEBUG_VERBOSE") != ""
 	if debugVerbose && len(m.clients) > 0 {
 		fmt.Printf("[LSP-MANAGER] Closing %d active clients\n", len(m.clients))
 	}

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/finding"
+	"github.com/diffsec/quokka/internal/finding"
 )
 
 // SARIF format structures (SARIF 2.1.0)
@@ -49,14 +49,25 @@ type SarifReportingConfiguration struct {
 }
 
 type SarifResult struct {
-	RuleID     string                 `json:"ruleId"`
-	RuleIndex  int                    `json:"ruleIndex,omitempty"`
-	Level      string                 `json:"level"`
-	Message    SarifMessage           `json:"message"`
-	Locations  []SarifLocation        `json:"locations,omitempty"`
-	CodeFlows  []SarifCodeFlow        `json:"codeFlows,omitempty"`
-	Fixes      []SarifFix             `json:"fixes,omitempty"`
-	Properties map[string]interface{} `json:"properties,omitempty"`
+	RuleID              string                 `json:"ruleId"`
+	RuleIndex           int                    `json:"ruleIndex,omitempty"`
+	Level               string                 `json:"level"`
+	Message             SarifMessage           `json:"message"`
+	Locations           []SarifLocation        `json:"locations,omitempty"`
+	CodeFlows           []SarifCodeFlow        `json:"codeFlows,omitempty"`
+	PartialFingerprints map[string]string      `json:"partialFingerprints,omitempty"`
+	Suppressions        []SarifSuppression     `json:"suppressions,omitempty"`
+	Properties          map[string]interface{} `json:"properties,omitempty"`
+}
+
+// SarifSuppression marks a result as dismissed. Per SARIF 2.1.0, code-scanning
+// reads this and shows the alert in a dismissed state with the justification
+// visible. Preferred over dropping the result entirely — keeps the audit
+// trail of "this was flagged but suppressed because X."
+type SarifSuppression struct {
+	Kind          string `json:"kind"`                    // "external" (quokka exceptions are external suppressions)
+	Status        string `json:"status,omitempty"`        // "accepted" — we wouldn't be emitting it otherwise
+	Justification string `json:"justification,omitempty"` // the exception's reason
 }
 
 type SarifMessage struct {
@@ -90,10 +101,6 @@ type SarifSnippet struct {
 	Text string `json:"text"`
 }
 
-type SarifFix struct {
-	Description SarifMessage `json:"description"`
-}
-
 type SarifInvocation struct {
 	ExecutionSuccessful bool   `json:"executionSuccessful"`
 	EndTimeUtc          string `json:"endTimeUtc,omitempty"`
@@ -114,16 +121,26 @@ type SarifThreadFlowLocation struct {
 
 // SARIFExporter exports findings to SARIF format
 type SARIFExporter struct {
-	toolName    string
-	toolVersion string
+	toolName     string
+	toolVersion  string
+	suppressions map[string]string // finding.ID → justification
 }
 
 // NewSARIFExporter creates a new SARIF exporter
 func NewSARIFExporter() *SARIFExporter {
 	return &SARIFExporter{
-		toolName:    "zrok",
+		toolName:    "quokka",
 		toolVersion: "1.0.0",
 	}
+}
+
+// WithSuppressions configures the exporter to mark the given findings as
+// dismissed in SARIF output, using the provided justifications. Map key is
+// the finding ID, value is the reason text. Findings not in the map are
+// emitted unsuppressed.
+func (e *SARIFExporter) WithSuppressions(suppressions map[string]string) *SARIFExporter {
+	e.suppressions = suppressions
+	return e
 }
 
 // Export exports findings to SARIF format
@@ -217,12 +234,20 @@ func (e *SARIFExporter) buildRule(f finding.Finding) SarifRule {
 func (e *SARIFExporter) buildResult(f finding.Finding, ruleMap map[string]int) SarifResult {
 	ruleID := e.getRuleID(f)
 
+	fp := f.Fingerprint
+	if fp == "" {
+		fp = finding.Fingerprint(f)
+	}
+
 	result := SarifResult{
 		RuleID:    ruleID,
 		RuleIndex: ruleMap[ruleID],
 		Level:     e.severityToLevel(f.Severity),
 		Message: SarifMessage{
 			Text: f.Description,
+		},
+		PartialFingerprints: map[string]string{
+			finding.FingerprintKey: fp,
 		},
 		Properties: map[string]interface{}{
 			"id":         f.ID,
@@ -257,16 +282,14 @@ func (e *SARIFExporter) buildResult(f finding.Finding, ruleMap map[string]int) S
 
 	result.Locations = []SarifLocation{loc}
 
-	// Add fix suggestion if remediation exists
-	if f.Remediation != "" {
-		result.Fixes = []SarifFix{
-			{
-				Description: SarifMessage{
-					Text: f.Remediation,
-				},
-			},
-		}
-	}
+	// Don't emit `fixes` here. Per SARIF 2.1.0 the `fix` object requires
+	// a non-empty `artifactChanges` array — a `fix` with only a
+	// `description` is invalid and GitHub code-scanning's SARIF
+	// validator rejects the whole upload. The remediation text is still
+	// surfaced via the rule's `help` field (see buildRule below), which
+	// code-scanning displays in the alert detail. If we ever produce
+	// actual patches we can re-introduce a proper `fixes` block with
+	// real artifactChanges.
 
 	// Add code flow from FlowTrace
 	if f.FlowTrace != nil {
@@ -328,6 +351,17 @@ func (e *SARIFExporter) buildResult(f finding.Finding, ruleMap map[string]int) S
 			"score":  f.CVSS.Score,
 			"vector": f.CVSS.Vector,
 		}
+	}
+
+	// Mark suppressed findings as dismissed at the SARIF layer rather than
+	// dropping them; code-scanning shows them in a "dismissed" state with
+	// the justification visible, preserving the audit trail.
+	if reason, ok := e.suppressions[f.ID]; ok {
+		result.Suppressions = []SarifSuppression{{
+			Kind:          "external",
+			Status:        "accepted",
+			Justification: reason,
+		}}
 	}
 
 	return result

@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/ihavespoons/zrok/internal/chunk"
-	"github.com/ihavespoons/zrok/internal/embedding"
-	"github.com/ihavespoons/zrok/internal/project"
-	"github.com/ihavespoons/zrok/internal/vectordb"
+	"github.com/diffsec/quokka/internal/chunk"
+	"github.com/diffsec/quokka/internal/embedding"
+	"github.com/diffsec/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/vectordb"
 )
 
 // IndexStats contains statistics about the index
@@ -163,9 +163,9 @@ func (idx *Indexer) Build(ctx context.Context, force bool, progress ProgressCall
 	saveInterval := fileBatchSize * 4
 	lspResetInterval := getLSPResetInterval()
 
-	// Enable memory profiling if ZROK_PROFILE_MEMORY is set
-	profileMemory := os.Getenv("ZROK_PROFILE_MEMORY") != ""
-	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
+	// Enable memory profiling if QUOKKA_PROFILE_MEMORY is set
+	profileMemory := os.Getenv("QUOKKA_PROFILE_MEMORY") != ""
+	debugVerbose := os.Getenv("QUOKKA_DEBUG_VERBOSE") != ""
 	if profileMemory {
 		printMemStats("start")
 	}
@@ -221,7 +221,7 @@ func (idx *Indexer) Build(ctx context.Context, force bool, progress ProgressCall
 					storeMu.Unlock()
 
 					// Record the file-level fingerprint so the next
-					// `zrok index update` can fast-path-skip this file
+					// `quokka index update` can fast-path-skip this file
 					// without reading it. We compute the hash AFTER the
 					// store insert succeeds; if any batch failed we skip,
 					// because storing a fingerprint for a partially-indexed
@@ -420,26 +420,26 @@ func (idx *Indexer) Update(ctx context.Context, progress ProgressCallback) (int,
 }
 
 // embeddingBatchSize is the number of chunks to embed at once
-// Can be overridden via ZROK_EMBEDDING_BATCH_SIZE env var
+// Can be overridden via QUOKKA_EMBEDDING_BATCH_SIZE env var
 // HuggingFace and OpenAI can handle large batches efficiently
 const defaultEmbeddingBatchSize = 64
 
 // fileBatchSize is the number of files to process before forcing GC
-// Can be overridden via ZROK_FILE_BATCH_SIZE env var
+// Can be overridden via QUOKKA_FILE_BATCH_SIZE env var
 const defaultFileBatchSize = 50
 
 // maxChunksPerFile limits chunks from a single file to prevent huge bundled files from dominating
-// Can be overridden via ZROK_MAX_CHUNKS_PER_FILE env var (0 = unlimited)
+// Can be overridden via QUOKKA_MAX_CHUNKS_PER_FILE env var (0 = unlimited)
 const defaultMaxChunksPerFile = 500
 
 // embeddingConcurrency is the number of concurrent embedding API requests
 // Higher values speed up indexing but may hit API rate limits
-// Can be overridden via ZROK_EMBEDDING_CONCURRENCY env var
+// Can be overridden via QUOKKA_EMBEDDING_CONCURRENCY env var
 const defaultEmbeddingConcurrency = 4
 
 
 func getEmbeddingBatchSize() int {
-	if envVal := os.Getenv("ZROK_EMBEDDING_BATCH_SIZE"); envVal != "" {
+	if envVal := os.Getenv("QUOKKA_EMBEDDING_BATCH_SIZE"); envVal != "" {
 		if size, err := strconv.Atoi(envVal); err == nil && size > 0 {
 			return size
 		}
@@ -448,7 +448,7 @@ func getEmbeddingBatchSize() int {
 }
 
 func getFileBatchSize() int {
-	if envVal := os.Getenv("ZROK_FILE_BATCH_SIZE"); envVal != "" {
+	if envVal := os.Getenv("QUOKKA_FILE_BATCH_SIZE"); envVal != "" {
 		if size, err := strconv.Atoi(envVal); err == nil && size > 0 {
 			return size
 		}
@@ -457,7 +457,7 @@ func getFileBatchSize() int {
 }
 
 func getMaxChunksPerFile() int {
-	if envVal := os.Getenv("ZROK_MAX_CHUNKS_PER_FILE"); envVal != "" {
+	if envVal := os.Getenv("QUOKKA_MAX_CHUNKS_PER_FILE"); envVal != "" {
 		if size, err := strconv.Atoi(envVal); err == nil && size >= 0 {
 			return size
 		}
@@ -466,7 +466,7 @@ func getMaxChunksPerFile() int {
 }
 
 func getEmbeddingConcurrency() int {
-	if envVal := os.Getenv("ZROK_EMBEDDING_CONCURRENCY"); envVal != "" {
+	if envVal := os.Getenv("QUOKKA_EMBEDDING_CONCURRENCY"); envVal != "" {
 		if size, err := strconv.Atoi(envVal); err == nil && size > 0 {
 			return size
 		}
@@ -476,7 +476,7 @@ func getEmbeddingConcurrency() int {
 
 func getFileWorkers() int {
 	// Check for explicit override first
-	if envVal := os.Getenv("ZROK_FILE_WORKERS"); envVal != "" {
+	if envVal := os.Getenv("QUOKKA_FILE_WORKERS"); envVal != "" {
 		if size, err := strconv.Atoi(envVal); err == nil && size > 0 {
 			return size
 		}
@@ -497,11 +497,11 @@ func getFileWorkers() int {
 
 // defaultLSPResetInterval is the number of files to process before restarting LSP clients
 // LSP servers like solargraph accumulate ~25MB per file; restarting releases it
-// Set to 0 to disable. Can be overridden via ZROK_LSP_RESET_INTERVAL env var
+// Set to 0 to disable. Can be overridden via QUOKKA_LSP_RESET_INTERVAL env var
 const defaultLSPResetInterval = 25
 
 func getLSPResetInterval() int {
-	if envVal := os.Getenv("ZROK_LSP_RESET_INTERVAL"); envVal != "" {
+	if envVal := os.Getenv("QUOKKA_LSP_RESET_INTERVAL"); envVal != "" {
 		if size, err := strconv.Atoi(envVal); err == nil && size >= 0 {
 			return size
 		}
@@ -529,7 +529,7 @@ func printMemStats(label string) {
 
 // indexFile indexes a single file
 func (idx *Indexer) indexFile(ctx context.Context, file string) error {
-	debugVerbose := os.Getenv("ZROK_DEBUG_VERBOSE") != ""
+	debugVerbose := os.Getenv("QUOKKA_DEBUG_VERBOSE") != ""
 
 	if debugVerbose {
 		fmt.Printf("[DEBUG] Extracting chunks from: %s\n", file)
@@ -933,7 +933,7 @@ func (idx *Indexer) findFiles() ([]string, error) {
 
 func (idx *Indexer) shouldIgnoreDir(name string) bool {
 	ignores := []string{
-		"node_modules", "vendor", ".git", ".zrok",
+		"node_modules", "vendor", ".git", ".quokka",
 		"__pycache__", "target", "dist", "build",
 		".idea", ".vscode", ".bundle", "coverage",
 		"tmp", "log", "logs", "cache", ".cache",
@@ -1107,7 +1107,7 @@ func (idx *Indexer) Watch(ctx context.Context) error {
 						fmt.Printf("Warning: failed to re-index %s: %v\n", f, err)
 						continue
 					}
-					// Refresh the fingerprint so a subsequent `zrok index
+					// Refresh the fingerprint so a subsequent `quokka index
 					// update` can fast-path-skip this file.
 					if fh, herr := idx.computeFileHash(f); herr == nil {
 						idx.recordFileHash(fh)

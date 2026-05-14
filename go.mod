@@ -1,4 +1,4 @@
-module github.com/ihavespoons/zrok
+module github.com/diffsec/quokka
 
 go 1.25.6
 

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ihavespoons/zrok/internal/project"
-	"github.com/ihavespoons/zrok/internal/think"
+	"github.com/diffsec/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/think"
 	"github.com/spf13/cobra"
 )
 
@@ -154,7 +154,7 @@ var thinkHypothesisCmd = &cobra.Command{
 	Short: "Generate ranked CWE hypotheses",
 	Long: `Generate ranked CWE hypotheses from the project's tech stack and
 memory content. Each hypothesis lists evidence (tech/memory keywords that
-matched), a sink regex, and a concrete 'zrok think dataflow ...' command
+matched), a sink regex, and a concrete 'quokka think dataflow ...' command
 to verify it.
 
 Flags:
@@ -231,7 +231,7 @@ Flags:
   --sink <regex>           Sink pattern. Overrides --sink-class when set.
   --sink-class <names>     Comma-separated sink class names (e.g.
                            "deserialization,xxe,ldap"). Run
-                           "zrok think dataflow --list-sink-classes" to
+                           "quokka think dataflow --list-sink-classes" to
                            see available classes. Default: a mix covering
                            sqli/cmdi/codeexec/deserialization/xxe/xpath/
                            ldap/redirect/template/xss.

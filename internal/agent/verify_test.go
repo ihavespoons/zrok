@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/memory"
+	"github.com/diffsec/quokka/internal/memory"
 )
 
 // fakeStore is an in-memory MemoryStoreReader for unit tests.

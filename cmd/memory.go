@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ihavespoons/zrok/internal/memory"
-	"github.com/ihavespoons/zrok/internal/project"
+	"github.com/diffsec/quokka/internal/memory"
+	"github.com/diffsec/quokka/internal/project"
 	"github.com/spf13/cobra"
 )
 

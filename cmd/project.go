@@ -6,18 +6,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ihavespoons/zrok/internal/agent"
-	"github.com/ihavespoons/zrok/internal/memory"
-	"github.com/ihavespoons/zrok/internal/project"
-	"github.com/ihavespoons/zrok/internal/skill"
+	"github.com/diffsec/quokka/internal/agent"
+	"github.com/diffsec/quokka/internal/memory"
+	"github.com/diffsec/quokka/internal/project"
+	"github.com/diffsec/quokka/internal/skill"
 	"github.com/spf13/cobra"
 )
 
 // initCmd represents the init command
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Initialize a new zrok project",
-	Long: `Initialize a new .zrok directory in the current project.
+	Short: "Initialize a new quokka project",
+	Long: `Initialize a new .quokka directory in the current project.
 
 This creates the directory structure for storing project configuration,
 memories, findings, and agent configurations.`,
@@ -44,7 +44,7 @@ memories, findings, and agent configurations.`,
 		if jsonOutput {
 			result := map[string]interface{}{
 				"success": true,
-				"path":    p.GetZrokPath(),
+				"path":    p.GetQuokkaPath(),
 				"message": "Project initialized successfully",
 			}
 			if skillResult != nil {
@@ -54,14 +54,14 @@ memories, findings, and agent configurations.`,
 				exitError("failed to encode JSON: %v", err)
 			}
 		} else {
-			fmt.Printf("Initialized zrok project at %s\n", p.GetZrokPath())
+			fmt.Printf("Initialized quokka project at %s\n", p.GetQuokkaPath())
 			if skillResult != nil {
 				fmt.Printf("Installed code-review skill to %s\n", skillResult.Path)
 			}
 			fmt.Println("\nNext steps:")
-			fmt.Println("  zrok onboard           # Agent-assisted onboarding (recommended)")
-			fmt.Println("  zrok onboard --static  # Static detection only (fast)")
-			fmt.Println("  zrok onboard --wizard  # Interactive setup")
+			fmt.Println("  quokka onboard           # Agent-assisted onboarding (recommended)")
+			fmt.Println("  quokka onboard --static  # Static detection only (fast)")
+			fmt.Println("  quokka onboard --wizard  # Interactive setup")
 		}
 	},
 }
@@ -69,8 +69,8 @@ memories, findings, and agent configurations.`,
 // activateCmd represents the activate command
 var activateCmd = &cobra.Command{
 	Use:   "activate [path]",
-	Short: "Activate a zrok project",
-	Long:  `Activate a zrok project at the specified path (or current directory).`,
+	Short: "Activate a quokka project",
+	Long:  `Activate a quokka project at the specified path (or current directory).`,
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		path := "."
@@ -182,9 +182,9 @@ var configCmd = &cobra.Command{
 	Long: `View or modify the project configuration.
 
 Examples:
-  zrok config                    # Show all config
-  zrok config get name           # Get a specific value
-  zrok config set name myproject # Set a value`,
+  quokka config                    # Show all config
+  quokka config get name           # Get a specific value
+  quokka config set name myproject # Set a value`,
 	Run: func(cmd *cobra.Command, args []string) {
 		p, err := project.EnsureActive()
 		if err != nil {
@@ -212,7 +212,7 @@ Examples:
 		switch action {
 		case "get":
 			if len(args) < 2 {
-				exitError("usage: zrok config get <key>")
+				exitError("usage: quokka config get <key>")
 			}
 			key := args[1]
 			var value interface{}
@@ -236,7 +236,7 @@ Examples:
 
 		case "set":
 			if len(args) < 3 {
-				exitError("usage: zrok config set <key> <value>")
+				exitError("usage: quokka config set <key> <value>")
 			}
 			key := args[1]
 			value := args[2]
@@ -385,8 +385,10 @@ Modes:
 			exitError("onboarding failed: %v", err)
 		}
 
-		// Suggest agents based on project classification
-		result.Agents = agent.SuggestAgents(result.Config.Classification)
+		// Suggest agents based on project classification. Pass `p` so local
+		// agent YAMLs in .quokka/agents/ override built-ins (including their
+		// applicability rules).
+		result.Agents = agent.SuggestAgents(p, result.Config.Classification)
 
 		// Create initial memories
 		memStore := memory.NewStore(p)

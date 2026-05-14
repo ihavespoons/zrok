@@ -24,9 +24,9 @@
                     <h3 class="text-sm font-medium text-gray-700 mb-2">Setup</h3>
                     <div class="bg-gray-900 text-gray-100 p-3 rounded text-sm font-mono overflow-x-auto">
                         <div class="text-gray-400"># Enable with a provider</div>
-                        <div>zrok index enable --provider ollama</div>
+                        <div>quokka index enable --provider ollama</div>
                         <div class="text-gray-400 mt-2"># Build the index</div>
-                        <div>zrok index build</div>
+                        <div>quokka index build</div>
                     </div>
                 </div>
 
@@ -34,19 +34,19 @@
                     <h3 class="text-sm font-medium text-gray-700 mb-2">Search</h3>
                     <div class="bg-gray-900 text-gray-100 p-3 rounded text-sm font-mono overflow-x-auto">
                         <div class="text-gray-400"># Natural language search</div>
-                        <div>zrok semantic "authentication middleware"</div>
+                        <div>quokka semantic "authentication middleware"</div>
                         <div class="text-gray-400 mt-2"># Explore related code</div>
-                        <div>zrok semantic "SQL injection" --multi-hop</div>
+                        <div>quokka semantic "SQL injection" --multi-hop</div>
                     </div>
                 </div>
 
                 <div>
                     <h3 class="text-sm font-medium text-gray-700 mb-2">Maintenance</h3>
                     <div class="bg-gray-900 text-gray-100 p-3 rounded text-sm font-mono overflow-x-auto">
-                        <div>zrok index status   <span class="text-gray-400"># Check status</span></div>
-                        <div>zrok index update   <span class="text-gray-400"># Update changed files</span></div>
-                        <div>zrok index watch    <span class="text-gray-400"># Watch for changes</span></div>
-                        <div>zrok index clear    <span class="text-gray-400"># Clear index</span></div>
+                        <div>quokka index status   <span class="text-gray-400"># Check status</span></div>
+                        <div>quokka index update   <span class="text-gray-400"># Update changed files</span></div>
+                        <div>quokka index watch    <span class="text-gray-400"># Watch for changes</span></div>
+                        <div>quokka index clear    <span class="text-gray-400"># Clear index</span></div>
                     </div>
                 </div>
             </div>
@@ -92,7 +92,7 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
                     '<span class="text-lg font-medium text-gray-700">Not Enabled</span>' +
                     '</div>' +
                     '<p class="text-gray-600">Semantic search is not enabled for this project.</p>' +
-                    '<p class="text-sm text-gray-500 mt-2">Run <code class="bg-gray-100 px-2 py-1 rounded">zrok index enable --provider ollama</code> to get started.</p>';
+                    '<p class="text-sm text-gray-500 mt-2">Run <code class="bg-gray-100 px-2 py-1 rounded">quokka index enable --provider ollama</code> to get started.</p>';
             } else if (data.error) {
                 html = '<div class="flex items-center gap-3 mb-4">' +
                     '<span class="w-3 h-3 rounded-full bg-yellow-400"></span>' +
