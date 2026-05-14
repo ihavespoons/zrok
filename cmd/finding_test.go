@@ -631,6 +631,81 @@ func applyTriageDecisionsForTest(t *testing.T, store *finding.Store, plan triage
 	return
 }
 
+// TestEnforceCreatedByFallback covers the forgiving fallback that
+// closes the LLM-misattribution failure mode: when an agent fabricates
+// a wrong --created-by but the dispatcher set ZROK_AGENT_NAME to the
+// right value, we use env + warn rather than fail.
+func TestEnforceCreatedByFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	p, err := project.Initialize(tmpDir)
+	if err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	cases := []struct {
+		name              string
+		envValue          string
+		explicitValue     string
+		wantEffective     string
+		wantRejectReason  bool // non-empty
+		wantFellBack      bool
+	}{
+		{
+			name:          "explicit valid + no env → accept",
+			envValue:      "",
+			explicitValue: "injection-agent",
+			wantEffective: "injection-agent",
+		},
+		{
+			name:          "explicit valid + env different → accept explicit",
+			envValue:      "security-agent",
+			explicitValue: "injection-agent",
+			wantEffective: "injection-agent",
+		},
+		{
+			name:          "explicit invalid + env valid → fall back to env",
+			envValue:      "injection-agent",
+			explicitValue: "opencode",
+			wantEffective: "injection-agent",
+			wantRejectReason: true,
+			wantFellBack:    true,
+		},
+		{
+			name:             "explicit invalid + env empty → reject",
+			envValue:         "",
+			explicitValue:    "opencode",
+			wantEffective:    "",
+			wantRejectReason: true,
+		},
+		{
+			name:             "explicit invalid + env also invalid → reject",
+			envValue:         "qwen3",
+			explicitValue:    "opencode",
+			wantEffective:    "",
+			wantRejectReason: true,
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("ZROK_AGENT_NAME", c.envValue)
+			eff, reason, fellBack, envHint := enforceCreatedBy(p, c.explicitValue)
+			if eff != c.wantEffective {
+				t.Errorf("effective: got %q, want %q", eff, c.wantEffective)
+			}
+			if (reason != "") != c.wantRejectReason {
+				t.Errorf("rejectReason: got %q, wantNonEmpty=%v", reason, c.wantRejectReason)
+			}
+			if fellBack != c.wantFellBack {
+				t.Errorf("fellBack: got %v, want %v", fellBack, c.wantFellBack)
+			}
+			if envHint != c.envValue {
+				t.Errorf("envHint: got %q, want %q", envHint, c.envValue)
+			}
+		})
+	}
+}
+
 func TestRejectInvalidCreatedBy(t *testing.T) {
 	// Project with default config — gives access to the built-in
 	// agent registry so "injection-agent" etc. resolve.

@@ -154,21 +154,35 @@ Valid statuses: open, confirmed, false_positive, fixed, duplicate.`,
 			applyFlagOverrides(cmd, &f)
 		}
 
-		// Reject invalid --created-by values. The CLI flag-mode path is
-		// reserved for LLM agents (zrok sast uses store.Create directly,
-		// bypassing the CLI). So we can apply an ALLOW-LIST against the
-		// agent registry — every accepted value must be either:
+		// Validate --created-by against the agent registry. The CLI
+		// flag-mode path is reserved for LLM agents (zrok sast uses
+		// store.Create directly, bypassing the CLI), so the bar is
+		// positive identification — accepted values must be either:
 		//   - a registered agent name (built-in or .zrok/agents override), or
 		//   - a `human:<id>` / `bot:<id>` prefixed identity.
 		//
-		// History: started as a deny-list, but each OWASP eval iteration
-		// surfaced a new evasion (opencode → opencode-security-agent →
-		// opengrep). The allow-list is the only stable answer.
-		if rejectReason := rejectInvalidCreatedBy(p, f.CreatedBy); rejectReason != "" {
-			exitError("--created-by %q is invalid: %s. "+
-				"Use the agent's name from its system prompt frontmatter "+
-				"(e.g. injection-agent), or a prefixed identity like `human:%s`.",
-				f.CreatedBy, rejectReason, os.Getenv("USER"))
+		// When the explicit value is rejected BUT ZROK_AGENT_NAME env is
+		// set to a valid agent (dispatcher injects this per-subprocess),
+		// we forgivingly fall back to env + warn rather than fail. This
+		// closes the OWASP-eval failure mode where qwen3-coder-plus
+		// reliably fabricates wrong creator strings (opencode,
+		// opencode-security-agent, opengrep, security-scanner) instead
+		// of echoing its actual agent name; the dispatcher always knows
+		// the right value, so the harness becomes self-correcting.
+		eff, rejectReason, fellBack, envHint := enforceCreatedBy(p, f.CreatedBy)
+		if fellBack {
+			fmt.Fprintf(os.Stderr,
+				"warning: --created-by %q rejected (%s); using ZROK_AGENT_NAME=%q from dispatcher instead.\n",
+				f.CreatedBy, rejectReason, envHint)
+			f.CreatedBy = eff
+		} else if rejectReason != "" {
+			var hint string
+			if envHint != "" {
+				hint = fmt.Sprintf(" (ZROK_AGENT_NAME=%q is set but is also not a registered agent.)", envHint)
+			} else {
+				hint = fmt.Sprintf(" Use the agent's name from its system prompt frontmatter (e.g. injection-agent), or `human:%s`.", os.Getenv("USER"))
+			}
+			exitError("--created-by %q is invalid: %s.%s", f.CreatedBy, rejectReason, hint)
 		}
 
 		// Validate ownership: if --created-by names a known agent with a
@@ -266,6 +280,37 @@ func printSameFileHint(store *finding.Store, f *finding.Finding, w io.Writer) {
 	_, _ = fmt.Fprintf(w, "Consider whether the new finding adds new information or should be a\n")
 	_, _ = fmt.Fprintf(w, "--note on the existing finding via:\n")
 	_, _ = fmt.Fprintf(w, "  zrok finding update %s --note \"<your perspective>\"\n", exampleID)
+}
+
+// enforceCreatedBy validates an explicit --created-by value and decides
+// whether to:
+//   - accept it (rejectReason="")
+//   - swap it for the env-default ZROK_AGENT_NAME when the explicit value
+//     is invalid but env names a valid agent (fellBack=true; caller
+//     should warn but proceed)
+//   - reject outright (rejectReason set, fellBack=false)
+//
+// envHint is the env value the caller may surface in error messages so
+// the model sees what its real agent name is.
+//
+// The fall-back behavior is the structural fix for the OWASP-eval
+// failure mode: LLM agents reliably fabricate wrong creator strings
+// (opencode, opencode-security-agent, opengrep, security-scanner) and
+// each iteration finds a new evasion. The dispatcher always knows the
+// right value via ZROK_AGENT_NAME; preferring it over the model's
+// guess makes the harness self-correcting.
+func enforceCreatedBy(p *project.Project, value string) (effective, rejectReason string, fellBack bool, envHint string) {
+	envHint = os.Getenv("ZROK_AGENT_NAME")
+	reason := rejectInvalidCreatedBy(p, value)
+	if reason == "" {
+		return value, "", false, envHint
+	}
+	// Explicit value is invalid. If env names a valid agent, swap.
+	if envHint != "" && rejectInvalidCreatedBy(p, envHint) == "" {
+		return envHint, reason, true, envHint
+	}
+	// No usable fallback — surface the rejection.
+	return "", reason, false, envHint
 }
 
 // rejectInvalidCreatedBy returns "" if the value is an acceptable
