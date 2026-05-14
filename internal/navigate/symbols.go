@@ -610,7 +610,14 @@ func (u *UnifiedExtractor) FindWithContext(ctx context.Context, name string) (*S
 	case MethodAuto:
 		fallthrough
 	default:
-		// For find, always use regex since it's faster for project-wide search
+		// Try tree-sitter first for AST-grade matches on supported languages
+		// (Go, JS/TS, Python, Java, Ruby, Rust, C/C++). If it returns no
+		// results — either the symbol genuinely doesn't exist or the project
+		// only contains languages tree-sitter can't parse — fall back to the
+		// regex finder, which has slightly broader textual reach.
+		if result, err := u.tsExtractor.Find(ctx, name); err == nil && result != nil && result.Total > 0 {
+			return result, nil
+		}
 		return u.regexExtractor.Find(name)
 	}
 }

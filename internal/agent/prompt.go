@@ -242,24 +242,38 @@ func (g *PromptGenerator) buildToolDescriptions(tools []string) string {
 	toolDocs := map[string]string{
 		"read": `**read** - Read file contents
   Usage: quokka read <file> [--lines N:M]
-  Read source files to analyze code. Use --lines to read specific line ranges.`,
+  Read source files to analyze code. Use --lines (e.g. --lines 40:80) to
+  scope to a function or block instead of pulling whole files.`,
 
 		"list": `**list** - List directory contents
   Usage: quokka list <dir> [--recursive] [--depth N]
-  Explore project structure and find relevant files.`,
+  Explore project structure. Default depth is 1; bump --depth for a wider
+  view, or --recursive to walk everything beneath <dir>.`,
 
 		"find": `**find** - Find files by pattern
   Usage: quokka find <pattern> [--type file|dir]
-  Search for files matching a pattern (supports wildcards).`,
+  Locate files by glob (e.g. "**/*.go", "internal/**/handler*.go"). Use
+  --type to restrict to files or directories only.`,
 
-		"search": `**search** - Search file contents
-  Usage: quokka search <pattern> [--regex]
-  Search for patterns in file contents (grep-like functionality).`,
+		"search": `**search** - Search file contents (text/grep)
+  Usage: quokka search <pattern> [--regex] [--case-sensitive] [--path <glob>]
+  Reach for this when you know the literal string or pattern you're looking
+  for. Use --regex for patterns, --path to scope to a subtree.`,
 
-		"symbols": `**symbols** - Extract code symbols
-  Usage: quokka symbols <file>
-  Usage: quokka symbols find <name>
-  Extract functions, classes, and other symbols from source files.`,
+		"symbols": `**symbols** - Extract code symbols (structural / AST)
+  Usage: quokka symbols <file> [--method auto|treesitter|lsp|regex]
+  Usage: quokka symbols find <name> [--method auto|treesitter|lsp|regex]
+  Usage: quokka symbols refs <symbol>
+  Backed by tree-sitter (no index required, in-process, fast). Supported
+  languages: Go, JavaScript/TypeScript, Python, Java, Ruby, Rust, C/C++.
+  Other languages fall back to regex.
+
+  Use this when the question is structural ("where is function X defined",
+  "what classes live in this file") rather than textual or conceptual.
+
+  Note: 'symbols find <name>' in --method auto runs tree-sitter first for
+  AST-grade matches on supported languages and falls back to regex
+  otherwise. Pass --method treesitter to force AST-only behavior.`,
 
 		"memory": `**memory** - Manage analysis memories
   Usage: quokka memory list [--type context|pattern|stack]
@@ -320,6 +334,59 @@ func (g *PromptGenerator) buildToolDescriptions(tools []string) string {
 `)
 	}
 
+	// Append a brief tool-selection guide tailored to what this agent has.
+	// The three navigation tools answer different questions; rendering the
+	// guide alongside the descriptions keeps it close to the point of use
+	// and propagates through custom prompt_templates that don't extend the
+	// default template.
+	b.WriteString(buildToolSelectionGuide(tools, semanticEnabled))
+
+	return b.String()
+}
+
+// buildToolSelectionGuide renders short decision guidance for the three
+// navigation tools (search, symbols, semantic) when the agent has at least
+// two of them. With only one tool there's no selection to make.
+func buildToolSelectionGuide(tools []string, semanticEnabled bool) string {
+	has := func(name string) bool {
+		for _, t := range tools {
+			if t == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	hasSearch := has("search")
+	hasSymbols := has("symbols")
+	hasSemantic := has("semantic") && semanticEnabled
+
+	count := 0
+	for _, b := range []bool{hasSearch, hasSymbols, hasSemantic} {
+		if b {
+			count++
+		}
+	}
+	if count < 2 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("Tool selection — different tools for different questions:\n")
+	if hasSearch {
+		b.WriteString("- **search**: literal strings or patterns ('where does X appear?'). Cheap, exact.\n")
+	}
+	if hasSymbols {
+		b.WriteString("- **symbols**: structural / AST questions ('where is function X defined? what symbols are in this file?'). No index needed.\n")
+	}
+	if hasSemantic {
+		b.WriteString("- **semantic**: conceptual queries ('auth bypass code', 'input validation'). Vector search.\n")
+	}
+	b.WriteString("\nIdentifier-shaped query → symbols. Literal string → search.")
+	if hasSemantic {
+		b.WriteString(" Conceptual → semantic.")
+	}
+	b.WriteString("\n\n")
 	return b.String()
 }
 
