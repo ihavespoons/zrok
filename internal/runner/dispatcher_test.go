@@ -139,6 +139,32 @@ func TestLookupRunner(t *testing.T) {
 	}
 }
 
+// TestTriageAuthorForPhase covers the phase-name → triage-author
+// mapping the dispatcher uses to decide whether (and as whom) to apply
+// a post-phase triage plan. Adding a new triage-style phase should
+// surface here as a needed update.
+func TestTriageAuthorForPhase(t *testing.T) {
+	cases := []struct {
+		phase string
+		want  string
+	}{
+		{"validation", "validation-agent"},
+		{"sast-triage", "sast-triage-agent"},
+		{"analysis", ""},
+		{"recon", ""},
+		{"review-critical", ""},
+		{"", ""},
+		{"Validation", ""}, // case-sensitive on purpose; phase names are stable lowercase
+	}
+	for _, c := range cases {
+		t.Run(c.phase, func(t *testing.T) {
+			if got := triageAuthorForPhase(c.phase); got != c.want {
+				t.Errorf("triageAuthorForPhase(%q) = %q, want %q", c.phase, got, c.want)
+			}
+		})
+	}
+}
+
 func TestClassifyFailure(t *testing.T) {
 	cases := []struct {
 		name      string

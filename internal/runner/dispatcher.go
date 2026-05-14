@@ -227,8 +227,70 @@ func Dispatch(ctx context.Context, plan DispatchPlan, cfg DispatchConfig) (Dispa
 		default:
 			return out, fmt.Errorf("phase %q: unknown mode %q", phase.Name, phase.Mode)
 		}
+
+		// Post-phase triage-plan apply: validation-agent and
+		// sast-triage-agent emit JSON triage plans to disk rather than
+		// calling `zrok finding update` (LLMs reliably emit JSON, do
+		// not reliably execute update CLI calls — see commits c9639ec,
+		// 437655c). After these phases complete, look for a triage
+		// plan and apply it deterministically.
+		if triageAuthor := triageAuthorForPhase(phase.Name); triageAuthor != "" {
+			applyTriagePlan(ctx, cfg, triageAuthor)
+		}
 	}
 	return out, nil
+}
+
+// triageAuthorForPhase maps a phase name to the agent identity that
+// should be recorded as the triage plan author. Empty return means
+// "no post-phase triage apply for this phase".
+//
+// Adding a new triage-phase in the future is just adding a case here.
+func triageAuthorForPhase(phaseName string) string {
+	switch phaseName {
+	case "validation":
+		return "validation-agent"
+	case "sast-triage":
+		return "sast-triage-agent"
+	}
+	return ""
+}
+
+// applyTriagePlan looks for .zrok/review/triage-plan.json under WorkDir
+// and runs `zrok finding triage --plan <path>` to apply it. Missing
+// file is logged as a warning, not a fatal error — the agent might
+// have legitimately decided there was nothing to triage (e.g. zero
+// open findings), or the agent might have failed to comply (still
+// better to surface that as a one-line warning and continue than to
+// abort the run).
+func applyTriagePlan(ctx context.Context, cfg DispatchConfig, author string) {
+	planPath := filepath.Join(cfg.WorkDir, ".zrok", "review", "triage-plan.json")
+	if _, err := os.Stat(planPath); err != nil {
+		fmt.Fprintf(cfg.Stdout, "  no triage plan written by %s (looked at %s) — skipping apply\n", author, planPath)
+		return
+	}
+	fmt.Fprintf(cfg.Stdout, "  applying triage plan from %s (author=%s)\n", planPath, author)
+
+	args := []string{"finding", "triage", "--plan", planPath, "--author", author}
+	cmd := exec.CommandContext(ctx, "zrok", args...)
+	cmd.Dir = cfg.WorkDir
+	cmd.Env = os.Environ()
+	cmd.Stdout = cfg.Stdout
+	cmd.Stderr = cfg.Stdout
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(cfg.Stdout, "  triage apply failed (%v) — findings stay in their current state\n", err)
+	}
+
+	// Move the plan aside so the next phase's plan apply doesn't
+	// double-process if the agent re-writes the same file. The
+	// timestamp lets us inspect prior plans if a run misbehaved.
+	stamped := planPath + "." + time.Now().Format("20060102-150405") + ".applied"
+	if err := os.Rename(planPath, stamped); err != nil {
+		// Non-fatal — worst case the next phase re-applies the same
+		// plan, which the triage command tolerates (already-set
+		// statuses are idempotent).
+		fmt.Fprintf(cfg.Stdout, "  warning: couldn't archive applied plan to %s: %v\n", stamped, err)
+	}
 }
 
 // evaluateGate runs the gate shell command and decides whether the phase
