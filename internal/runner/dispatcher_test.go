@@ -176,7 +176,7 @@ func TestClassifyFailure(t *testing.T) {
 }
 
 func TestCorrectiveUserTurnContainsScaffolding(t *testing.T) {
-	turn := correctiveUserTurn("original task", "SchemaError")
+	turn := correctiveUserTurn("original task", "SchemaError", "injection-agent")
 	// Must mention what went wrong so the model can correct.
 	if !strings.Contains(turn, "SchemaError") {
 		t.Error("corrective turn missing failure reason")
@@ -193,6 +193,22 @@ func TestCorrectiveUserTurnContainsScaffolding(t *testing.T) {
 	// Must echo the original task so the agent still knows what to do.
 	if !strings.Contains(turn, "original task") {
 		t.Error("corrective turn dropped the original task")
+	}
+	// Must pin --created-by to the agent's actual name to prevent the
+	// "model picks 'opencode' because that's the runtime" failure mode
+	// observed in OWASP eval runs.
+	if !strings.Contains(turn, "injection-agent") {
+		t.Error("corrective turn must inject the agent's actual name for --created-by")
+	}
+}
+
+func TestCorrectiveUserTurnEmptyAgentFallback(t *testing.T) {
+	// When agentName is empty (caller doesn't have it in scope), the
+	// corrective turn should still warn the model NOT to use the
+	// runtime name as the creator.
+	turn := correctiveUserTurn("task", "SchemaError", "")
+	if !strings.Contains(turn, "frontmatter") {
+		t.Error("expected hint pointing the model at its system-prompt frontmatter for --created-by")
 	}
 }
 

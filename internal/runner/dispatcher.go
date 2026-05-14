@@ -392,7 +392,7 @@ func runAgentWithRetry(ctx context.Context, agentName, userTurn string, cfg Disp
 	case failureRecoverable:
 		fmt.Fprintf(cfg.Stdout, "    ↻ %s recoverable failure (%s) — retrying once\n", agentName, reason)
 		appendRetryToLog(res.LogPath, reason)
-		correctedTurn := correctiveUserTurn(userTurn, reason)
+		correctedTurn := correctiveUserTurn(userTurn, reason, agentName)
 		retry := runAgent(ctx, agentName, correctedTurn, cfg)
 		retry.Retries = 1
 		retry.RetryReason = reason
@@ -459,15 +459,28 @@ func appendRetryToLog(logPath, reason string) {
 // reason so the model sees what went wrong, plus an explicit reminder of
 // the schema requirements that the centralized exemplar covers. Kept
 // short — long retry prompts make small models more confused, not less.
-func correctiveUserTurn(originalTurn, reason string) string {
+//
+// The agent name is passed through so the corrective prompt can defer
+// to the agent's own system prompt for the --created-by value rather
+// than supplying a placeholder the model might copy verbatim (observed
+// in OWASP runs: dispatcher told agents "set --created-by to your agent
+// name" without specifying which one; 13 of 36 findings landed with
+// `created_by: opencode` because the model interpreted "agent name" as
+// the runtime).
+func correctiveUserTurn(originalTurn, reason, agentName string) string {
+	creatorHint := "your agent's name (from your system prompt's frontmatter, not the runtime name)"
+	if agentName != "" {
+		creatorHint = "`" + agentName + "` (this is your agent name; do not substitute)"
+	}
 	return fmt.Sprintf(`Your previous attempt failed: %s
 
 Re-run with these corrections:
 - Task tool calls require BOTH "description" and "prompt" fields (no exceptions).
-- zrok finding create requires --title, --severity, --confidence, --cwe (with CWE- prefix), --file (project-relative), --line, --description, --created-by, and at least one --tag.
+- zrok finding create requires --title, --severity, --confidence, --cwe (with CWE- prefix), --file (project-relative path, not absolute), --line, --description, --created-by, and at least one --tag.
+- --created-by must be %s.
 - All YAML output (for stdin mode) must parse cleanly.
 
-This is your final retry. Original task: %s`, reason, originalTurn)
+This is your final retry. Original task: %s`, reason, creatorHint, originalTurn)
 }
 
 // defaultUserTurn returns the user-turn prompt the dispatcher passes when
@@ -486,7 +499,7 @@ func defaultUserTurn(userTurn string, changedFiles []string) string {
 	}
 	var b strings.Builder
 	b.WriteString("Run a security review per your agent system prompt. ")
-	b.WriteString("File findings via zrok finding create with --created-by set to your agent name. ")
+	b.WriteString("File findings via `zrok finding create` EXACTLY as the Filing Protocol section of your system prompt describes — copy that exemplar; do not invent your own --created-by value. ")
 	b.WriteString("Exit when analysis is complete.")
 	if len(changedFiles) > 0 {
 		b.WriteString("\n\n## In-scope files (review EVERY file in this list)\n")
