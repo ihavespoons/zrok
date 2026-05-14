@@ -194,7 +194,7 @@ func Dispatch(ctx context.Context, plan DispatchPlan, cfg DispatchConfig) (Dispa
 
 	var out DispatchResult
 	for i, phase := range plan.Phases {
-		fmt.Fprintf(cfg.Stdout, "=== Phase %d/%d: %s (%s) ===\n", i+1, len(plan.Phases), phase.Name, phase.Mode)
+		_, _ = fmt.Fprintf(cfg.Stdout, "=== Phase %d/%d: %s (%s) ===\n", i+1, len(plan.Phases), phase.Name, phase.Mode)
 
 		switch phase.Mode {
 		case ModeGated:
@@ -203,7 +203,7 @@ func Dispatch(ctx context.Context, plan DispatchPlan, cfg DispatchConfig) (Dispa
 				return out, fmt.Errorf("phase %q: gate failed: %w", phase.Name, err)
 			}
 			if !ok {
-				fmt.Fprintf(cfg.Stdout, "  gate produced no results — skipping phase\n")
+				_, _ = fmt.Fprintf(cfg.Stdout, "  gate produced no results — skipping phase\n")
 				out.Phases = append(out.Phases, PhaseResult{Name: phase.Name, Skipped: true})
 				continue
 			}
@@ -224,7 +224,7 @@ func Dispatch(ctx context.Context, plan DispatchPlan, cfg DispatchConfig) (Dispa
 				return out, fmt.Errorf("phase %q: dynamic-source failed: %w", phase.Name, err)
 			}
 			if len(ids) == 0 {
-				fmt.Fprintf(cfg.Stdout, "  dynamic-source produced no items — skipping phase\n")
+				_, _ = fmt.Fprintf(cfg.Stdout, "  dynamic-source produced no items — skipping phase\n")
 				out.Phases = append(out.Phases, PhaseResult{Name: phase.Name, Skipped: true})
 				continue
 			}
@@ -273,10 +273,10 @@ func triageAuthorForPhase(phaseName string) string {
 func applyTriagePlan(ctx context.Context, cfg DispatchConfig, author string) {
 	planPath := filepath.Join(cfg.WorkDir, ".quokka", "review", "triage-plan.json")
 	if _, err := os.Stat(planPath); err != nil {
-		fmt.Fprintf(cfg.Stdout, "  no triage plan written by %s (looked at %s) — skipping apply\n", author, planPath)
+		_, _ = fmt.Fprintf(cfg.Stdout, "  no triage plan written by %s (looked at %s) — skipping apply\n", author, planPath)
 		return
 	}
-	fmt.Fprintf(cfg.Stdout, "  applying triage plan from %s (author=%s)\n", planPath, author)
+	_, _ = fmt.Fprintf(cfg.Stdout, "  applying triage plan from %s (author=%s)\n", planPath, author)
 
 	args := []string{"finding", "triage", "--plan", planPath, "--author", author}
 	cmd := exec.CommandContext(ctx, "quokka", args...)
@@ -285,7 +285,7 @@ func applyTriagePlan(ctx context.Context, cfg DispatchConfig, author string) {
 	cmd.Stdout = cfg.Stdout
 	cmd.Stderr = cfg.Stdout
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(cfg.Stdout, "  triage apply failed (%v) — findings stay in their current state\n", err)
+		_, _ = fmt.Fprintf(cfg.Stdout, "  triage apply failed (%v) — findings stay in their current state\n", err)
 	}
 
 	// Move the plan aside so the next phase's plan apply doesn't
@@ -296,7 +296,7 @@ func applyTriagePlan(ctx context.Context, cfg DispatchConfig, author string) {
 		// Non-fatal — worst case the next phase re-applies the same
 		// plan, which the triage command tolerates (already-set
 		// statuses are idempotent).
-		fmt.Fprintf(cfg.Stdout, "  warning: couldn't archive applied plan to %s: %v\n", stamped, err)
+		_, _ = fmt.Fprintf(cfg.Stdout, "  warning: couldn't archive applied plan to %s: %v\n", stamped, err)
 	}
 }
 
@@ -459,7 +459,7 @@ func runAgentWithRetry(ctx context.Context, agentName, userTurn string, cfg Disp
 
 	switch category {
 	case failureRecoverable:
-		fmt.Fprintf(cfg.Stdout, "    ↻ %s recoverable failure (%s) — retrying once\n", agentName, reason)
+		_, _ = fmt.Fprintf(cfg.Stdout, "    ↻ %s recoverable failure (%s) — retrying once\n", agentName, reason)
 		appendRetryToLog(res.LogPath, reason)
 		correctedTurn := correctiveUserTurn(userTurn, reason, agentName)
 		retry := runAgent(ctx, agentName, correctedTurn, cfg)
@@ -598,7 +598,7 @@ func runAgent(ctx context.Context, agentName, userTurn string, cfg DispatchConfi
 		res.Err = fmt.Errorf("open log file: %w", err)
 		return res
 	}
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 
 	cmdCtx := ctx
 	if cfg.PerAgentTimeout > 0 {
@@ -609,7 +609,7 @@ func runAgent(ctx context.Context, agentName, userTurn string, cfg DispatchConfi
 
 	cmd := cfg.Runner.AgentInvocation(cmdCtx, cfg.WorkDir, agentName, cfg.Model, userTurn, logFile)
 	start := time.Now()
-	fmt.Fprintf(cfg.Stdout, "  → %s (logging to %s)\n", agentName, logPath)
+	_, _ = fmt.Fprintf(cfg.Stdout, "  → %s (logging to %s)\n", agentName, logPath)
 	err = cmd.Run()
 	res.Duration = time.Since(start)
 
@@ -620,7 +620,7 @@ func runAgent(ctx context.Context, agentName, userTurn string, cfg DispatchConfi
 		} else {
 			res.ExitCode = -1
 		}
-		fmt.Fprintf(cfg.Stdout, "    ✗ %s exit=%d after %s\n", agentName, res.ExitCode, res.Duration.Round(time.Second))
+		_, _ = fmt.Fprintf(cfg.Stdout, "    ✗ %s exit=%d after %s\n", agentName, res.ExitCode, res.Duration.Round(time.Second))
 		return res
 	}
 
@@ -633,11 +633,11 @@ func runAgent(ctx context.Context, agentName, userTurn string, cfg DispatchConfi
 	if reason := scanLogForSilentError(logPath); reason != "" {
 		res.Err = fmt.Errorf("provider error (silent: exit code 0): %s", reason)
 		res.ExitCode = -2 // sentinel distinct from -1 (non-ExitError) and any real opencode code
-		fmt.Fprintf(cfg.Stdout, "    ✗ %s silent provider error after %s — %s\n", agentName, res.Duration.Round(time.Second), reason)
+		_, _ = fmt.Fprintf(cfg.Stdout, "    ✗ %s silent provider error after %s — %s\n", agentName, res.Duration.Round(time.Second), reason)
 		return res
 	}
 
-	fmt.Fprintf(cfg.Stdout, "    ✓ %s in %s\n", agentName, res.Duration.Round(time.Second))
+	_, _ = fmt.Fprintf(cfg.Stdout, "    ✓ %s in %s\n", agentName, res.Duration.Round(time.Second))
 	return res
 }
 
@@ -657,7 +657,7 @@ func scanLogForSilentError(logPath string) string {
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	buf := make([]byte, 16*1024)
 	n, _ := f.Read(buf)
 	if n == 0 {

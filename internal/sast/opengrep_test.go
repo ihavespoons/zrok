@@ -291,7 +291,7 @@ func TestRelativizePath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 	// Make a nested file we'll reference, since EvalSymlinks needs the
 	// path to exist to resolve.
 	nested := filepath.Join(root, "testcode")

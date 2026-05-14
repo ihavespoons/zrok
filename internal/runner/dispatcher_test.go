@@ -326,7 +326,7 @@ func TestRunnerInvocationShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 
 	cases := []struct {
 		runner Runner
